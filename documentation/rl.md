@@ -68,6 +68,14 @@ build:** a sampled mode for `llamaeval.generate` (greedy only today), 8 answers 
 fixed seeds. **Cost:** ~50 minutes of generation on the 7800 XT (~1.8 s an answer), plus the
 checking.
 
+### As built (2026-11-01)
+
+Done: run `baseline-sft1500-t1.0` (`documentation/results/step1-baseline.md`; how it works:
+`documentation/guides/sampling-baseline.md`; settings: decisions R1-R3). **Greedy 43.2%, sampled
+mean 36.9%, pass@8 62.6%** on 198 decided questions; 94 "sometimes", 74 "never", 30 "always".
+CypherBench, not text2cypher, has the most room (44.9% to 80.0%); text2cypher is mostly "never"
+(33 of 49). Temperature 1.0 costs 6.3 points against greedy, which is usable.
+
 ## Step 2: the method pilots
 
 The baseline measures the model; comparing methods means training. Each candidate gets a short

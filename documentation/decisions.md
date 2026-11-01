@@ -30,3 +30,18 @@ last.
 - **For now, the code runs with the trainer's WSL venv** (it has the checker's dependencies,
   W&B, pytest and ruff). This repo gets its own environment when the RL trainer needs
   packages the trainer's venv doesn't have.
+- **W&B entity:** the stored login's default (the same place as the trainer's runs).
+
+## R3: the baseline run's two interruptions, and how long jobs start (2026-11-01)
+
+- **What happened:** the first launch went through `cmd /c` (for its output redirect); a Ctrl+C
+  reached that console and ended the driver ~10 minutes into sampling (298 answers kept). The
+  relaunch was a detached process with no console and finished sampling (1,600 answers, 0
+  errors), but its `wsl.exe` child for scoring exited with 0xC000013A (Ctrl+C) after 6 s.
+  Scoring was then run directly inside WSL and finished; the run was marked done by hand (an
+  event in `events.jsonl` says so). Nothing was lost or recomputed: every resume keeps what's
+  done.
+- **The source of the Ctrl+C isn't known yet.** Before the multi-day RL runs, long jobs will be
+  started from inside WSL (`setsid nohup`, logs in the run folder), and the cause looked for.
+- **Resumes are safe:** `sample.drop_partial_line` cuts a half-written last line before
+  appending; the driver writes its own `driver.log`.

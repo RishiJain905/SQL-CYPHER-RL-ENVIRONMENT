@@ -2,6 +2,9 @@
 
     C:\\Python314\\python.exe -I scripts\\baseline.py --name baseline-sft1500-t1.0
 
+Start it as a detached process with no console (`Win32_Process.Create` with DETACHED_PROCESS),
+never through a `cmd /c` wrapper: a console's Ctrl+C killed the first run's driver mid-sampling.
+
 1. llama-server with the released Q8_0 (the trainer's serve.ps1, port 8092, thinking budget
    1,024): the same build and settings as the greedy evalset scores;
 2. every question answered `samples` times (`sample.py`);
@@ -75,6 +78,9 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     run_dir = get_paths().data / "baseline" / a.name
     run_dir.mkdir(parents=True, exist_ok=True)
+    # started detached (no console): anything printed or raised goes to the run's own log
+    log = (run_dir / "driver.log").open("a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = log
     for marker in ("DONE", "FAILED"):
         (run_dir / marker).unlink(missing_ok=True)
     (run_dir / "run.pid").write_text(str(os.getpid()), encoding="utf-8")
@@ -92,7 +98,10 @@ def main(argv: list[str] | None = None) -> int:
         event(run_dir, "info", "starting llama-server with the released Q8_0", phase="starting")
         serve(True, run_dir / "serve.log")
         step = "sample"
-        event(run_dir, "info", "sampling: 200 questions x 8 answers", phase="sampling")
+        kept = sum(len(sample.read_done(run_dir / f"preds_s{k}.jsonl"))
+                   for k in range(sample.SETTINGS["samples"]))  # fmt: skip
+        event(run_dir, "info", "sampling: 200 questions x 8 answers"
+              + (f" (resumed: {kept} answers kept)" if kept else ""), phase="sampling")  # fmt: skip
         try:
             res = sample.sample(run_dir, f"http://127.0.0.1:{PORT}")
         finally:

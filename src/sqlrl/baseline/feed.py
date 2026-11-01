@@ -79,6 +79,12 @@ def snapshot(run_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
 
     pid_file = run_dir / "run.pid"
     running = pid_file.exists() and alive(int(pid_file.read_text()))
+    # scoring re-run by hand: alive while files keep landing (a log appended to from WSL keeps
+    # its old Windows modified time, so the newest scores file is the signal)
+    marks = [p.stat().st_mtime for p in [run_dir / "score.log", *run_dir.glob("scores_s*.json")]
+             if p.exists()]  # fmt: skip
+    if not running and marks:
+        running = time.time() - max(marks) < 300
     if (run_dir / "DONE").exists():
         status = "done"
     elif (run_dir / "FAILED").exists():
@@ -89,7 +95,8 @@ def snapshot(run_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         status = "stalled"
     else:
         status = {"sampled": "scoring"}.get(phase, phase)
-    if status == "stopped":
+    stopped = status == "stopped"
+    if stopped:  # the page knows "failed"; the note says what happened
         status = "failed"
     note = {
         "starting": "Loading the model into llama-server.",
@@ -99,6 +106,8 @@ def snapshot(run_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         "stalled": "No new answer for 15 minutes while sampling.",
         "failed": events[-1]["text"] if events else "The run stopped.",
     }[status]
+    if stopped:
+        note = "The run's process stopped without finishing; it resumes from the answers kept."
     toks = [p["completion_tokens"] for p in good if p.get("completion_tokens")]
     meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
     return {

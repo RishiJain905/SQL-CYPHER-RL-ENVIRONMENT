@@ -75,6 +75,16 @@ def read_preds(path: Path) -> dict[str, dict[str, Any]]:
     return out
 
 
+def drop_partial_line(path: Path) -> None:
+    """A process killed mid-write leaves a last line without its newline; the next append would
+    glue onto it. Cut the file back to its last complete line."""
+    if not path.exists():
+        return
+    data = path.read_bytes()
+    if data and not data.endswith(b"\n"):
+        path.write_bytes(data[: data.rfind(b"\n") + 1])
+
+
 def read_done(path: Path) -> set[str]:
     return {qid for qid, p in read_preds(path).items() if "error" not in p}
 
@@ -85,6 +95,8 @@ def sample(run_dir: Path, url: str, workers: int = 16) -> dict[str, Any]:
         exs = [json.loads(line) for line in f if line.strip()]
     n = SETTINGS["samples"]
     files = [run_dir / f"preds_s{k}.jsonl" for k in range(n)]
+    for p in files:
+        drop_partial_line(p)
     done = [read_done(p) for p in files]
     # sample-major: sample 0 finishes first, so the scorer can start on whole files
     todo = [(k, i, ex) for k in range(n) for i, ex in enumerate(exs) if ex["id"] not in done[k]]

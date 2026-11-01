@@ -23,6 +23,15 @@ def test_seeds_differ_across_samples_and_questions():
     assert len(seeds) == 1600
 
 
+def test_drop_partial_line(tmp_path):
+    f = tmp_path / "preds_s0.jsonl"
+    f.write_text('{"id": "a"}\n{"id": "b", "outp', encoding="utf-8")
+    sample.drop_partial_line(f)
+    assert f.read_text(encoding="utf-8") == '{"id": "a"}\n'
+    sample.drop_partial_line(f)  # a complete file is left alone
+    assert f.read_text(encoding="utf-8") == '{"id": "a"}\n'
+
+
 def test_read_preds_retries_failed_answers(tmp_path):
     f = tmp_path / "preds_s0.jsonl"
     rows = [

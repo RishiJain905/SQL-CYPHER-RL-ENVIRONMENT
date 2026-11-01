@@ -20,4 +20,29 @@ holds the RL environments, the training loop and the measurements.
 3. **The real RL run:** single-turn with an execution reward, then a multi-turn agent in real
    databases.
 
-Status: planning. Nothing has run yet.
+## Where it stands
+
+**Step 1 is done** (2026-11-01): greedy 43.2%, sampled mean 36.9%, **pass@8 62.6%** on the
+200-question evalset; 94 of 198 questions are right sometimes, the pool RL learns from
+([`documentation/results/step1-baseline.md`](documentation/results/step1-baseline.md)).
+Step 2 is next. Progress: [`documentation/PROGRESS.md`](documentation/PROGRESS.md).
+
+## Running it
+
+Windows Python runs next to llama-server; the checker runs inside WSL. Paths come from
+`configs/paths.local.toml` (copy `configs/paths.example.toml`; it's git-ignored).
+
+| Command | What it does |
+|---|---|
+| `C:\Python314\python.exe -I scripts\baseline.py --name <run>` | the sampling baseline, start to finish (~45 min; start it detached with no console) |
+| `C:\Python314\python.exe -I scripts\baseline_feed.py --run-dir <dir>` | one tick for the live page |
+| `PYTHONPATH=src <venv>/bin/python -m sqlrl.baseline.score --run-dir <dir> --wandb` (WSL) | score a baseline's sample files, write `summary.json`, log to W&B |
+| `PYTHONPATH=src <venv>/bin/python -m pytest -q` / `ruff check .` (WSL) | the tests (CPU) and lint |
+
+## Documentation
+
+- [`documentation/rl.md`](documentation/rl.md): the plan
+- [`documentation/guides/sampling-baseline.md`](documentation/guides/sampling-baseline.md): pass@k, how the baseline works, how to run it
+- [`documentation/results/`](documentation/results/): each step's numbers
+- [`documentation/decisions.md`](documentation/decisions.md): every choice made along the way
+- [`documentation/dashboard/`](documentation/dashboard/): the live page
