@@ -163,6 +163,10 @@ def generate(url: str, rows: list[dict[str, Any]], cfg: dict[str, Any], step: in
     """Answer every question `group_size` times into `out` (append; a restart keeps what's
     done, and a failed rollout is retried)."""
     server = Server(url)
+    if out.exists():  # a crash mid-write leaves a last line without its newline: cut it
+        data = out.read_bytes()
+        if data and not data.endswith(b"\n"):
+            out.write_bytes(data[: data.rfind(b"\n") + 1])
     done = read_done(out)
     jobs = [(q, row, g) for q, row in enumerate(rows) for g in range(cfg["group_size"])
             if (row["id"], g) not in done]  # fmt: skip

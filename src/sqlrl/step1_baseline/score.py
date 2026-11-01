@@ -38,6 +38,9 @@ def score_all(run_dir: Path, checker: int, samples: int) -> list[list[dict[str, 
 
     exs = list(read_jsonl(get_paths().evalset))
     data = publiceval.PublicData(trainer_paths().public)
+    if any(e.dialect == "cypher" for e in exs) and publiceval._graph() is None:
+        # without it every Cypher answer would score "undecided", silently
+        raise RuntimeError("the checker's Neo4j (asktrainer-neo4j) doesn't answer: start it")
     out = []
     for k in range(samples):
         preds_path, scores_path = run_dir / f"preds_s{k}.jsonl", run_dir / f"scores_s{k}.json"

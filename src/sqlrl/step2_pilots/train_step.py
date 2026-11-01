@@ -81,6 +81,9 @@ def score(sdir: Path, rollouts: list[dict], rows: list[dict], cfg: dict[str, Any
 
     data = publiceval.PublicData(trainer_paths().public)
     exs = {row["id"]: Example.model_validate(row) for row in rows}
+    if any(e.dialect == "cypher" for e in exs.values()) and publiceval._graph() is None:
+        # without it every Cypher answer would score "undecided" and get no reward, silently
+        raise RuntimeError("the checker's Neo4j (asktrainer-neo4j) doesn't answer: start it")
     t = time.time()
     # one graph load per CypherBench graph: score grouped by graph
     order = sorted(range(len(rollouts)),

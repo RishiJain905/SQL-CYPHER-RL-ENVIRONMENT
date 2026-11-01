@@ -74,6 +74,9 @@ def status_of(run_dir: Path, events: list[dict[str, Any]]) -> str:
     if phase == "evaluating":
         return "evaluating" if running else "failed"
     if (run_dir / "TRAINED").exists():
+        cfg = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+        if cfg.get("smoke"):
+            return "done"  # loop tests aren't evaluated
         return "evaluating" if running else "trained"
     if not events:
         return "planned"
