@@ -15,7 +15,9 @@ ENV_FILE = re.compile(r"\.env[\w.\-]*", re.IGNORECASE)
 
 # Other credential stores.
 CREDENTIAL_FILES = re.compile(
-    r"_netrc|\.netrc|kaggle\.json|\.docker[\\/]+config\.json", re.IGNORECASE
+    r"_netrc|\.netrc|kaggle\.json|\.docker[\\/]+config\.json"
+    r"|huggingface[\\/]+token|\.modal\.toml|\.codex[\\/]+auth\.json",
+    re.IGNORECASE,
 )
 
 # Commands that dump environment variables, load the env file, or unwrap secrets.
@@ -38,7 +40,8 @@ ENV_DUMP = re.compile(
 # Direct references to secret variables in shell syntax ($X, ${X}, $env:X).
 SECRET_VARS = re.compile(
     r"(?:\$env:|\$\{|\$)(?:WANDB_API_KEY|NEO4J_PASSWORD|NEO4J_AUTH|LLM_API_KEY"
-    r"|OPENROUTER_API_KEY|ODDS_API_KEY\d*|KAGGLE_KEY|SMTP_PASSWORD)\b",
+    r"|OPENROUTER_API_KEY|ODDS_API_KEY\d*|KAGGLE_KEY|SMTP_PASSWORD"
+    r"|HF_TOKEN|HUGGING_FACE_HUB_TOKEN|MODAL_TOKEN_ID|MODAL_TOKEN_SECRET)\b",
     re.IGNORECASE,
 )
 
@@ -80,7 +83,8 @@ def main() -> int:
         print(
             f"BLOCKED by .claude/hooks/block_secrets.py: this {tool} call {reason}. "
             "Agents must never read or reveal credentials (see CLAUDE.md -> Security). "
-            "Use `nfl doctor` to check whether variables are set, or ask Rishi.",
+            "Use this repo's `doctor` command (once it exists) to check whether variables "
+            "are set, or ask Rishi.",
             file=sys.stderr,
         )
         return 2
