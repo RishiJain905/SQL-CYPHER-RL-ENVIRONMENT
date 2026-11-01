@@ -19,9 +19,10 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 
 from sqlrl.paths import get_paths
-from sqlrl.step2_pilots.orchestrate import NO_WINDOW, PORT, TEXT, event, llama_servers, serve
+from sqlrl.step2_pilots.orchestrate import NO_WINDOW, TEXT, event, llama_servers, serve
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
@@ -46,7 +47,11 @@ def pause(name: str, after_step: bool = False) -> dict:
         killed = r.returncode == 0
     serve(False, run_dir / "serve-stop.log")  # the pilots' server (port PORT), if up
     _run(["wsl", "-d", "Ubuntu", "--", "pkill", "-f", "sqlrl.step2_pilots."])
-    left_server = [s for s in llama_servers() if str(PORT) in s] or llama_servers()
+    for _ in range(15):  # a stopped server takes a moment to exit
+        left_server = llama_servers()
+        if not left_server:
+            break
+        time.sleep(1)
     w = _run(["wsl", "-d", "Ubuntu", "--", "pgrep", "-af", "sqlrl.step2_pilots."])
     left_wsl = [x for x in w.stdout.splitlines() if "pgrep" not in x]
     (run_dir / "PAUSED").write_text("", encoding="utf-8")
