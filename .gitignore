@@ -17,3 +17,6 @@ __pycache__/
 wandb/
 *.gguf
 *.safetensors
+
+# This machine's paths (configs/paths.example.toml is the template)
+configs/*.local.toml

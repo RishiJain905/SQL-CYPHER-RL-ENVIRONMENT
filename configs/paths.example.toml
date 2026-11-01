@@ -1,0 +1,16 @@
+# Copy to configs/paths.local.toml (git-ignored) and fill in this machine's paths.
+# Tracked files hold only placeholders: real paths never go into git (CLAUDE.md -> Security).
+
+[paths]
+# Where this repo's runs go (outside the repo).
+data = '<drive>:\<data folder>\rl'
+# The released model's Q8_0 GGUF.
+model = '<drive>:\<folder>\Spark-X2.6-4B-SQL-Cypher-Agent-Q8_0.gguf'
+# The trainer's held-out evalset (200 questions, `ask-trainer traces evalset`).
+evalset = '<drive>:\<folder>\evalset\examples_val.jsonl'
+# The released model's greedy evalset scores (checker 4), for pass@1.
+greedy_scores = '<drive>:\<folder>\scores_llamacpp_release-eval-Q8_0.json'
+# The trainer repo (its llama-server script and its checker, used as a library).
+trainer_repo = '<drive>:\<folder>\nfl-ask-trainer'
+# The trainer's venv inside WSL (it has the checker's dependencies, W&B and pytest).
+wsl_venv = '~/venvs/<venv>'

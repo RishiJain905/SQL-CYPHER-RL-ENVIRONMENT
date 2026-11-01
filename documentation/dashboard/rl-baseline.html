@@ -1,0 +1,1100 @@
+<title>Spark RL Baseline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a status header (state, live flag, phases), progress (sampling bars, per-sample meters, rate sparkline, scoring), results (headline tiles, per-dataset table, pass@k curve, 0-8 histogram, never/sometimes/always bars), a 200-cell question grid, a short explainer, then settings and events. One column on phones. */
+:root {
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --ring: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-text: #006300;
+  /* sequential blue, one step per "answers right" level; q0 = none right */
+  --q0: #e1e0d9; --q1: #86b6ef; --q2: #6da7ec; --q3: #5598e7; --q4: #3987e5;
+  --q5: #256abf; --q6: #1c5cab; --q7: #184f95; --q8: #0d366b;
+  --b-never: var(--q0); --b-some: var(--q4); --b-always: var(--q8);
+  --on-never: #0b0b0b; --on-some: #0b0b0b; --on-always: #ffffff;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+    --good-text: #0ca30c;
+    --q0: #383835; --q1: #184f95; --q2: #1c5cab; --q3: #256abf; --q4: #2a78d6;
+    --q5: #3987e5; --q6: #5598e7; --q7: #6da7ec; --q8: #9ec5f4;
+    --on-never: #f0efec; --on-some: #ffffff; --on-always: #0b0b0b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+  --good-text: #0ca30c;
+  --q0: #383835; --q1: #184f95; --q2: #1c5cab; --q3: #256abf; --q4: #2a78d6;
+  --q5: #3987e5; --q6: #5598e7; --q7: #6da7ec; --q8: #9ec5f4;
+  --on-never: #f0efec; --on-some: #ffffff; --on-always: #0b0b0b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack-sm { display: flex; flex-direction: column; gap: 12px; }
+h1 { font-size: 1.35rem; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 0.98rem; margin: 0; font-weight: 600; text-wrap: balance; }
+h3 { font-size: 0.86rem; margin: 0; font-weight: 600; }
+p { margin: 0; }
+.sub { color: var(--ink-2); font-size: 0.86rem; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.top { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.picker { display: flex; gap: 8px; align-items: center; }
+select { font: inherit; background: var(--surface); color: var(--ink); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; max-width: 70vw; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+/* status pill, live flag, chips */
+.pill { display: inline-flex; gap: 6px; align-items: center; font-size: 0.82rem; font-weight: 600; padding: 3px 11px 3px 9px; border-radius: 999px; border: 1px solid var(--ring); background: var(--page); }
+.pill .ico { flex: none; }
+.s-run .ico { color: var(--s1); } .s-good .ico { color: var(--good-text); } .s-warn .ico { color: var(--warning); } .s-bad .ico { color: var(--critical); }
+.s-warn { border-color: var(--warning); } .s-bad { border-color: var(--critical); }
+.live { display: inline-flex; gap: 6px; align-items: center; font-size: 0.78rem; font-weight: 600; color: var(--ink-2); }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; }
+@media (prefers-reduced-motion: no-preference) { .live i { animation: pulse 1.8s ease-in-out infinite; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.stale { display: inline-flex; gap: 6px; align-items: center; font-size: 0.78rem; font-weight: 600; color: var(--ink); }
+.stale .ico { color: var(--warning); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-family: var(--mono); font-size: 0.76rem; padding: 2px 8px; border-radius: 5px; background: var(--page); border: 1px solid var(--ring); color: var(--ink-2); overflow-wrap: anywhere; }
+.chip b { font-weight: 600; color: var(--ink); }
+
+/* phases */
+.phases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.phase { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--ring); background: var(--page); min-width: 0; }
+.phase .pn { display: flex; gap: 6px; align-items: center; font-size: 0.84rem; font-weight: 600; }
+.phase .ps { font-size: 0.76rem; color: var(--ink-2); }
+.phase.past .pn { color: var(--ink-2); } .phase.past .ico { color: var(--good-text); }
+.phase.now { border-color: var(--s1); background: var(--surface); }
+.phase.now .ico { color: var(--s1); }
+.phase.now.warn { border-color: var(--warning); } .phase.now.warn .ico { color: var(--warning); }
+.phase.now.bad { border-color: var(--critical); } .phase.now.bad .ico { color: var(--critical); }
+.phase.next { color: var(--muted); } .phase.next .pn, .phase.next .ps { color: var(--muted); }
+.note-line { font-size: 0.9rem; color: var(--ink); overflow-wrap: anywhere; }
+
+/* bars and tiles */
+.progress { height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--s1); border-radius: 0 5px 5px 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px 14px; }
+.tile { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tile .k { font-size: 0.78rem; color: var(--ink-2); }
+.tile .v { font-size: 1.25rem; font-weight: 600; }
+.tile .s { font-size: 0.76rem; color: var(--ink-2); overflow-wrap: anywhere; }
+.tile.big .v { font-size: 1.6rem; }
+.tile .v .u { font-size: 0.8rem; font-weight: 500; color: var(--ink-2); }
+.warn-text { display: inline-flex; gap: 4px; align-items: center; }
+.warn-text .ico { color: var(--warning); }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px 24px; }
+.split > div { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.meters { display: grid; gap: 6px; }
+.meter { display: flex; flex-direction: column; gap: 4px; align-items: stretch; min-width: 0; }
+.meter .trk { height: 54px; background: var(--grid); border-radius: 4px; display: flex; align-items: flex-end; overflow: hidden; }
+.meter .fil { width: 100%; background: var(--s1); border-radius: 4px 4px 0 0; }
+.meter .lb { font-size: 0.72rem; color: var(--ink-2); text-align: center; font-variant-numeric: tabular-nums; }
+.segs { display: grid; gap: 2px; }
+.segs i { height: 10px; background: var(--grid); border-radius: 2px; display: block; }
+.segs i.on { background: var(--s1); }
+.block-head { display: flex; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; align-items: baseline; }
+
+/* charts */
+.res-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+.res-grid > .card { grid-column: span 12; display: flex; flex-direction: column; gap: 8px; }
+@media (min-width: 940px) { .res-grid > .c7 { grid-column: span 7; } .res-grid > .c5 { grid-column: span 5; } }
+.chart-head { display: flex; justify-content: space-between; gap: 8px 14px; align-items: baseline; flex-wrap: wrap; }
+.legend { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 0.78rem; color: var(--ink-2); }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.legend b.sw { height: 10px; width: 10px; border-radius: 2px; }
+.legend b.hollow { height: 9px; width: 9px; border-radius: 50%; background: var(--surface); border: 2px solid var(--ink-2); }
+.chart { position: relative; min-width: 0; }
+.chart svg { display: block; max-width: 100%; height: auto; overflow: visible; }
+.chart svg text { font-family: var(--sans); font-size: 10.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.chart svg text.lbl { fill: var(--ink-2); font-size: 11px; }
+.chart svg text.val { fill: var(--ink-2); font-size: 10.5px; }
+.empty-chart { font-size: 0.84rem; color: var(--ink-2); padding: 24px 0; text-align: center; }
+.note { font-size: 0.78rem; color: var(--ink-2); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--axis); border-radius: 7px; overflow: hidden; }
+.seg button { font: inherit; font-size: 0.78rem; background: var(--surface); color: var(--ink-2); border: 0; border-right: 1px solid var(--axis); padding: 4px 10px; cursor: pointer; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.check-lb { display: inline-flex; gap: 6px; align-items: center; font-size: 0.8rem; color: var(--ink-2); cursor: pointer; }
+
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 9px; font-size: 0.78rem; box-shadow: 0 4px 14px rgba(0,0,0,0.14); min-width: 120px; max-width: 280px; z-index: 50; }
+.tip .t { color: var(--ink-2); font-size: 0.74rem; margin-bottom: 2px; overflow-wrap: anywhere; }
+.tip .r { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.tip .r b { font-variant-numeric: tabular-nums; }
+.tip .r span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.tip .r i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.tip .x { color: var(--ink-2); margin-top: 2px; }
+
+/* tables */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.84rem; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-size: 0.72rem; color: var(--ink-2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.tot td { font-weight: 600; }
+td .u { color: var(--ink-2); font-size: 0.72rem; font-weight: 400; margin-left: 3px; }
+.key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle; }
+td.room { font-weight: 600; }
+td.nm { white-space: nowrap; }
+th.nt { text-transform: none; letter-spacing: 0; font-size: 0.78rem; }
+
+/* buckets */
+.brow { display: grid; grid-template-columns: minmax(70px, 110px) minmax(0, 1fr) 44px; gap: 10px; align-items: center; }
+.brow .bl { font-size: 0.84rem; overflow-wrap: anywhere; }
+.brow .bt { font-size: 0.78rem; color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
+.bar { display: flex; gap: 2px; height: 24px; border-radius: 5px; overflow: hidden; background: transparent; }
+.bar .sg { display: flex; align-items: center; justify-content: center; font-size: 0.76rem; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; }
+.bar .sg.never { background: var(--b-never); color: var(--on-never); }
+.bar .sg.some { background: var(--b-some); color: var(--on-some); }
+.bar .sg.always { background: var(--b-always); color: var(--on-always); }
+.bar.none { background: var(--grid); align-items: center; padding: 0 8px; font-size: 0.76rem; color: var(--ink-2); }
+.bstack { display: flex; flex-direction: column; gap: 8px; }
+
+/* question grid */
+.gw { display: grid; grid-template-columns: repeat(auto-fit, minmax(214px, 1fr)); gap: 18px 22px; }
+.gw > div { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.cells { display: grid; grid-template-columns: repeat(10, 18px); gap: 5px; }
+.cell { width: 18px; height: 18px; border-radius: 3px; background: var(--q0); outline: 0 solid transparent; }
+.cell.l1 { background: var(--q1); } .cell.l2 { background: var(--q2); } .cell.l3 { background: var(--q3); } .cell.l4 { background: var(--q4); }
+.cell.l5 { background: var(--q5); } .cell.l6 { background: var(--q6); } .cell.l7 { background: var(--q7); } .cell.l8 { background: var(--q8); }
+.cell.und { background: transparent; border: 1.5px dashed var(--muted); }
+.cell.easy { outline: 2px solid var(--ink); outline-offset: 0; }
+.cells.focus .cell:not(.easy) { opacity: 0.22; }
+.gl { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 0.78rem; color: var(--ink-2); align-items: center; }
+.gl .ramp { display: inline-flex; gap: 2px; align-items: center; }
+.gl .ramp i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+.gl .ex { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 5px; }
+.gl .ex.easy { background: var(--q3); outline: 2px solid var(--ink); }
+.gl .ex.und { border: 1.5px dashed var(--muted); }
+.ctrl { display: flex; gap: 10px 16px; flex-wrap: wrap; align-items: center; }
+
+/* explainer, settings, events */
+.how { display: flex; flex-direction: column; gap: 8px; }
+.how p { color: var(--ink); max-width: 78ch; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; }
+.two > .card { display: flex; flex-direction: column; gap: 10px; }
+.events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.events li { display: grid; grid-template-columns: 16px 64px minmax(0, 1fr); gap: 6px 8px; padding: 5px 0; border-bottom: 1px solid var(--grid); font-size: 0.84rem; align-items: start; }
+.events li:last-child { border-bottom: 0; }
+.events .tm { color: var(--ink-2); font-size: 0.76rem; font-variant-numeric: tabular-nums; padding-top: 1px; }
+.events .tx { overflow-wrap: anywhere; }
+.events .ico { margin-top: 3px; }
+.ev-info .ico { color: var(--muted); } .ev-warn .ico { color: var(--warning); } .ev-error .ico { color: var(--critical); }
+.gate { text-align: center; padding: 36px 16px; color: var(--ink-2); display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.gate h2 { font-size: 1.05rem; color: var(--ink); }
+.gate p { max-width: 62ch; }
+.foot { font-size: 0.76rem; color: var(--ink-2); }
+.banner { display: inline-flex; gap: 6px; align-items: center; font-size: 0.8rem; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--ring); background: var(--page); color: var(--ink); }
+.banner .ico { color: var(--warning); }
+.banner.final .ico { color: var(--good-text); }
+@media (max-width: 520px) {
+  .tile.big .v { font-size: 1.4rem; }
+  .brow { grid-template-columns: minmax(64px, 84px) minmax(0, 1fr) 38px; gap: 8px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Spark RL Baseline</h1>
+      <p class="sub">How much room does RL have? The released 4B SQL and Cypher agent answers each held-out question 8 times, sampled, and a checker scores every answer by running it.</p>
+    </div>
+    <div class="picker" id="picker-wrap" hidden>
+      <label for="run-picker" class="sub">Run</label>
+      <select id="run-picker" aria-label="Choose a run"></select>
+    </div>
+  </header>
+
+  <div id="gate" class="card gate" role="status"><h2>Connecting to the run data</h2><p>Nothing on this page is typed in by hand. It reads the run's own files, pushed here every few minutes.</p></div>
+
+  <div id="main" class="stack" hidden>
+    <section class="card stack-sm" id="sec-status" aria-label="Run status"></section>
+    <section class="card stack" id="sec-progress" aria-labelledby="h-progress" hidden>
+      <h2 id="h-progress">Progress</h2>
+      <div id="progress-body" class="stack"></div>
+    </section>
+    <section class="stack" id="sec-results" aria-labelledby="h-results" hidden>
+      <div class="top"><h2 id="h-results">Results</h2><div id="res-banner"></div></div>
+      <div id="results-body" class="stack"></div>
+    </section>
+    <section class="card stack" id="sec-grid" aria-labelledby="h-grid" hidden>
+      <div class="top"><h2 id="h-grid">Every question</h2><div class="ctrl" id="grid-ctrl"></div></div>
+      <div id="grid-body" class="stack"></div>
+    </section>
+    <section class="card how" id="sec-how" aria-labelledby="h-how">
+      <h2 id="h-how">How to read this</h2>
+      <p>pass@1 is the share of questions answered right in a single try. Greedy is the model's one most likely answer, the score reported so far; mean@8 is the average over the 8 sampled answers, and a mean far below greedy would mean temperature 1.0 is too wild to train on.</p>
+      <p>pass@8 counts a question as solved when any of its 8 answers is right, so the gap between pass@8 and greedy is roughly what RL can gain.</p>
+      <p>Each question lands in one bucket. Right 0 of 8 gives GRPO nothing to learn from. Right 1 to 7 of 8 is GRPO's learning pool, because it can reward the right answers over their wrong siblings. Right 8 of 8 is already solved. A ringed cell in the grid is an easy win: the greedy answer was wrong, yet at least one sample was right.</p>
+    </section>
+    <section class="two" id="sec-settings" aria-label="Settings and events" hidden>
+      <div class="card"><h2>Settings</h2><div id="settings-body" class="stack-sm"></div></div>
+      <div class="card"><h2>Latest events</h2><div id="events-body"></div></div>
+    </section>
+    <p class="foot">This page only reads the run's data store. It never writes to it.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var DATASETS = ["cypherbench", "gretel", "sqale", "text2cypher"];
+  var COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)"];
+  var FRESH_MS = 10 * 60 * 1000;
+
+  // ---- small helpers ----------------------------------------------------------------------------
+  function $(id) { return document.getElementById(id); }
+  function setAttrs(n, a) {
+    if (!a) return;
+    for (var k in a) {
+      var v = a[k];
+      if (v == null || v === false) continue;
+      if (k === "text") n.textContent = String(v); else n.setAttribute(k, v === true ? "" : String(v));
+    }
+  }
+  function addKids(n, kids) {
+    if (kids == null) return;
+    if (!Array.isArray(kids)) kids = [kids];
+    kids.forEach(function (c) {
+      if (c == null || c === false) return;
+      n.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+    });
+  }
+  function el(tag, attrs, kids) { var n = document.createElement(tag); setAttrs(n, attrs); addKids(n, kids); return n; }
+  function sv(tag, attrs, kids) { var n = document.createElementNS(SVGNS, tag); setAttrs(n, attrs); addKids(n, kids); return n; }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function num(x) { return typeof x === "number" && isFinite(x) ? x : null; }
+  function int(x) { x = num(x); return x == null ? "–" : Math.round(x).toLocaleString("en-US"); }
+  function pct(x, d) { x = num(x); return x == null ? "–" : (x * 100).toFixed(d == null ? 1 : d) + "%"; }
+  function pts(x) {
+    x = num(x); if (x == null) return "–";
+    var v = x * 100, a = Math.abs(v).toFixed(1);
+    return (v > 0.049 ? "+" : v < -0.049 ? "−" : "") + a + " pts";
+  }
+  function ms(iso) { var t = Date.parse(iso); return isFinite(t) ? t : null; }
+  function ago(t) {
+    var s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 45) return "just now";
+    var m = Math.round(s / 60);
+    if (m < 60) return m + " min ago";
+    var h = Math.floor(m / 60), r = m % 60;
+    if (h < 48) return h + " h " + r + " min ago";
+    return Math.floor(h / 24) + " d ago";
+  }
+  function span(t) {
+    var m = Math.max(0, Math.round(t / 60000));
+    if (m < 1) return "under 1 min";
+    if (m < 60) return m + " min";
+    return Math.floor(m / 60) + " h " + (m % 60) + " min";
+  }
+  function clock(t) { return new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+  var extraNames = [];
+  function colorFor(name) {
+    var i = DATASETS.indexOf(name);
+    if (i >= 0) return COLORS[i];
+    var j = extraNames.indexOf(name);
+    if (j < 0) { extraNames.push(name); j = extraNames.length - 1; }
+    return COLORS[Math.min(COLORS.length - 1, DATASETS.length + j)];
+  }
+  function icon(kind) {
+    var s = sv("svg", { "class": "ico", viewBox: "0 0 12 12", width: 12, height: 12, "aria-hidden": "true" });
+    var st = { fill: "none", stroke: "currentColor", "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round" };
+    if (kind === "check") s.appendChild(sv("path", Object.assign({ d: "M2.4 6.4l2.4 2.4 4.8-5" }, st)));
+    else if (kind === "cross") s.appendChild(sv("path", Object.assign({ d: "M3 3l6 6M9 3l-6 6" }, st)));
+    else if (kind === "warn") {
+      s.appendChild(sv("path", Object.assign({ d: "M6 1.6L11 10.4H1Z" }, st, { "stroke-width": 1.4 })));
+      s.appendChild(sv("path", Object.assign({ d: "M6 4.8v2.6" }, st, { "stroke-width": 1.4 })));
+      s.appendChild(sv("circle", { cx: 6, cy: 9, r: 0.8, fill: "currentColor" }));
+    } else if (kind === "info") {
+      s.appendChild(sv("circle", Object.assign({ cx: 6, cy: 6, r: 4.6 }, st, { "stroke-width": 1.3 })));
+      s.appendChild(sv("path", Object.assign({ d: "M6 5.4v3" }, st, { "stroke-width": 1.4 })));
+      s.appendChild(sv("circle", { cx: 6, cy: 3.7, r: 0.8, fill: "currentColor" }));
+    } else s.appendChild(sv("circle", { cx: 6, cy: 6, r: 3.4, fill: "currentColor" }));
+    return s;
+  }
+
+  // ---- tooltip ----------------------------------------------------------------------------------
+  var tipEl = el("div", { "class": "tip", role: "tooltip", hidden: true });
+  document.body.appendChild(tipEl);
+  function showTip(nodes, x, y) {
+    clear(tipEl); addKids(tipEl, nodes);
+    tipEl.hidden = false;
+    var w = tipEl.offsetWidth, h = tipEl.offsetHeight, vw = document.documentElement.clientWidth, vh = window.innerHeight || 600;
+    var left = x + 14, top = y + 14;
+    if (left + w > vw - 8) left = x - w - 14;
+    if (top + h > vh - 8) top = y - h - 14;
+    tipEl.style.left = Math.max(8, left) + "px";
+    tipEl.style.top = Math.max(8, top) + "px";
+  }
+  function hideTip() { tipEl.hidden = true; }
+  function trow(color, label, value) {
+    return el("div", { "class": "r" }, [el("span", null, [color ? el("i", { style: "background:" + color }) : null, label]), el("b", null, value)]);
+  }
+  window.addEventListener("scroll", hideTip, { passive: true });
+
+  // ---- state ------------------------------------------------------------------------------------
+  var db = null, runs = {}, current = null, userPicked = false, unsubTicks = null;
+  var ticks = [], tick = null;
+  var runsDefinitive = false, runsSeen = false, ticksSeen = false, gateMode = "connecting", slow = false;
+  var ui = { passView: "chart", histSel: "overall", gridSort: "right", easyOnly: false };
+  var raf = 0, lastW = 0;
+
+  var STATUS = {
+    starting: { label: "Starting", cls: "s-run", icon: "dot" },
+    sampling: { label: "Sampling", cls: "s-run", icon: "dot" },
+    scoring: { label: "Scoring", cls: "s-run", icon: "dot" },
+    done: { label: "Done", cls: "s-good", icon: "check" },
+    stalled: { label: "Stalled", cls: "s-warn", icon: "warn" },
+    failed: { label: "Failed", cls: "s-bad", icon: "cross" }
+  };
+
+  function lastUpdate() {
+    var run = runs[current] || {};
+    var a = ms(run.last_tick_at), b = tick ? ms(tick.made_at) : null;
+    if (a != null && b != null) return Math.max(a, b);
+    return a != null ? a : b;
+  }
+  function setNames() {
+    var names = DATASETS.slice();
+    function add(n) { if (n && names.indexOf(n) < 0) names.push(n); }
+    var r = tick && tick.results && tick.results.by_set;
+    if (r) Object.keys(r).sort().forEach(add);
+    if (tick && Array.isArray(tick.questions)) tick.questions.forEach(function (q) { if (q) add(q.origin); });
+    return names;
+  }
+  function samplesCount() {
+    var s = tick && tick.settings, p = tick && tick.sampling && tick.sampling.per_sample;
+    return Math.max(num(s && s.samples) || 0, Array.isArray(p) ? p.length : 0, num(tick && tick.scoring && tick.scoring.total_samples) || 0) || 8;
+  }
+
+  // ---- header / status --------------------------------------------------------------------------
+  function renderStatus() {
+    var host = $("sec-status"); clear(host);
+    var run = runs[current] || {};
+    var st = tick ? tick.status : null;
+    var info = STATUS[st] || { label: st ? String(st) : "Waiting", cls: "s-idle", icon: "info" };
+    var last = lastUpdate();
+    var fresh = last != null && Date.now() - last < FRESH_MS;
+    var active = st === "starting" || st === "sampling" || st === "scoring";
+    var badge = null;
+    if (active && fresh) badge = el("span", { "class": "live" }, [el("i"), "Live"]);
+    else if (active && last != null) badge = el("span", { "class": "stale" }, [icon("warn"), "No update for " + span(Date.now() - last)]);
+    var pill = el("span", { "class": "pill " + info.cls }, [icon(info.icon), info.label]);
+    host.appendChild(el("div", { "class": "top" }, [
+      el("div", { "class": "row" }, [pill, badge]),
+      el("div", { "class": "sub", title: last != null ? new Date(last).toLocaleString() : "" },
+        tick && last != null ? "Updated " + ago(last) + (slow ? " (saved copy, store not reached yet)" : "") : "No update yet")
+    ]));
+    var chips = [el("span", { "class": "chip" }, [el("b", null, run.name || current || "run")])];
+    if (run.kind) chips.push(el("span", { "class": "chip" }, run.kind));
+    if (run.model) chips.push(el("span", { "class": "chip" }, run.model));
+    var started = ms(run.started_at);
+    if (started != null) {
+      var end = active && fresh ? Date.now() : (last != null ? last : started);
+      chips.push(el("span", { "class": "chip" }, "started " + clock(started) + " · " + span(Math.max(0, end - started)) + (active && fresh ? " so far" : " in total")));
+    }
+    host.appendChild(el("div", { "class": "chips" }, chips));
+    if (run.title) host.appendChild(el("p", { "class": "sub" }, run.title));
+    if (tick && tick.note) host.appendChild(el("p", { "class": "note-line" }, tick.note));
+    if (!tick) {
+      host.appendChild(el("div", { "class": "gate", style: "padding:22px 8px" }, [el("h2", null, "Waiting for the first update"), el("p", null, "The run is registered. Progress, results and the question grid appear with its first update.")]));
+      return;
+    }
+
+    // phases: sampling -> scoring -> done
+    var smp = tick.sampling || {}, sc = tick.scoring || {};
+    var answered = num(smp.answered), total = num(smp.total);
+    var idx = st === "done" ? 2 : st === "scoring" ? 1 : (st === "stalled" || st === "failed") ? ((total != null && answered != null && answered >= total) || (num(sc.scored_samples) || 0) > 0 ? 1 : 0) : 0;
+    var halt = st === "stalled" ? "warn" : st === "failed" ? "bad" : "";
+    var scored = num(sc.scored_samples), stot = num(sc.total_samples);
+    var defs = [
+      { n: "Sampling", s: answered != null && total != null ? int(answered) + " of " + int(total) + " answers" : "answers" },
+      { n: "Scoring", s: scored != null && stot != null ? scored + " of " + stot + " sample files" : "sample files" },
+      { n: "Done", s: st === "done" ? "all scored" : "results final" }
+    ];
+    var ph = el("div", { "class": "phases", role: "list", "aria-label": "Phases" });
+    defs.forEach(function (d, i) {
+      var cls = i < idx ? "past" : i === idx ? "now " + halt : "next";
+      if (st === "done" && i === 2) cls = "past";
+      var ic = i < idx || (st === "done" && i === 2) ? "check" : i === idx ? (halt === "warn" ? "warn" : halt === "bad" ? "cross" : "dot") : "dot";
+      ph.appendChild(el("div", { "class": "phase " + cls, role: "listitem" }, [
+        el("div", { "class": "pn" }, [icon(ic), d.n]), el("div", { "class": "ps" }, d.s)
+      ]));
+    });
+    host.appendChild(ph);
+  }
+
+  // ---- progress ---------------------------------------------------------------------------------
+  function renderProgress() {
+    var host = $("progress-body"); clear(host);
+    var smp = tick.sampling || {}, sc = tick.scoring || {}, set = tick.settings || {};
+    var answered = num(smp.answered), total = num(smp.total);
+    var frac = answered != null && total ? Math.min(1, answered / total) : 0;
+    var N = samplesCount();
+    var left = el("div", null);
+    left.className = "stack-sm";
+    // sampling bar
+    left.appendChild(el("div", { "class": "block-head" }, [
+      el("h3", null, "Sampling"),
+      el("span", { "class": "sub" }, answered != null && total != null ? int(answered) + " of " + int(total) + " answers · " + (frac * 100).toFixed(0) + "%" : "–")
+    ]));
+    var bar = el("div", { "class": "progress", role: "progressbar", "aria-label": "Sampling progress", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(frac * 100) }, el("div", { style: "width:" + (frac * 100).toFixed(1) + "%" }));
+    left.appendChild(bar);
+    // stats
+    var errors = num(smp.errors), eta = num(smp.eta_s), rate = num(smp.answers_per_min);
+    var tiles = el("div", { "class": "tiles" });
+    function tile(k, v, s) { tiles.appendChild(el("div", { "class": "tile" }, [el("div", { "class": "k" }, k), el("div", { "class": "v" }, v), s ? el("div", { "class": "s" }, s) : null])); }
+    tile("Answers per minute", rate != null ? rate.toFixed(1) : "–", "recent speed");
+    tile("Time left", eta != null ? span(eta * 1000) : "–", eta != null ? "estimate for sampling" : (tick.status === "sampling" ? "not estimated yet" : "sampling is over"));
+    tile("Errors", errors != null && errors > 0 ? el("span", { "class": "warn-text" }, [icon("warn"), String(errors)]) : (errors != null ? "0" : "–"), "generation errors");
+    tile("Cut by length", int(smp.cut_by_length), "hit the " + (num(set.max_tokens) != null ? int(set.max_tokens) + "-token " : "") + "limit");
+    tile("Mean completion", num(smp.mean_completion_tokens) != null ? Math.round(smp.mean_completion_tokens) + "" : "–", "tokens per answer");
+    left.appendChild(tiles);
+    // per-sample meters
+    var per = Array.isArray(smp.per_sample) ? smp.per_sample : [];
+    var q = num(set.questions) || Math.max.apply(null, per.map(function (v) { return num(v) || 0; }).concat([1]));
+    left.appendChild(el("h3", null, "Answers per sample file"));
+    var meters = el("div", { "class": "meters", style: "grid-template-columns:repeat(" + N + ",minmax(0,1fr))" });
+    for (var i = 0; i < N; i++) {
+      var v = num(per[i]) || 0, f = Math.min(1, v / q);
+      var seeds = Array.isArray(set.seeds) ? set.seeds : [];
+      var m = el("div", { "class": "meter", "data-i": i, role: "img", "aria-label": "Sample " + (i + 1) + ": " + v + " of " + q + " answers" }, [
+        el("div", { "class": "trk" }, el("div", { "class": "fil", style: "height:" + (f * 100).toFixed(1) + "%" })),
+        el("div", { "class": "lb" }, String(i + 1))
+      ]);
+      (function (idx, vv, ss) {
+        m.addEventListener("pointermove", function (e) {
+          showTip([el("div", { "class": "t" }, "Sample file " + (idx + 1) + (ss != null ? " · seed " + ss : "")), trow(null, "Answered", int(vv) + " of " + int(q))], e.clientX, e.clientY);
+        });
+        m.addEventListener("pointerleave", hideTip);
+      })(i, v, seeds[i] != null ? seeds[i] : null);
+      meters.appendChild(m);
+    }
+    left.appendChild(meters);
+
+    // right: sparkline
+    var right = el("div", { "class": "stack-sm" });
+    right.appendChild(el("div", { "class": "block-head" }, [el("h3", null, "Answers over time"), el("span", { "class": "sub" }, "one point per update")]));
+    var sp = el("div", { "class": "chart", id: "spark" });
+    right.appendChild(sp);
+    right.appendChild(el("div", { "class": "note" }, "Each point is one update; the slope is the generation speed."));
+
+    host.appendChild(el("div", { "class": "split" }, [left, right]));
+
+    // scoring
+    var scored = num(sc.scored_samples), stot = num(sc.total_samples) || N;
+    var sb = el("div", { "class": "stack-sm" });
+    sb.appendChild(el("div", { "class": "block-head" }, [
+      el("h3", null, "Scoring"),
+      el("span", { "class": "sub" }, scored != null ? scored + " of " + stot + " sample files scored" : "starts after sampling ends")
+    ]));
+    var segs = el("div", { "class": "segs", style: "grid-template-columns:repeat(" + stot + ",minmax(0,1fr))", role: "progressbar", "aria-label": "Scoring progress", "aria-valuemin": 0, "aria-valuemax": stot, "aria-valuenow": scored || 0 });
+    for (var j = 0; j < stot; j++) segs.appendChild(el("i", { "class": scored != null && j < scored ? "on" : "" }));
+    sb.appendChild(segs);
+    host.appendChild(sb);
+
+    // sparkline data: ticks from the oldest, up to the first one that reached the total
+    var pts = [];
+    var asc = ticks.slice().reverse();
+    for (var a = 0; a < asc.length; a++) {
+      var tt = ms(asc[a].made_at), vv = num(asc[a].sampling && asc[a].sampling.answered);
+      if (tt == null || vv == null) continue;
+      pts.push({ t: tt, v: vv });
+      if (total != null && vv >= total) break;
+    }
+    drawSpark(sp, pts, total);
+  }
+
+  function drawSpark(host, pts, total) {
+    clear(host);
+    if (pts.length < 2) { host.appendChild(el("div", { "class": "empty-chart" }, "The chart needs two updates.")); return; }
+    var W = Math.max(220, Math.floor(host.clientWidth || 360)), H = 128;
+    var m = { t: 10, r: 12, b: 24, l: 46 };
+    var t0 = pts[0].t, t1 = pts[pts.length - 1].t; if (t1 <= t0) t1 = t0 + 1;
+    var vmax = Math.max(total || 0, pts[pts.length - 1].v, 1);
+    function X(t) { return m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r); }
+    function Y(v) { return H - m.b - v / vmax * (H - m.t - m.b); }
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": "Answers over time: " + int(pts[pts.length - 1].v) + " of " + int(vmax) + " at the latest update" });
+    [0, 0.5, 1].forEach(function (f) {
+      var y = Y(vmax * f);
+      svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: y, y2: y, style: "stroke:" + (f === 0 ? "var(--axis)" : "var(--grid)"), "stroke-width": 1 }));
+      svg.appendChild(sv("text", { x: m.l - 6, y: y + 3.5, "text-anchor": "end", text: int(vmax * f) }));
+    });
+    svg.appendChild(sv("text", { x: m.l, y: H - 6, "text-anchor": "start", text: clock(t0) }));
+    svg.appendChild(sv("text", { x: W - m.r, y: H - 6, "text-anchor": "end", text: clock(t1) }));
+    var d = "";
+    pts.forEach(function (p, i) { d += (i ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1); });
+    svg.appendChild(sv("path", { d: d + "L" + X(pts[pts.length - 1].t).toFixed(1) + " " + Y(0) + "L" + X(t0).toFixed(1) + " " + Y(0) + "Z", style: "fill:var(--s1);fill-opacity:0.1;stroke:none" }));
+    svg.appendChild(sv("path", { d: d, style: "fill:none;stroke:var(--s1)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    var last = pts[pts.length - 1];
+    var hov = sv("g", {});
+    svg.appendChild(hov);
+    svg.appendChild(sv("circle", { cx: X(last.t), cy: Y(last.v), r: 4, style: "fill:var(--s1);stroke:var(--surface)", "stroke-width": 2 }));
+    var ov = sv("rect", { x: m.l, y: 0, width: W - m.l - m.r, height: H - m.b, style: "fill:transparent" });
+    ov.addEventListener("pointermove", function (e) {
+      var r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * (W / r.width), bi = 0, bd = 1e9;
+      pts.forEach(function (p, i) { var dd = Math.abs(X(p.t) - px); if (dd < bd) { bd = dd; bi = i; } });
+      var p = pts[bi], prev = pts[bi - 1];
+      clear(hov);
+      hov.appendChild(sv("line", { x1: X(p.t), x2: X(p.t), y1: m.t, y2: H - m.b, style: "stroke:var(--axis)", "stroke-width": 1 }));
+      hov.appendChild(sv("circle", { cx: X(p.t), cy: Y(p.v), r: 4, style: "fill:var(--s1);stroke:var(--surface)", "stroke-width": 2 }));
+      var rows = [el("div", { "class": "t" }, clock(p.t)), trow("var(--s1)", "Answered", int(p.v))];
+      if (prev && p.t > prev.t) rows.push(el("div", { "class": "x" }, "about " + ((p.v - prev.v) / ((p.t - prev.t) / 60000)).toFixed(1) + " per min since the update before"));
+      showTip(rows, e.clientX, e.clientY);
+    });
+    ov.addEventListener("pointerleave", function () { clear(hov); hideTip(); });
+    svg.appendChild(ov);
+    host.appendChild(svg);
+  }
+
+  // ---- results ----------------------------------------------------------------------------------
+  function lastPk(pk) {
+    for (var i = pk.length - 1; i >= 0; i--) if (pk[i] != null) return { k: i + 1, v: pk[i] };
+    return null;
+  }
+  function rowsFrom(results) {
+    var names = setNames(), out = [];
+    var by = results.by_set || {};
+    names.forEach(function (n) { if (by[n]) out.push({ name: n, color: colorFor(n), block: by[n] }); });
+    var rows = out.slice();
+    if (results.overall) rows.unshift({ name: "overall", color: "var(--ink)", block: results.overall, overall: true });
+    rows.forEach(function (r) {
+      var b = r.block || {};
+      r.pk = Array.isArray(b.pass_at_k) ? b.pass_at_k.map(num) : [];
+      r.greedy = num(b.greedy_pass1);
+    });
+    return rows;
+  }
+
+  function renderResults() {
+    var res = tick.results, host = $("results-body"); clear(host);
+    var banner = $("res-banner"); clear(banner);
+    if (!res || !res.overall) {
+      host.appendChild(el("div", { "class": "card gate" }, [el("h2", null, "No results yet"), el("p", null, "Scoring starts when sampling ends. The first numbers appear as soon as one sample file has been scored, and they firm up as the rest finish.")]));
+      return;
+    }
+    var sc = tick.scoring || {}, N = samplesCount();
+    var scored = num(sc.scored_samples), stot = num(sc.total_samples) || N;
+    var final = tick.status === "done" && scored != null && scored >= stot;
+    banner.appendChild(el("span", { "class": "banner" + (final ? " final" : "") }, [
+      icon(final ? "check" : "warn"),
+      final ? "Final: all " + stot + " samples scored" : "Partial: based on " + (scored != null ? scored : "some") + " of " + stot + " samples, numbers still move"
+    ]));
+    var rows = rowsFrom(res);
+    var K = Math.max(N, rows.reduce(function (m, r) { return Math.max(m, r.pk.length); }, 0));
+    var ov = rows[0];
+
+    // headline tiles
+    var o = ov.block, lp = lastPk(ov.pk);
+    var room = lp && ov.greedy != null ? lp.v - ov.greedy : null;
+    var tiles = el("div", { "class": "card" }, el("div", { "class": "tiles" }, [
+      bigTile("Greedy pass@1", pct(ov.greedy), "one most-likely answer", false),
+      bigTile("Mean@8", pct(o.mean_at8), "average of the sampled answers", false),
+      bigTile("pass@" + (lp ? lp.k : K), lp ? pct(lp.v) : "–", "any sampled answer right", false),
+      bigTile("Room for RL", pts(room), "pass@" + (lp ? lp.k : K) + " minus greedy", true),
+      bigTile("Learning pool", num(o.sometimes) != null ? int(o.sometimes) : "–", num(o.questions) != null ? "of " + int(o.questions) + " questions right 1–" + (K - 1) + " of " + K : "right sometimes", false)
+    ]));
+    host.appendChild(tiles);
+
+    // table
+    var tcard = el("div", { "class": "card stack-sm" });
+    tcard.appendChild(el("h3", null, "By dataset"));
+    var tw = el("div", { "class": "tablewrap" });
+    tw.appendChild(buildTable(rows, K));
+    tcard.appendChild(tw);
+    var undecided = num(o.undecided_samples);
+    tcard.appendChild(el("div", { "class": "note" }, "Never, sometimes and always count the questions whose " + K + " samples are all scored" + (undecided ? "; undecided answers (" + int(undecided) + " overall) are ones the checker could not settle" : "") + ". Room is pass@" + K + " minus greedy, in percentage points."));
+    host.appendChild(tcard);
+
+    // charts
+    var grid = el("div", { "class": "res-grid" });
+    var cPk = el("div", { "class": "card c7" });
+    var cHist = el("div", { "class": "card c5" });
+    var cBk = el("div", { "class": "card" });
+    grid.appendChild(cPk); grid.appendChild(cHist); grid.appendChild(cBk);
+    host.appendChild(grid);
+
+    // pass@k card
+    var legend = el("div", { "class": "legend" });
+    rows.forEach(function (r) { legend.appendChild(el("span", null, [el("b", { style: "background:" + r.color }), r.name])); });
+    legend.appendChild(el("span", null, [el("b", { "class": "hollow" }), "greedy"]));
+    cPk.appendChild(el("div", { "class": "chart-head" }, [
+      el("h3", null, "pass@k: share of questions solved with k tries"),
+      seg([{ value: "chart", label: "Chart" }, { value: "table", label: "Table" }], ui.passView, function (v) { ui.passView = v; renderResults(); }, "Pass at k view")
+    ]));
+    cPk.appendChild(legend);
+    var pk = el("div", { "class": "chart" }); cPk.appendChild(pk);
+    cPk.appendChild(el("div", { "class": "note" }, "Sampled at temperature " + (num(tick.settings && tick.settings.temperature) != null ? tick.settings.temperature.toFixed(1) : "–") + ". Hollow markers are the greedy score on the same questions; the distance from a marker up to its line's end is the room RL has."));
+    if (ui.passView === "table") pk.appendChild(passTable(rows, K)); else drawPassK(pk, rows, K);
+
+    // histogram card
+    var sel = rows.filter(function (r) { return Array.isArray(r.block.hist); });
+    if (!sel.some(function (r) { return (r.overall ? "overall" : r.name) === ui.histSel; })) ui.histSel = "overall";
+    cHist.appendChild(el("div", { "class": "chart-head" }, [
+      el("h3", null, "How many of " + K + " answers were right"),
+    ]));
+    cHist.appendChild(seg(sel.map(function (r) { return { value: r.overall ? "overall" : r.name, label: r.overall ? "All" : r.name }; }), ui.histSel, function (v) { ui.histSel = v; renderResults(); }, "Histogram dataset"));
+    var hh = el("div", { "class": "chart" }); cHist.appendChild(hh);
+    cHist.appendChild(el("div", { "class": "note" }, "Questions with exactly r right out of " + K + ", counting only questions with all " + K + " samples scored."));
+    var cur = sel.filter(function (r) { return (r.overall ? "overall" : r.name) === ui.histSel; })[0];
+    if (cur) drawHist(hh, cur.block.hist.map(num), K, cur.overall ? "all datasets" : cur.name);
+    else hh.appendChild(el("div", { "class": "empty-chart" }, "The histogram fills in once questions have all " + K + " samples scored."));
+
+    // buckets card
+    cBk.appendChild(el("div", { "class": "chart-head" }, [
+      el("h3", null, "Never, sometimes, always right"),
+      el("div", { "class": "legend" }, [
+        el("span", null, [el("b", { "class": "sw", style: "background:var(--b-never)" }), "Never (0 of " + K + ")"]),
+        el("span", null, [el("b", { "class": "sw", style: "background:var(--b-some)" }), "Sometimes (1–" + (K - 1) + "): GRPO's learning pool"]),
+        el("span", null, [el("b", { "class": "sw", style: "background:var(--b-always)" }), "Always (" + K + " of " + K + ")"])
+      ])
+    ]));
+    var bk = el("div", { "class": "bstack" }); cBk.appendChild(bk);
+    drawBuckets(bk, rows, K);
+    cBk.appendChild(el("div", { "class": "note" }, "Each bar splits that row's questions by bucket; the number on the right is the row's question count."));
+  }
+
+  function bigTile(k, v, s, big) {
+    return el("div", { "class": "tile" + (big ? " big" : "") }, [el("div", { "class": "k" }, k), el("div", { "class": "v" }, v), el("div", { "class": "s" }, s)]);
+  }
+
+  function seg(options, value, onPick, label) {
+    var d = el("div", { "class": "seg", role: "group", "aria-label": label });
+    options.forEach(function (o) {
+      var b = el("button", { type: "button", "aria-pressed": o.value === value ? "true" : "false" }, o.label);
+      b.addEventListener("click", function () { onPick(o.value); });
+      d.appendChild(b);
+    });
+    return d;
+  }
+
+  function buildTable(rows, K) {
+    var t = el("table");
+    var heads = [
+      ["Dataset", "", ""], ["Questions", "n", "Questions in the dataset's slice"],
+      ["Greedy pass@1", "n", "Share right with the model's single most likely answer"],
+      ["Mean@" + K, "n", "Average share right over the sampled answers"],
+      ["pass@" + K, "n", "Share of questions where any sampled answer was right"],
+      ["Room", "n", "pass@" + K + " minus greedy pass@1, in percentage points"],
+      ["Never", "n", "Questions right 0 of " + K + " times"],
+      ["Sometimes", "n", "Questions right 1 to " + (K - 1) + " of " + K + " times: GRPO's learning pool"],
+      ["Always", "n", "Questions right " + K + " of " + K + " times"],
+      ["Undecided", "n", "Answers the checker could not settle"]
+    ];
+    var tr = el("tr");
+    heads.forEach(function (h) { tr.appendChild(el("th", { "class": h[1], title: h[2] || null, scope: "col" }, h[0])); });
+    t.appendChild(el("thead", null, tr));
+    var tb = el("tbody");
+    rows.forEach(function (r) {
+      var b = r.block, lp = lastPk(r.pk);
+      var room = lp && r.greedy != null ? lp.v - r.greedy : null;
+      var row = el("tr", { "class": r.overall ? "tot" : null });
+      row.appendChild(el("td", { "class": "nm" }, [el("span", { "class": "key", style: "background:" + r.color }), r.name]));
+      row.appendChild(el("td", { "class": "n" }, int(b.questions)));
+      row.appendChild(el("td", { "class": "n" }, pct(r.greedy)));
+      row.appendChild(el("td", { "class": "n" }, pct(b.mean_at8)));
+      row.appendChild(el("td", { "class": "n" }, lp ? [pct(lp.v), lp.k < K ? el("span", { "class": "u" }, "@" + lp.k) : null] : "–"));
+      row.appendChild(el("td", { "class": "n room" }, pts(room)));
+      row.appendChild(el("td", { "class": "n" }, int(b.never)));
+      row.appendChild(el("td", { "class": "n" }, int(b.sometimes)));
+      row.appendChild(el("td", { "class": "n" }, int(b.always)));
+      row.appendChild(el("td", { "class": "n" }, int(b.undecided_samples)));
+      tb.appendChild(row);
+    });
+    t.appendChild(tb);
+    return t;
+  }
+
+  function passTable(rows, K) {
+    var wrap = el("div", { "class": "tablewrap" });
+    var t = el("table");
+    var tr = el("tr", null, [el("th", { scope: "col" }, "Series"), el("th", { "class": "n", scope: "col" }, "Greedy")]);
+    for (var k = 1; k <= K; k++) tr.appendChild(el("th", { "class": "n nt", scope: "col" }, "pass@" + k));
+    t.appendChild(el("thead", null, tr));
+    var tb = el("tbody");
+    rows.forEach(function (r) {
+      var row = el("tr", { "class": r.overall ? "tot" : null }, [el("td", { "class": "nm" }, [el("span", { "class": "key", style: "background:" + r.color }), r.name]), el("td", { "class": "n" }, pct(r.greedy))]);
+      for (var k = 1; k <= K; k++) row.appendChild(el("td", { "class": "n" }, pct(r.pk[k - 1])));
+      tb.appendChild(row);
+    });
+    t.appendChild(tb); wrap.appendChild(t);
+    return wrap;
+  }
+
+  // pass@k curves: greedy markers on the left, k = 1..K lines, labelled line ends
+  function drawPassK(host, rows, K) {
+    clear(host);
+    var W = Math.max(280, Math.floor(host.clientWidth || 560));
+    var narrow = W < 520, H = narrow ? 250 : 292;
+    var m = { t: 14, r: narrow ? 112 : 132, b: 50, l: 40 };
+    var x0 = m.l + 14, x1 = W - m.r, y0 = H - m.b, y1 = m.t;
+    var xs = [0]; for (var k = 1; k <= K; k++) xs.push(k + 0.7);
+    var xmax = xs[K];
+    function X(i) { return x0 + xs[i] / xmax * (x1 - x0); }
+    var vals = [];
+    rows.forEach(function (r) { if (r.greedy != null) vals.push(r.greedy); r.pk.forEach(function (v) { if (v != null) vals.push(v); }); });
+    if (!vals.length) { host.appendChild(el("div", { "class": "empty-chart" }, "No pass@k values yet.")); return; }
+    var vmax = Math.max.apply(null, vals), step = vmax <= 0.5 ? 0.1 : 0.2;
+    var ymax = Math.min(1, Math.max(step * 2, Math.ceil((vmax + 0.005) / step - 1e-9) * step));
+    function Y(v) { return y0 - v / ymax * (y0 - y1); }
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img",
+      "aria-label": "pass@k curves for k from 1 to " + K + ". Overall rises from " + pct(rows[0].pk[0]) + " at k=1 to " + pct(lastPk(rows[0].pk) && lastPk(rows[0].pk).v) + " at the last k. The table view lists every value." });
+    for (var v = 0; v <= ymax + 1e-9; v += step) {
+      svg.appendChild(sv("line", { x1: m.l, x2: x1 + 4, y1: Y(v), y2: Y(v), style: "stroke:" + (v < 1e-9 ? "var(--axis)" : "var(--grid)"), "stroke-width": 1 }));
+      svg.appendChild(sv("text", { x: m.l - 6, y: Y(v) + 3.5, "text-anchor": "end", text: Math.round(v * 100) + "%" }));
+    }
+    var sepX = (X(0) + X(1)) / 2;
+    svg.appendChild(sv("line", { x1: sepX, x2: sepX, y1: y1, y2: y0, style: "stroke:var(--grid)", "stroke-width": 1, "stroke-dasharray": "2 3" }));
+    for (var i = 0; i <= K; i++) svg.appendChild(sv("text", { x: X(i), y: y0 + 15, "text-anchor": "middle", text: i === 0 ? "greedy" : String(i) }));
+    svg.appendChild(sv("text", { x: (X(1) + X(K)) / 2, y: H - 8, "text-anchor": "middle", "class": "lbl", text: "k: sampled answers tried per question" }));
+    // lines: datasets first, overall on top
+    var order = rows.slice(1).concat([rows[0]]);
+    order.forEach(function (r) {
+      var d = "", pen = false;
+      r.pk.forEach(function (val, j) { if (val == null) { pen = false; return; } d += (pen ? "L" : "M") + X(j + 1).toFixed(1) + " " + Y(val).toFixed(1); pen = true; });
+      if (d) svg.appendChild(sv("path", { d: d, style: "fill:none;stroke:" + r.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    });
+    // greedy markers (hollow)
+    order.forEach(function (r) {
+      if (r.greedy != null) svg.appendChild(sv("circle", { cx: X(0), cy: Y(r.greedy), r: 4.5, style: "fill:var(--surface);stroke:" + r.color, "stroke-width": 2 }));
+    });
+    // line ends + labels
+    var ends = [];
+    order.forEach(function (r) {
+      var lp = lastPk(r.pk); if (!lp) return;
+      svg.appendChild(sv("circle", { cx: X(lp.k), cy: Y(lp.v), r: 4.5, style: "fill:" + r.color + ";stroke:var(--surface)", "stroke-width": 2 }));
+      ends.push({ r: r, k: lp.k, y: Y(lp.v), ly: Y(lp.v), v: lp.v });
+    });
+    ends.sort(function (a, b) { return a.y - b.y; });
+    var gap = 13;
+    for (var e = 1; e < ends.length; e++) if (ends[e].ly < ends[e - 1].ly + gap) ends[e].ly = ends[e - 1].ly + gap;
+    var over = ends.length ? ends[ends.length - 1].ly - (y0 + 2) : 0;
+    if (over > 0) for (var e2 = ends.length - 1; e2 >= 0; e2--) { ends[e2].ly -= over; if (e2 < ends.length - 1 && ends[e2].ly > ends[e2 + 1].ly - gap) ends[e2].ly = ends[e2 + 1].ly - gap; }
+    var lx = x1 + 12;
+    ends.forEach(function (en) {
+      var ex = X(en.k);
+      if (Math.abs(en.ly - en.y) > 1.5) svg.appendChild(sv("path", { d: "M" + (ex + 6) + " " + en.y.toFixed(1) + "L" + (lx - 3) + " " + en.ly.toFixed(1), style: "fill:none;stroke:var(--axis)", "stroke-width": 1 }));
+      svg.appendChild(sv("text", { x: lx, y: en.ly + 3.5, "class": "lbl", style: en.r.overall ? "font-weight:600" : "", text: (en.r.overall ? "overall" : en.r.name) + " " + pct(en.v, 0) }));
+    });
+    // hover
+    var hov = sv("g", {}); svg.appendChild(hov);
+    var ov = sv("rect", { x: m.l, y: 0, width: x1 - m.l + 8, height: y0 + 20, style: "fill:transparent" });
+    ov.addEventListener("pointermove", function (ev) {
+      var r0 = svg.getBoundingClientRect(), px = (ev.clientX - r0.left) * (W / r0.width), bi = 0, bd = 1e9;
+      for (var i = 0; i <= K; i++) { var dd = Math.abs(X(i) - px); if (dd < bd) { bd = dd; bi = i; } }
+      clear(hov);
+      hov.appendChild(sv("line", { x1: X(bi), x2: X(bi), y1: y1, y2: y0, style: "stroke:var(--axis)", "stroke-width": 1 }));
+      var list = [];
+      order.forEach(function (r) {
+        var val = bi === 0 ? r.greedy : r.pk[bi - 1];
+        if (val == null) return;
+        hov.appendChild(sv("circle", { cx: X(bi), cy: Y(val), r: 4, style: "fill:" + (bi === 0 ? "var(--surface)" : r.color) + ";stroke:" + (bi === 0 ? r.color : "var(--surface)"), "stroke-width": 2 }));
+        list.push({ r: r, v: val });
+      });
+      list.sort(function (a, b) { return b.v - a.v; });
+      showTip([el("div", { "class": "t" }, bi === 0 ? "Greedy (one most likely answer)" : "pass@" + bi + ": any of " + bi + (bi === 1 ? " sampled answer" : " sampled answers") + " right")]
+        .concat(list.map(function (it) { return trow(it.r.color, it.r.overall ? "overall" : it.r.name, pct(it.v)); })), ev.clientX, ev.clientY);
+    });
+    ov.addEventListener("pointerleave", function () { clear(hov); hideTip(); });
+    svg.appendChild(ov);
+    host.appendChild(svg);
+  }
+
+  function qFill(r, K) { return r === 0 ? "var(--q0)" : "var(--q" + Math.max(1, Math.min(8, Math.round(r / K * 8))) + ")"; }
+
+  function drawHist(host, hist, K, label) {
+    clear(host);
+    var data = []; for (var r = 0; r <= K; r++) data.push(hist[r] != null ? hist[r] : 0);
+    var total = data.reduce(function (a, b) { return a + b; }, 0);
+    if (!total) { host.appendChild(el("div", { "class": "empty-chart" }, "No question has all " + K + " samples scored yet.")); return; }
+    var W = Math.max(260, Math.floor(host.clientWidth || 420)), H = 236;
+    var m = { t: 18, r: 14, b: 62, l: 34 };
+    var pw = W - m.l - m.r, slot = pw / (K + 1), y0 = H - m.b, y1 = m.t;
+    var maxv = Math.max.apply(null, data), tstep = maxv <= 10 ? 2 : maxv <= 25 ? 5 : maxv <= 60 ? 10 : 20;
+    var ymax = Math.ceil(maxv / tstep) * tstep; if (ymax < tstep) ymax = tstep;
+    function Y(v) { return y0 - v / ymax * (y0 - y1); }
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": "Histogram for " + label + ": number of questions by answers right out of " + K + ". " + data.map(function (n, i) { return n + " with " + i; }).join(", ") });
+    for (var v = 0; v <= ymax; v += tstep) {
+      svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), style: "stroke:" + (v === 0 ? "var(--axis)" : "var(--grid)"), "stroke-width": 1 }));
+      svg.appendChild(sv("text", { x: m.l - 6, y: Y(v) + 3.5, "text-anchor": "end", text: String(v) }));
+    }
+    var bw = Math.min(24, slot - 6);
+    data.forEach(function (n, i) {
+      var cx = m.l + slot * (i + 0.5), h = n / ymax * (y0 - y1);
+      if (n > 0) {
+        var rr = Math.min(4, h), x = cx - bw / 2, y = y0 - h;
+        svg.appendChild(sv("path", { d: "M" + x + " " + y0 + "V" + (y + rr) + "Q" + x + " " + y + " " + (x + rr) + " " + y + "H" + (x + bw - rr) + "Q" + (x + bw) + " " + y + " " + (x + bw) + " " + (y + rr) + "V" + y0 + "Z", style: "fill:" + qFill(i, K) }));
+        svg.appendChild(sv("text", { x: cx, y: y - 5, "text-anchor": "middle", "class": "val", text: String(n) }));
+      }
+      svg.appendChild(sv("text", { x: cx, y: y0 + 14, "text-anchor": "middle", text: String(i) }));
+      var hit = sv("rect", { x: m.l + slot * i, y: y1, width: slot, height: y0 - y1 + 18, style: "fill:transparent" });
+      hit.addEventListener("pointermove", function (e) {
+        showTip([el("div", { "class": "t" }, label), trow(qFill(i, K), i + " of " + K + " right", n + (n === 1 ? " question" : " questions")), el("div", { "class": "x" }, (total ? (n / total * 100).toFixed(0) : 0) + "% of " + total)], e.clientX, e.clientY);
+      });
+      hit.addEventListener("pointerleave", hideTip);
+      svg.appendChild(hit);
+    });
+    // bucket brackets under the axis
+    function bracket(i0, i1, text) {
+      var xa = m.l + slot * i0 + 4, xb = m.l + slot * (i1 + 1) - 4, yb = y0 + 26;
+      svg.appendChild(sv("path", { d: "M" + xa + " " + (yb - 3) + "V" + yb + "H" + xb + "V" + (yb - 3), style: "fill:none;stroke:var(--axis)", "stroke-width": 1 }));
+      svg.appendChild(sv("text", { x: (xa + xb) / 2, y: yb + 14, "text-anchor": "middle", "class": "lbl", text: text }));
+    }
+    bracket(0, 0, "never");
+    bracket(1, K - 1, "sometimes: the learning pool");
+    bracket(K, K, "always");
+    svg.appendChild(sv("text", { x: W - m.r, y: H - 4, "text-anchor": "end", text: "answers right out of " + K }));
+    host.appendChild(svg);
+  }
+
+  function drawBuckets(host, rows, K) {
+    clear(host);
+    rows.forEach(function (r) {
+      var b = r.block, nev = num(b.never) || 0, som = num(b.sometimes) || 0, alw = num(b.always) || 0, tot = nev + som + alw;
+      var row = el("div", { "class": "brow" });
+      row.appendChild(el("div", { "class": "bl", style: r.overall ? "font-weight:600" : "" }, r.name));
+      var bar = el("div", { "class": "bar" + (tot ? "" : " none") });
+      row.appendChild(bar);
+      row.appendChild(el("div", { "class": "bt", title: tot ? int(tot) + " questions" : null }, tot ? int(tot) : ""));
+      host.appendChild(row);
+      if (!tot) { bar.textContent = "waiting for all " + K + " samples"; return; }
+      var bw = bar.clientWidth || 300;
+      [["never", nev, "Never right (0 of " + K + ")", "var(--b-never)"], ["some", som, "Sometimes right (1–" + (K - 1) + " of " + K + ")", "var(--b-some)"], ["always", alw, "Always right (" + K + " of " + K + ")", "var(--b-always)"]].forEach(function (s) {
+        if (!s[1]) return;
+        var w = (bw - 4) * s[1] / tot;
+        var sg = el("div", { "class": "sg " + s[0], style: "flex:" + s[1] + " 1 0" }, w >= 30 ? String(s[1]) : null);
+        sg.addEventListener("pointermove", function (e) {
+          showTip([el("div", { "class": "t" }, r.name), trow(s[3], s[2], s[1] + (s[1] === 1 ? " question" : " questions")), el("div", { "class": "x" }, (s[1] / tot * 100).toFixed(0) + "% of " + tot)], e.clientX, e.clientY);
+        });
+        sg.addEventListener("pointerleave", hideTip);
+        bar.appendChild(sg);
+      });
+    });
+  }
+
+  // ---- question grid ----------------------------------------------------------------------------
+  function renderGrid() {
+    var ctrl = $("grid-ctrl"), host = $("grid-body"); clear(ctrl); clear(host);
+    var qs = Array.isArray(tick.questions) ? tick.questions.filter(function (q) { return q && q.id != null; }) : [];
+    if (!qs.length) {
+      host.appendChild(el("div", { "class": "empty-chart" }, "The grid fills in as the sample files are scored: one cell per question, colored by how many of its answers were right."));
+      return;
+    }
+    var K = samplesCount();
+    ctrl.appendChild(seg([{ value: "right", label: "By answers right" }, { value: "id", label: "By id" }], ui.gridSort, function (v) { ui.gridSort = v; renderGrid(); }, "Sort the grid"));
+    var lb = el("label", { "class": "check-lb", "for": "easy-only" });
+    var cb = el("input", { type: "checkbox", id: "easy-only" });
+    cb.checked = ui.easyOnly;
+    cb.addEventListener("change", function () { ui.easyOnly = cb.checked; renderGrid(); });
+    lb.appendChild(cb); lb.appendChild(document.createTextNode("Fade all but easy wins"));
+    ctrl.appendChild(lb);
+
+    // legend
+    var gl = el("div", { "class": "gl" });
+    var ramp = el("span", { "class": "ramp" });
+    ramp.appendChild(document.createTextNode("0 right "));
+    for (var i = 0; i <= 8; i++) ramp.appendChild(el("i", { style: "background:var(--q" + i + ")" }));
+    ramp.appendChild(document.createTextNode(" all right"));
+    gl.appendChild(ramp);
+    gl.appendChild(el("span", null, [el("i", { "class": "ex easy" }), "Easy win: greedy wrong, some samples right"]));
+    gl.appendChild(el("span", null, [el("i", { "class": "ex und" }), "Not scored yet"]));
+    host.appendChild(gl);
+
+    var names = setNames();
+    var by = {};
+    qs.forEach(function (q) { var o = q.origin || "other"; (by[o] = by[o] || []).push(q); });
+    var order = names.filter(function (n) { return by[n]; });
+    Object.keys(by).forEach(function (n) { if (order.indexOf(n) < 0) order.push(n); });
+    var easyAll = 0;
+    var gw = el("div", { "class": "gw" });
+    order.forEach(function (name) {
+      var list = by[name].slice();
+      function frac(q) { var s = num(q.scored), r = num(q.right); return s ? (r || 0) / s : -1; }
+      list.sort(function (a, b) {
+        if (ui.gridSort === "right") { var d = frac(b) - frac(a); if (d) return d; }
+        return String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0;
+      });
+      var easy = list.filter(function (q) { return q.greedy === false && (num(q.right) || 0) > 0; }).length;
+      easyAll += easy;
+      var g = el("div", null);
+      g.appendChild(el("div", { "class": "block-head" }, [
+        el("h3", null, [el("span", { "class": "key", style: "background:" + colorFor(name) }), name]),
+        el("span", { "class": "sub" }, list.length + " questions · " + easy + " easy " + (easy === 1 ? "win" : "wins"))
+      ]));
+      var cells = el("div", { "class": "cells" + (ui.easyOnly ? " focus" : ""), role: "group", "aria-label": name + " questions" });
+      list.forEach(function (q) {
+        var s = num(q.scored), r = num(q.right), und = !s;
+        var lvl = und ? -1 : (r > 0 ? Math.max(1, Math.min(8, Math.round(r / s * 8))) : 0);
+        var isEasy = q.greedy === false && (r || 0) > 0;
+        var txt = String(q.id) + ": " + (und ? "not scored yet" : r + " of " + s + " right") + (q.greedy === true ? ", greedy right" : q.greedy === false ? ", greedy wrong" : "");
+        var c = el("div", { "class": "cell " + (und ? "und" : "l" + lvl) + (isEasy ? " easy" : ""), role: "img", "aria-label": txt + (isEasy ? ", an easy win" : "") });
+        c.addEventListener("pointermove", function (e) {
+          showTip([el("div", { "class": "t" }, String(q.id)), trow(und ? null : qFill(r, s), name, und ? "not scored yet" : r + " of " + s + " right"),
+            el("div", { "class": "x" }, q.greedy === true ? "Greedy answer: right" : q.greedy === false ? "Greedy answer: wrong" : "Greedy answer: not decided"),
+            isEasy ? el("div", { "class": "x" }, "Easy win for RL") : null], e.clientX, e.clientY);
+        });
+        c.addEventListener("pointerleave", hideTip);
+        cells.appendChild(c);
+      });
+      g.appendChild(cells);
+      gw.appendChild(g);
+    });
+    host.appendChild(gw);
+    var scoredQ = qs.filter(function (q) { return num(q.scored) > 0; }).length;
+    host.appendChild(el("div", { "class": "note" }, qs.length + " questions listed, " + scoredQ + " with at least one scored answer, " + easyAll + " easy wins (counted on this page from the cells above)."));
+  }
+
+  // ---- settings and events ----------------------------------------------------------------------
+  function renderSettings() {
+    var host = $("settings-body"); clear(host);
+    var s = tick.settings || {}, run = runs[current] || {};
+    var chips = el("div", { "class": "chips" });
+    function chip(k, v) { if (v == null || v === "") return; chips.appendChild(el("span", { "class": "chip" }, [k + " ", el("b", null, String(v))])); }
+    chip("model", s.model);
+    chip("questions", num(s.questions) != null ? int(s.questions) : null);
+    chip("samples each", num(s.samples) != null ? int(s.samples) : null);
+    chip("temperature", num(s.temperature) != null ? s.temperature.toFixed(1) : null);
+    chip("top_p", num(s.top_p) != null ? s.top_p.toFixed(1) : null);
+    chip("thinking budget", num(s.thinking_budget) != null ? int(s.thinking_budget) : null);
+    chip("max tokens", num(s.max_tokens) != null ? int(s.max_tokens) : null);
+    chip("checker", s.checker);
+    if (Array.isArray(s.seeds) && s.seeds.length) {
+      var sd = s.seeds.map(num).filter(function (x) { return x != null; });
+      var seq = sd.length > 2 && sd.every(function (x, i) { return i === 0 || x === sd[i - 1] + 1; });
+      var c = el("span", { "class": "chip", title: sd.join(", ") }, ["seeds ", el("b", null, seq ? sd[0] + "–" + sd[sd.length - 1] : sd.join(", "))]);
+      chips.appendChild(c);
+    }
+    if (!chips.childNodes.length) chips.appendChild(el("span", { "class": "sub" }, "No settings reported."));
+    host.appendChild(chips);
+    if (run.notes) host.appendChild(el("p", { "class": "sub" }, run.notes));
+
+    var eh = $("events-body"); clear(eh);
+    var evs = Array.isArray(tick.events) ? tick.events.filter(function (e) { return e && e.text; }) : [];
+    evs.sort(function (a, b) { return (ms(b.at) || 0) - (ms(a.at) || 0); });
+    if (!evs.length) { eh.appendChild(el("div", { "class": "sub" }, "No events yet.")); return; }
+    var ul = el("ul", { "class": "events" });
+    evs.slice(0, 20).forEach(function (e) {
+      var kind = e.kind === "warn" || e.kind === "error" ? e.kind : "info";
+      var t = ms(e.at);
+      ul.appendChild(el("li", { "class": "ev-" + kind }, [
+        icon(kind === "info" ? "info" : kind === "warn" ? "warn" : "cross"),
+        el("span", { "class": "tm", title: t != null ? new Date(t).toLocaleString() : "" }, t != null ? clock(t) : ""),
+        el("span", { "class": "tx" }, [el("span", { "class": "muted" }, kind === "info" ? "" : kind + ": "), e.text])
+      ]));
+    });
+    eh.appendChild(ul);
+  }
+
+  // ---- gate / render ----------------------------------------------------------------------------
+  function setGate(h, p) {
+    var g = $("gate"); clear(g);
+    g.appendChild(el("h2", null, h)); if (p) g.appendChild(el("p", null, p));
+    g.hidden = false;
+  }
+  function renderAll() {
+    hideTip();
+    var main = $("main"), gate = $("gate");
+    var names = Object.keys(runs);
+    if (gateMode === "nodb") { gate.hidden = false; main.hidden = true; setGate("The live data isn't available in this view", "Open the page on claude.ai while signed in to see the run."); return; }
+    if (!names.length) {
+      main.hidden = true;
+      if (!runsDefinitive && !slow) setGate("Connecting to the run data", "Nothing on this page is typed in by hand. It reads the run's own files, pushed here every few minutes.");
+      else if (!runsDefinitive) setGate("Can't reach the run data yet", "The page keeps trying. Nothing is shown until the store answers.");
+      else setGate("Waiting for the first update", "The numbers come from the run's own files, pushed here every few minutes once the measurement starts. Nothing appears until then.");
+      return;
+    }
+    gate.hidden = true; main.hidden = false;
+    var haveTick = !!tick;
+    $("sec-progress").hidden = !haveTick;
+    $("sec-results").hidden = !haveTick;
+    $("sec-grid").hidden = !haveTick;
+    $("sec-settings").hidden = !haveTick;
+    renderStatus();
+    if (!haveTick) return;
+    renderProgress();
+    renderResults();
+    renderGrid();
+    renderSettings();
+  }
+  function schedule() { clearTimeout(raf); raf = setTimeout(renderAll, 30); }
+
+  // ---- data -------------------------------------------------------------------------------------
+  function activeAt(r) { return Math.max(ms(r.last_tick_at) || 0, ms(r.started_at) || 0); }
+  function subscribeTicks(name) {
+    if (unsubTicks) { unsubTicks(); unsubTicks = null; }
+    ticks = []; tick = null; ticksSeen = false;
+    try {
+      unsubTicks = db.collection("runs/" + name + "/ticks").orderBy("seq", "desc").limit(200).onSnapshot(function (snap) {
+        ticksSeen = true;
+        ticks = snap.docs.map(function (d) { return d.data(); }).filter(function (d) { return d && typeof d === "object"; });
+        ticks.sort(function (a, b) { return (num(b.seq) || 0) - (num(a.seq) || 0); });
+        tick = ticks[0] || null;
+        schedule();
+      }, function () { schedule(); });
+    } catch (e) { schedule(); }
+  }
+  function choose() {
+    var names = Object.keys(runs).sort(function (a, b) { return activeAt(runs[b]) - activeAt(runs[a]); });
+    var picker = $("run-picker");
+    $("picker-wrap").hidden = names.length < 2;
+    clear(picker);
+    names.forEach(function (n) {
+      var lu = ms(runs[n].last_tick_at);
+      picker.appendChild(el("option", { value: n }, n + (lu != null && Date.now() - lu < FRESH_MS ? " · live" : "")));
+    });
+    if (!names.length) { current = null; return; }
+    var want = userPicked && runs[current] ? current : names[0];
+    picker.value = want;
+    if (want !== current) { current = want; subscribeTicks(want); }
+  }
+  async function start() {
+    var loadTimer = setTimeout(function () { slow = true; schedule(); }, 10000);
+    try { db = await window.claude.use("db"); } catch (e) { db = null; }
+    if (!db) { clearTimeout(loadTimer); gateMode = "nodb"; schedule(); return; }
+    $("run-picker").addEventListener("change", function () {
+      userPicked = true; current = $("run-picker").value; subscribeTicks(current); schedule();
+    });
+    db.collection("runs").onSnapshot(function (snap) {
+      runsSeen = true;
+      if (!snap.metadata.fromCache) { runsDefinitive = true; slow = false; clearTimeout(loadTimer); }
+      runs = {};
+      snap.docs.forEach(function (d) { var v = d.data(); if (v && typeof v === "object") { v = Object.assign({}, v); if (!v.name) v.name = d.id; runs[d.id] = v; } });
+      choose();
+      schedule();
+    }, function () { slow = true; schedule(); });
+  }
+  if (window.claude && typeof window.claude.use === "function") start(); else { gateMode = "nodb"; schedule(); }
+
+  // keep "updated 3 min ago" and the live flag honest, and redraw charts when the width changes
+  setInterval(function () { if (!$("main").hidden && current) renderStatus(); }, 30000);
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(function (entries) {
+      var w = Math.round(entries[0].contentRect.width);
+      if (w !== lastW) { var first = lastW === 0; lastW = w; if (!first) schedule(); }
+    }).observe(document.querySelector(".wrap"));
+  }
+})();
+</script>

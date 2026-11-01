@@ -1,0 +1,16 @@
+[project]
+name = "sqlrl"
+version = "0.1.0"
+description = "RL environments and training for a 4B SQL + Cypher database agent on a 16 GB GPU"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
