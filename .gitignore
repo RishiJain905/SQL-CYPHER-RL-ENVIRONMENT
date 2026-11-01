@@ -1,0 +1,19 @@
+# Secrets: never committed
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Runs, models and data live outside the repo
+wandb/
+*.gguf
+*.safetensors
