@@ -33,6 +33,11 @@ class Paths:
     greedy_scores: Path
     trainer_repo: Path
     wsl_venv: str
+    # step 2: the merged model in bf16 (the trainer's starting weights) and its Q8_0 (the
+    # rollout server's), both on a fast disk; the llama.cpp source tree (convert_lora_to_gguf)
+    model_hf: Path | None = None
+    model_gguf: Path | None = None
+    llama_cpp_src: Path | None = None
 
     @property
     def serve_script(self) -> Path:
@@ -57,4 +62,7 @@ def get_paths() -> Paths:
         greedy_scores=p("greedy_scores"),
         trainer_repo=p("trainer_repo"),
         wsl_venv=raw["wsl_venv"],
+        model_hf=p("model_hf") if "model_hf" in raw else None,
+        model_gguf=p("model_gguf") if "model_gguf" in raw else None,
+        llama_cpp_src=p("llama_cpp_src") if "llama_cpp_src" in raw else None,
     )

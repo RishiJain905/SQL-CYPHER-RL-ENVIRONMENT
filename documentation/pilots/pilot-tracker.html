@@ -1,0 +1,1302 @@
+<title>Spark RL Pilots</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a summary card (budget, baseline), an overview table with one row per pilot, a comparison chart of evaluated pilots against the baseline, then a detail view of one selected pilot (status, training curves, step time, canaries, evaluation, events). One column on phones. Same tokens and chart rules as the Spark RL Baseline page. */
+:root {
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --ring: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-text: #006300;
+  --bad-text: #b52f2f;
+  /* sequential blue for the never / sometimes / always buckets */
+  --q0: #e1e0d9; --q4: #3987e5; --q8: #0d366b;
+  --b-never: var(--q0); --b-some: var(--q4); --b-always: var(--q8);
+  --on-never: #0b0b0b; --on-some: #0b0b0b; --on-always: #ffffff;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+    --good-text: #4cc46a; --bad-text: #ef7d6f;
+    --q0: #383835; --q4: #2a78d6; --q8: #9ec5f4;
+    --on-never: #f0efec; --on-some: #ffffff; --on-always: #0b0b0b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+  --good-text: #4cc46a; --bad-text: #ef7d6f;
+  --q0: #383835; --q4: #2a78d6; --q8: #9ec5f4;
+  --on-never: #f0efec; --on-some: #ffffff; --on-always: #0b0b0b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack-sm { display: flex; flex-direction: column; gap: 12px; }
+h1 { font-size: 1.35rem; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 0.98rem; margin: 0; font-weight: 600; text-wrap: balance; }
+h3 { font-size: 0.86rem; margin: 0; font-weight: 600; }
+p { margin: 0; }
+.sub { color: var(--ink-2); font-size: 0.86rem; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.top { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+/* status pill, live flag, chips, tags */
+.pill { display: inline-flex; gap: 6px; align-items: center; font-size: 0.8rem; font-weight: 600; padding: 2px 10px 2px 8px; border-radius: 999px; border: 1px solid var(--ring); background: var(--page); white-space: nowrap; }
+.pill .ico { flex: none; }
+.s-run .ico { color: var(--s1); } .s-good .ico { color: var(--good-text); } .s-warn .ico { color: var(--warning); } .s-bad .ico { color: var(--critical); } .s-idle .ico { color: var(--muted); }
+.s-warn { border-color: var(--warning); } .s-bad { border-color: var(--critical); }
+.s-idle { color: var(--ink-2); }
+.live { display: inline-flex; gap: 6px; align-items: center; font-size: 0.78rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; }
+@media (prefers-reduced-motion: no-preference) { .live i { animation: pulse 1.8s ease-in-out infinite; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.stale { display: inline-flex; gap: 6px; align-items: center; font-size: 0.78rem; font-weight: 600; color: var(--ink); }
+.stale .ico { color: var(--warning); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-family: var(--mono); font-size: 0.76rem; padding: 2px 8px; border-radius: 5px; background: var(--page); border: 1px solid var(--ring); color: var(--ink-2); overflow-wrap: anywhere; }
+.chip b { font-weight: 600; color: var(--ink); }
+.tag { display: inline-block; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 0 6px; border-radius: 4px; border: 1px solid var(--axis); color: var(--ink-2); vertical-align: middle; }
+.note-line { font-size: 0.9rem; color: var(--ink); overflow-wrap: anywhere; }
+.banner { display: inline-flex; gap: 6px; align-items: center; font-size: 0.8rem; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--ring); background: var(--page); color: var(--ink); }
+.banner .ico { color: var(--warning); }
+
+/* tiles and bars */
+.progress { height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--s1); border-radius: 0 5px 5px 0; }
+.progress.mini { height: 6px; width: 84px; border-radius: 3px; }
+.progress.good > div { background: var(--good); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px 14px; }
+.tile { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tile .k { font-size: 0.78rem; color: var(--ink-2); }
+.tile .v { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 0.76rem; color: var(--ink-2); overflow-wrap: anywhere; }
+.dl { font-variant-numeric: tabular-nums; font-size: 0.78rem; white-space: nowrap; }
+.dl.up { color: var(--good-text); } .dl.down { color: var(--bad-text); } .dl.flat { color: var(--ink-2); }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px 24px; }
+.split > div { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.block-head { display: flex; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; align-items: baseline; }
+
+/* charts */
+.res-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+.res-grid > .card { grid-column: span 12; display: flex; flex-direction: column; gap: 8px; }
+@media (min-width: 940px) { .res-grid > .c7 { grid-column: span 7; } .res-grid > .c5 { grid-column: span 5; } }
+.minis { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 16px; }
+.minis > .card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; }
+.chart-head { display: flex; justify-content: space-between; gap: 8px 14px; align-items: baseline; flex-wrap: wrap; }
+.legend { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 0.78rem; color: var(--ink-2); }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.legend b.sw { height: 10px; width: 10px; border-radius: 2px; }
+.legend b.dash { height: 0; width: 16px; border-top: 2px dashed var(--ink); border-radius: 0; }
+.chart { position: relative; min-width: 0; }
+.chart svg { display: block; max-width: 100%; height: auto; overflow: visible; }
+.chart svg text { font-family: var(--sans); font-size: 10.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.chart svg text.lbl { fill: var(--ink-2); font-size: 11px; }
+.chart svg text.val { fill: var(--ink-2); font-size: 10.5px; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.empty-chart { font-size: 0.84rem; color: var(--ink-2); padding: 24px 0; text-align: center; }
+.note { font-size: 0.78rem; color: var(--ink-2); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--axis); border-radius: 7px; overflow: hidden; max-width: 100%; }
+.seg button { font: inherit; font-size: 0.78rem; background: var(--surface); color: var(--ink-2); border: 0; border-right: 1px solid var(--axis); padding: 4px 10px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.check-lb { display: inline-flex; gap: 6px; align-items: center; font-size: 0.8rem; color: var(--ink-2); cursor: pointer; }
+.key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle; }
+.key.dot { width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 9px; font-size: 0.78rem; box-shadow: 0 4px 14px rgba(0,0,0,0.14); min-width: 120px; max-width: 280px; z-index: 50; }
+.tip .t { color: var(--ink-2); font-size: 0.74rem; margin-bottom: 2px; overflow-wrap: anywhere; }
+.tip .r { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.tip .r b { font-variant-numeric: tabular-nums; }
+.tip .r span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.tip .r i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.tip .x { color: var(--ink-2); margin-top: 2px; }
+
+/* tables */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.84rem; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-size: 0.72rem; color: var(--ink-2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.tot td { font-weight: 600; }
+td .u { color: var(--ink-2); font-size: 0.72rem; font-weight: 400; margin-left: 3px; }
+td.nm { white-space: nowrap; }
+th.nt { text-transform: none; letter-spacing: 0; font-size: 0.78rem; }
+table.ov td { vertical-align: middle; }
+table.ov th.pn, table.ov td.pn { position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 132px; }
+table.ov tr.sel td { background: var(--page); }
+table.ov tr.sel td.pn { box-shadow: inset 3px 0 0 var(--ink); background: var(--page); }
+table.ov tr { cursor: pointer; }
+table.ov tr.smoke td { color: var(--ink-2); }
+.pname { font: inherit; font-family: var(--mono); font-weight: 600; font-size: 0.84rem; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.pmeth { font-size: 0.76rem; color: var(--ink-2); }
+.cellv { display: flex; flex-direction: column; align-items: flex-end; gap: 0; line-height: 1.3; }
+.cellv b { font-weight: 600; }
+.spk { display: flex; align-items: center; gap: 8px; }
+.spk svg { display: block; flex: none; }
+.spk .sv { font-variant-numeric: tabular-nums; font-size: 0.8rem; color: var(--ink-2); }
+.rd { display: inline-flex; gap: 6px; align-items: center; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.rd .ico { flex: none; }
+.rd-good .ico { color: var(--good-text); } .rd-warn .ico { color: var(--warning); } .rd-bad .ico { color: var(--bad-text); } .rd-idle { color: var(--ink-2); font-weight: 500; } .rd-idle .ico { color: var(--muted); }
+.rdsub { font-size: 0.72rem; color: var(--ink-2); font-weight: 400; white-space: normal; max-width: 180px; }
+.st-sign { font-size: 0.78rem; white-space: nowrap; line-height: 1.3; }
+
+/* buckets */
+.brow { display: grid; grid-template-columns: minmax(70px, 100px) minmax(0, 1fr) 44px; gap: 6px 10px; align-items: center; }
+.brow .bl { font-size: 0.84rem; overflow-wrap: anywhere; }
+.brow .bt { font-size: 0.74rem; color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
+.bpair { display: flex; flex-direction: column; gap: 3px; }
+.bar { display: flex; gap: 2px; height: 16px; border-radius: 4px; overflow: hidden; background: transparent; }
+.bar .sg { display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; }
+.bar .sg.never { background: var(--b-never); color: var(--on-never); }
+.bar .sg.some { background: var(--b-some); color: var(--on-some); }
+.bar .sg.always { background: var(--b-always); color: var(--on-always); }
+.bar.none { background: var(--grid); }
+.bar.ghost { opacity: 0.55; }
+.bstack { display: flex; flex-direction: column; gap: 10px; }
+
+/* events, explainer, gate */
+.events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.events li { display: grid; grid-template-columns: 16px 64px minmax(0, 1fr); gap: 6px 8px; padding: 5px 0; border-bottom: 1px solid var(--grid); font-size: 0.84rem; align-items: start; }
+.events li:last-child { border-bottom: 0; }
+.events .tm { color: var(--ink-2); font-size: 0.76rem; font-variant-numeric: tabular-nums; padding-top: 1px; }
+.events .tx { overflow-wrap: anywhere; }
+.events .ico { margin-top: 3px; }
+.ev-info .ico { color: var(--muted); } .ev-warn .ico { color: var(--warning); } .ev-error .ico { color: var(--critical); }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; }
+.two > .card { display: flex; flex-direction: column; gap: 10px; }
+.how { display: flex; flex-direction: column; gap: 8px; }
+.how p, .how li { color: var(--ink); max-width: 78ch; }
+.how ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.gate { text-align: center; padding: 36px 16px; color: var(--ink-2); display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.gate h2 { font-size: 1.05rem; color: var(--ink); }
+.gate p { max-width: 62ch; }
+.foot { font-size: 0.76rem; color: var(--ink-2); }
+.pdesc { max-width: 78ch; }
+@media (max-width: 520px) {
+  .brow { grid-template-columns: minmax(60px, 80px) minmax(0, 1fr) 38px; gap: 6px 8px; }
+}
+/* phones: each pilot row becomes a small card instead of a wide scrolling table */
+@media (max-width: 760px) {
+  table.ov, table.ov tbody { display: block; }
+  table.ov thead { display: none; }
+  table.ov tbody { display: flex; flex-direction: column; gap: 10px; }
+  table.ov tr { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px 10px; border: 1px solid var(--ring); border-radius: 8px; padding: 10px 12px; background: var(--surface); }
+  table.ov tr.sel { border-color: var(--ink); background: var(--page); }
+  table.ov td, table.ov td.pn { display: block; border: 0; padding: 0; position: static; box-shadow: none; background: none; min-width: 0; }
+  table.ov tr.sel td, table.ov tr.sel td.pn { background: none; box-shadow: none; }
+  table.ov td:nth-child(1) { grid-column: span 6; }
+  table.ov td:nth-child(2), table.ov td:nth-child(3), table.ov td:nth-child(7), table.ov td:nth-child(8) { grid-column: span 3; }
+  table.ov td:nth-child(4), table.ov td:nth-child(5), table.ov td:nth-child(6) { grid-column: span 2; }
+  table.ov td[data-label]::before { content: attr(data-label); display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-2); font-weight: 600; margin-bottom: 1px; }
+  table.ov td:nth-child(1)::before { display: none; }
+  table.ov td.n { text-align: left; }
+  table.ov .cellv { align-items: flex-start; }
+  .rdsub { max-width: none; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Spark RL Pilots</h1>
+      <p class="sub">Which RL method should the real run use? Each candidate trains the released 4B SQL and Cypher agent for the same short budget, then gets the baseline's measurement.</p>
+    </div>
+  </header>
+
+  <div id="gate" class="card gate" role="status"><h2>Connecting to the pilot data</h2><p>Nothing on this page is typed in by hand. It reads each pilot's own files, pushed here as the runs go.</p></div>
+
+  <div id="main" class="stack" hidden>
+    <section class="card stack-sm" id="sec-summary" aria-label="Summary"></section>
+    <section class="card stack" id="sec-overview" aria-labelledby="h-overview">
+      <div class="top"><h2 id="h-overview">All pilots</h2><span class="sub" id="ov-hint">Select a row to see that pilot below.</span></div>
+      <div id="overview-body" class="stack-sm"></div>
+    </section>
+    <section class="stack" id="sec-compare" aria-labelledby="h-compare">
+      <div class="top"><h2 id="h-compare">Evaluated pilots against the baseline</h2><div class="row" id="compare-ctrl"></div></div>
+      <div class="card stack-sm" id="compare-body"></div>
+    </section>
+    <section class="stack" id="sec-detail" aria-labelledby="h-detail">
+      <div class="top"><h2 id="h-detail">Pilot detail</h2><div class="row" id="detail-ctrl"></div></div>
+      <div id="detail-body" class="stack"></div>
+    </section>
+    <section class="card how" id="sec-how" aria-labelledby="h-how">
+      <h2 id="h-how">How pilots are judged</h2>
+      <ul>
+        <li>pass@1 should rise toward pass@8. That is RL turning "sometimes right" into "right first time".</li>
+        <li>pass@8 should not fall by more than noise. A question-by-question sign test against the baseline separates a real drop from chance. A drop means the method is narrowing the model's answers, not teaching it.</li>
+        <li>The canaries stay steady: entropy, KL to the SFT model, thought length and the share of well-formed calls. A pilot that drifts is stopped and reported.</li>
+      </ul>
+      <p class="sub">The reading column in the table is a rough guide from these rules. The decision is made in the written tracker, not here.</p>
+    </section>
+    <p class="foot">This page only reads the pilots' data store. It never writes to it.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var DATASETS = ["cypherbench", "gretel", "sqale", "text2cypher"];
+  var COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)"];
+  var PILOT_COLORS = { "p1-grpo": "var(--s1)", "p2-dapo": "var(--s2)", "p3-gspo": "var(--s3)", "p4-sdpo": "var(--s4)", "p5-srpo": "var(--s5)", "p0-smoke": "var(--muted)" };
+  var EXTRA_PILOT = ["var(--s6)", "var(--s1)", "var(--s2)", "var(--s3)"];
+  var TERMINAL = { done: 1, failed: 1, stopped: 1 };
+  var KNOWN_STEP_KEYS = ["step", "reward_mean", "reward_by_set", "solve_rate", "informative_frac", "undecided_frac", "loss", "kl", "entropy", "resp_tokens", "clip_frac", "grad_norm", "lr", "rollout_s", "score_s", "train_s", "step_s"];
+
+  // ---- small helpers ----------------------------------------------------------------------------
+  function $(id) { return document.getElementById(id); }
+  function setAttrs(n, a) {
+    if (!a) return;
+    for (var k in a) {
+      var v = a[k];
+      if (v == null || v === false) continue;
+      if (k === "text") n.textContent = String(v); else n.setAttribute(k, v === true ? "" : String(v));
+    }
+  }
+  function addKids(n, kids) {
+    if (kids == null) return;
+    if (!Array.isArray(kids)) kids = [kids];
+    kids.forEach(function (c) {
+      if (c == null || c === false) return;
+      n.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+    });
+  }
+  function el(tag, attrs, kids) { var n = document.createElement(tag); setAttrs(n, attrs); addKids(n, kids); return n; }
+  function sv(tag, attrs, kids) { var n = document.createElementNS(SVGNS, tag); setAttrs(n, attrs); addKids(n, kids); return n; }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function num(x) { return typeof x === "number" && isFinite(x) ? x : null; }
+  function isObj(x) { return x && typeof x === "object" && !Array.isArray(x); }
+  function int(x) { x = num(x); return x == null ? "–" : Math.round(x).toLocaleString("en-US"); }
+  function pct(x, d) { x = num(x); return x == null ? "–" : (x * 100).toFixed(d == null ? 1 : d) + "%"; }
+  function pts(x) {
+    x = num(x); if (x == null) return "–";
+    var v = x * 100, a = Math.abs(v).toFixed(1);
+    return (v > 0.049 ? "+" : v < -0.049 ? "−" : "") + a + " pts";
+  }
+  function fnum(v) {
+    v = num(v); if (v == null) return "–";
+    var a = Math.abs(v);
+    if (a === 0) return "0";
+    if (a >= 1000) return Math.round(v).toLocaleString("en-US");
+    if (a >= 100) return v.toFixed(0);
+    if (a >= 10) return v.toFixed(1);
+    if (a >= 1) return v.toFixed(2);
+    if (a >= 0.01) return v.toFixed(3);
+    return v.toExponential(1);
+  }
+  function ms(iso) { var t = Date.parse(iso); return isFinite(t) ? t : null; }
+  function ago(t) {
+    var s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 45) return "just now";
+    var m = Math.round(s / 60);
+    if (m < 60) return m + " min ago";
+    var h = Math.floor(m / 60), r = m % 60;
+    if (h < 48) return h + " h " + r + " min ago";
+    return Math.floor(h / 24) + " d ago";
+  }
+  function span(t) {
+    var m = Math.max(0, Math.round(t / 60000));
+    if (m < 1) return "under 1 min";
+    if (m < 60) return m + " min";
+    var h = Math.floor(m / 60);
+    if (h < 48) return h + " h " + (m % 60) + " min";
+    return Math.floor(h / 24) + " d " + (h % 24) + " h";
+  }
+  function clock(t) { return new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+  function stamp(t) { return new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
+  function niceStep(range, n) {
+    var raw = range / n; if (!(raw > 0)) return 1;
+    var mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+  }
+  function tickFmt(v, step) {
+    if (Math.abs(v) < step * 1e-6) return "0";
+    if (step >= 1) return Math.round(v).toLocaleString("en-US");
+    var d = Math.min(5, Math.ceil(-Math.log10(step) - 1e-9));
+    return v.toFixed(d);
+  }
+  function pctTick(v, step) { return (v * 100).toFixed(step * 100 < 1 ? 1 : 0) + "%"; }
+  function expTick(v) { return v === 0 ? "0" : v.toExponential(0); }
+  function cfgNum(v) { return Number.isInteger(v) ? String(v) : (Math.abs(v) < 0.001 ? v.toExponential(1) : String(parseFloat(v.toPrecision(4)))); }
+  function cap(s) { s = String(s).replace(/_/g, " "); return s.charAt(0).toUpperCase() + s.slice(1); }
+  function mean(a) { var s = 0, c = 0; a.forEach(function (v) { if (num(v) != null) { s += v; c++; } }); return c ? s / c : null; }
+
+  function icon(kind) {
+    var s = sv("svg", { "class": "ico", viewBox: "0 0 12 12", width: 12, height: 12, "aria-hidden": "true" });
+    var st = { fill: "none", stroke: "currentColor", "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round" };
+    if (kind === "check") s.appendChild(sv("path", Object.assign({ d: "M2.4 6.4l2.4 2.4 4.8-5" }, st)));
+    else if (kind === "cross") s.appendChild(sv("path", Object.assign({ d: "M3 3l6 6M9 3l-6 6" }, st)));
+    else if (kind === "warn") {
+      s.appendChild(sv("path", Object.assign({ d: "M6 1.6L11 10.4H1Z" }, st, { "stroke-width": 1.4 })));
+      s.appendChild(sv("path", Object.assign({ d: "M6 4.8v2.6" }, st, { "stroke-width": 1.4 })));
+      s.appendChild(sv("circle", { cx: 6, cy: 9, r: 0.8, fill: "currentColor" }));
+    } else if (kind === "info") {
+      s.appendChild(sv("circle", Object.assign({ cx: 6, cy: 6, r: 4.6 }, st, { "stroke-width": 1.3 })));
+      s.appendChild(sv("path", Object.assign({ d: "M6 5.4v3" }, st, { "stroke-width": 1.4 })));
+      s.appendChild(sv("circle", { cx: 6, cy: 3.7, r: 0.8, fill: "currentColor" }));
+    } else if (kind === "ring") s.appendChild(sv("circle", Object.assign({ cx: 6, cy: 6, r: 3.6 }, st, { "stroke-width": 1.5 })));
+    else if (kind === "stop") s.appendChild(sv("rect", { x: 3, y: 3, width: 6, height: 6, rx: 1, fill: "currentColor" }));
+    else s.appendChild(sv("circle", { cx: 6, cy: 6, r: 3.4, fill: "currentColor" }));
+    return s;
+  }
+
+  // ---- tooltip ----------------------------------------------------------------------------------
+  var tipEl = el("div", { "class": "tip", role: "tooltip", hidden: true });
+  document.body.appendChild(tipEl);
+  function showTip(nodes, x, y) {
+    clear(tipEl); addKids(tipEl, nodes);
+    tipEl.hidden = false;
+    var w = tipEl.offsetWidth, h = tipEl.offsetHeight, vw = document.documentElement.clientWidth, vh = window.innerHeight || 600;
+    var left = x + 14, top = y + 14;
+    if (left + w > vw - 8) left = x - w - 14;
+    if (top + h > vh - 8) top = y - h - 14;
+    tipEl.style.left = Math.max(8, left) + "px";
+    tipEl.style.top = Math.max(8, top) + "px";
+  }
+  function hideTip() { tipEl.hidden = true; }
+  function trow(color, label, value) {
+    return el("div", { "class": "r" }, [el("span", null, [color ? el("i", { style: "background:" + color }) : null, label]), el("b", null, value)]);
+  }
+  window.addEventListener("scroll", hideTip, { passive: true });
+
+  // ---- state ------------------------------------------------------------------------------------
+  var db = null, pilots = {}, latest = {}, subs = {}, baseline = null, baselineSeen = false;
+  var selected = null, userPicked = false;
+  var pilotsDefinitive = false, gateMode = "connecting", slow = false;
+  var ui = { smooth: false, includeSmoke: false, cmpView: "chart", passView: "chart" };
+  var raf = 0, lastW = 0, queue = [], extraPilot = [];
+
+  var STATUS = {
+    planned: { label: "Planned", cls: "s-idle", icon: "ring" },
+    running: { label: "Running", cls: "s-run", icon: "dot" },
+    evaluating: { label: "Evaluating", cls: "s-run", icon: "dot" },
+    done: { label: "Done", cls: "s-good", icon: "check" },
+    failed: { label: "Failed", cls: "s-bad", icon: "cross" },
+    stopped: { label: "Stopped", cls: "s-warn", icon: "stop" }
+  };
+
+  function pilotColor(id) {
+    if (PILOT_COLORS[id]) return PILOT_COLORS[id];
+    var j = extraPilot.indexOf(id);
+    if (j < 0) { extraPilot.push(id); j = extraPilot.length - 1; }
+    return EXTRA_PILOT[j % EXTRA_PILOT.length];
+  }
+  function datasetColor(name, names) {
+    var i = DATASETS.indexOf(name);
+    if (i >= 0) return COLORS[i];
+    var j = names.indexOf(name);
+    return COLORS[Math.min(COLORS.length - 1, Math.max(DATASETS.length, j))];
+  }
+  function pilotIds() { return Object.keys(pilots).sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); }); }
+  function isSmoke(id) { var d = pilots[id] || {}; return d.smoke === true || (d.smoke == null && /smoke/i.test(id)); }
+  function isActive(st) { return st === "running" || st === "evaluating"; }
+  function effStatus(d, t) {
+    var ds = d && d.status, ts = t && t.status;
+    if (ds && TERMINAL[ds] && !(ts && TERMINAL[ts])) return ds;
+    return ts || ds || "planned";
+  }
+
+  function view(id) {
+    var d = pilots[id] || {}, t = latest[id] || null;
+    var steps = t && Array.isArray(t.steps) ? t.steps.filter(isObj) : [];
+    steps = steps.map(function (s, i) { var c = Object.assign({}, s); if (num(c.step) == null) c.step = i + 1; return c; })
+      .sort(function (a, b) { return a.step - b.step; });
+    var cfg = isObj(d.config) ? d.config : {};
+    var total = num(t && t.steps_total) || num(cfg.steps) || null;
+    var step = num(t && t.step);
+    if (step == null) step = steps.length ? steps[steps.length - 1].step : 0;
+    var ev = t && isObj(t.eval) ? t.eval : null;
+    var a = ms(d.last_tick_at), b = t ? ms(t.made_at) : null;
+    var last = a != null && b != null ? Math.max(a, b) : (a != null ? a : b);
+    var status = effStatus(d, t);
+    var ss = steps.length ? num(steps[steps.length - 1].step_s) : null;
+    var fresh = last != null && Date.now() - last < Math.max(25 * 60000, (ss || 0) * 2000);
+    return { id: id, d: d, t: t, steps: steps, cfg: cfg, total: total, step: step, ev: ev, last: last, status: status,
+      smoke: isSmoke(id), color: pilotColor(id), fresh: fresh, active: isActive(status) };
+  }
+
+  // ---- numbers from an eval block ---------------------------------------------------------------
+  function lastPk(pk) {
+    if (!Array.isArray(pk)) return null;
+    for (var i = pk.length - 1; i >= 0; i--) if (num(pk[i]) != null) return { k: i + 1, v: pk[i] };
+    return null;
+  }
+  function p8(b) { var l = b ? lastPk(b.pass_at_k) : null; return l ? l.v : null; }
+  function g1(b) { return b ? num(b.greedy_pass1) : null; }
+  function m8(b) { return b ? num(b.mean_at8) : null; }
+  function diff(a, b) { a = num(a); b = num(b); return a == null || b == null ? null : a - b; }
+  function deltaNode(d) {
+    d = num(d);
+    if (d == null) return el("span", { "class": "dl flat" }, "–");
+    var cls = d > 0.0005 ? "up" : d < -0.0005 ? "down" : "flat";
+    return el("span", { "class": "dl " + cls }, pts(d));
+  }
+  function pfmt(p) { p = num(p); return p == null ? "–" : p < 0.001 ? "< 0.001" : p.toFixed(p < 0.1 ? 3 : 2); }
+  function signText(st) {
+    if (!isObj(st)) return null;
+    var b = num(st.better), w = num(st.worse);
+    if (b == null && w == null) return null;
+    return { b: b, w: w, p: num(st.p), clear: num(st.p) != null && st.p < 0.05 };
+  }
+
+  function reading(v) {
+    var ev = v.ev;
+    if (!ev) return { kind: "idle", label: v.status === "evaluating" ? "Evaluating" : v.status === "planned" ? "Not started" : v.status === "failed" || v.status === "stopped" ? "No evaluation" : "Not evaluated yet" };
+    if (!baseline) return { kind: "idle", label: "Evaluated" };
+    var d1 = diff(g1(ev), g1(baseline)), d8 = diff(p8(ev), p8(baseline));
+    var st = signText(ev.vs_baseline);
+    var worseSig = !!(st && st.clear && st.w != null && st.b != null && st.w > st.b);
+    if (d1 == null) return { kind: "idle", label: "Evaluated" };
+    if (d1 > 0) {
+      if (d8 != null && d8 < 0 && worseSig) return { kind: "bad", label: "pass@8 fell", sub: "pass@1 up, sign test says worse" };
+      if (d8 != null && d8 < 0) return { kind: "warn", label: "Check pass@8", sub: "pass@1 up, pass@8 down " + pts(-d8).replace("+", "") };
+      if (worseSig) return { kind: "bad", label: "Worse on the sign test" };
+      return { kind: "good", label: "Candidate", sub: "pass@1 up, pass@8 held" };
+    }
+    if (worseSig) return { kind: "bad", label: "Worse than baseline" };
+    return { kind: "idle", label: "No pass@1 gain" };
+  }
+
+  // canaries: first 3 steps against the last 3
+  function canaries(v) {
+    var rows = [], n = v.steps.length;
+    var defs = [
+      { key: "entropy", name: "Entropy", lo: 0.5, hi: 1.5, flagAt: true },
+      { key: "resp_tokens", name: "Response length", lo: 0.6, hi: 1.4, flagAt: true },
+      { key: "kl", name: "KL to SFT", flagAt: false }
+    ];
+    defs.forEach(function (c) {
+      var vals = v.steps.map(function (s) { return num(s[c.key]); }).filter(function (x) { return x != null; });
+      if (!vals.length) return;
+      if (vals.length < 4) { rows.push({ name: c.name, key: c.key, first: null, last: vals[vals.length - 1], change: null, flag: null, short: true }); return; }
+      var first = mean(vals.slice(0, 3)), last = mean(vals.slice(-3));
+      var ratio = first ? last / first : null, flag = null;
+      if (c.flagAt && ratio != null) {
+        if (ratio < c.lo) flag = c.name.toLowerCase() + " " + Math.round((ratio - 1) * 100) + "% since the start";
+        else if (ratio > c.hi) flag = c.name.toLowerCase() + " +" + Math.round((ratio - 1) * 100) + "% since the start";
+      }
+      rows.push({ name: c.name, key: c.key, first: first, last: last, change: ratio != null ? ratio - 1 : null, flag: flag, short: false });
+    });
+    return rows;
+  }
+
+  // ---- generic line chart -----------------------------------------------------------------------
+  // o: series [{name,color,pts:[[x,y]],raw:[[x,y]],dash,marker,hollow,width}], xmin, xmax, xticks, h, yfmt(v,step), vfmt(y), xtitle(x), refs, empty, ymin, ymax, extra(x)
+  function lineChart(host, o) {
+    clear(host);
+    var all = [];
+    o.series.forEach(function (s) { s.pts.forEach(function (p) { if (num(p[1]) != null) all.push(p[1]); }); if (s.raw) s.raw.forEach(function (p) { if (num(p[1]) != null) all.push(p[1]); }); });
+    if (!all.length) { host.appendChild(el("div", { "class": "empty-chart" }, o.empty || "No data yet.")); return; }
+    var W = Math.max(200, Math.floor(host.clientWidth || 420)), H = o.h || 190;
+    var m = { t: 12, r: 14, b: 28, l: o.l || 46 };
+    var dmin = Math.min.apply(null, all), dmax = Math.max.apply(null, all);
+    if (o.ymax != null) dmax = Math.max(dmax, o.ymax);
+    if (o.ymin != null) dmin = Math.min(dmin, o.ymin);
+    var lo = dmin >= 0 ? 0 : dmin;
+    if (dmax <= lo) dmax = lo + 1;
+    var step = niceStep(dmax - lo, 4);
+    if (lo < 0) lo = Math.floor(lo / step) * step;
+    var hi = Math.ceil(dmax / step - 1e-9) * step;
+    var xmin = o.xmin, xmax = o.xmax; if (xmax <= xmin) xmax = xmin + 1;
+    function X(x) { return m.l + (x - xmin) / (xmax - xmin) * (W - m.l - m.r); }
+    function Y(y) { return H - m.b - (y - lo) / (hi - lo) * (H - m.t - m.b); }
+    var yfmt = o.yfmt || tickFmt;
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": o.label || "Line chart" });
+    for (var v = lo; v <= hi + step * 1e-6; v += step) {
+      svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), style: "stroke:" + (Math.abs(v) < step * 1e-6 ? "var(--axis)" : "var(--grid)"), "stroke-width": 1 }));
+      svg.appendChild(sv("text", { x: m.l - 6, y: Y(v) + 3.5, "text-anchor": "end", text: yfmt(v, step) }));
+    }
+    var xt = o.xticks;
+    if (!xt) {
+      var xs = Math.max(1, niceStep(xmax - xmin, W < 360 ? 4 : 7)); xt = [xmin];
+      for (var t = Math.ceil(xmin / xs) * xs; t <= xmax + 1e-9; t += xs) { if (t > xmin + xs * 0.4) xt.push(t); }
+    }
+    xt.forEach(function (t) { svg.appendChild(sv("text", { x: X(t), y: H - 10, "text-anchor": "middle", text: String(t) })); });
+    (o.refs || []).forEach(function (r) {
+      svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: Y(r.y), y2: Y(r.y), style: "stroke:" + (r.color || "var(--ink-2)"), "stroke-width": 1.3, "stroke-dasharray": "5 4" }));
+    });
+    function pathOf(pp) {
+      var d = "", pen = false;
+      pp.forEach(function (p) { if (num(p[1]) == null) { pen = false; return; } d += (pen ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1); pen = true; });
+      return d;
+    }
+    o.series.forEach(function (s) {
+      if (s.raw) { var dr = pathOf(s.raw); if (dr) svg.appendChild(sv("path", { d: dr, style: "fill:none;stroke:" + s.color + ";opacity:0.28", "stroke-width": 1.3, "stroke-linejoin": "round" })); }
+      var d = pathOf(s.pts);
+      if (d) svg.appendChild(sv("path", { d: d, style: "fill:none;stroke:" + s.color, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", "stroke-dasharray": s.dash ? "5 4" : null }));
+      var valid = s.pts.filter(function (p) { return num(p[1]) != null; });
+      if (s.marker || valid.length === 1) valid.forEach(function (p) { svg.appendChild(sv("circle", { cx: X(p[0]), cy: Y(p[1]), r: 3.2, style: "fill:" + (s.hollow ? "var(--surface)" : s.color) + ";stroke:" + s.color, "stroke-width": s.hollow ? 1.6 : 0 })); });
+      var lp = valid[valid.length - 1];
+      if (lp && !s.marker && valid.length > 1) svg.appendChild(sv("circle", { cx: X(lp[0]), cy: Y(lp[1]), r: 4, style: "fill:" + s.color + ";stroke:var(--surface)", "stroke-width": 2 }));
+    });
+    var hov = sv("g", {}); svg.appendChild(hov);
+    var xsAll = []; o.series.forEach(function (s) { s.pts.forEach(function (p) { if (xsAll.indexOf(p[0]) < 0) xsAll.push(p[0]); }); });
+    xsAll.sort(function (a, b) { return a - b; });
+    var ov = sv("rect", { x: m.l, y: 0, width: W - m.l - m.r, height: H - m.b + 6, style: "fill:transparent" });
+    ov.addEventListener("pointermove", function (e) {
+      var r0 = svg.getBoundingClientRect(), px = (e.clientX - r0.left) * (W / r0.width), bx = null, bd = 1e9;
+      xsAll.forEach(function (x) { var dd = Math.abs(X(x) - px); if (dd < bd) { bd = dd; bx = x; } });
+      if (bx == null) return;
+      clear(hov);
+      hov.appendChild(sv("line", { x1: X(bx), x2: X(bx), y1: m.t, y2: H - m.b, style: "stroke:var(--axis)", "stroke-width": 1 }));
+      var rows = [el("div", { "class": "t" }, o.xtitle ? o.xtitle(bx) : String(bx))];
+      o.series.forEach(function (s) {
+        var p = s.pts.filter(function (q) { return q[0] === bx && num(q[1]) != null; })[0];
+        if (!p) return;
+        hov.appendChild(sv("circle", { cx: X(bx), cy: Y(p[1]), r: 4, style: "fill:" + s.color + ";stroke:var(--surface)", "stroke-width": 2 }));
+        rows.push(trow(s.color, s.name, (o.vfmt || fnum)(p[1])));
+      });
+      if (o.extra) { var ex = o.extra(bx); if (ex) rows.push(ex); }
+      showTip(rows, e.clientX, e.clientY);
+    });
+    ov.addEventListener("pointerleave", function () { clear(hov); hideTip(); });
+    svg.appendChild(ov);
+    host.appendChild(svg);
+  }
+
+  function smoothed(pp, w) {
+    return pp.map(function (p, i) {
+      var s = 0, c = 0;
+      for (var j = Math.max(0, i - w + 1); j <= i; j++) if (num(pp[j][1]) != null) { s += pp[j][1]; c++; }
+      return [p[0], c ? s / c : null];
+    });
+  }
+  function seriesOf(steps, getter) {
+    var out = [];
+    steps.forEach(function (s) { var y = num(getter(s)); if (y != null) out.push([s.step, y]); });
+    return out;
+  }
+  function lineOf(name, color, pp, extra) {
+    var s = Object.assign({ name: name, color: color, pts: pp }, extra || {});
+    if (ui.smooth && pp.length > 2) { s.raw = pp; s.pts = smoothed(pp, 3); }
+    return s;
+  }
+  function seg(options, value, onPick, label) {
+    var d = el("div", { "class": "seg", role: "group", "aria-label": label });
+    options.forEach(function (o) {
+      var b = el("button", { type: "button", "aria-pressed": o.value === value ? "true" : "false" }, [o.color ? el("i", { "class": "key dot", style: "background:" + o.color }) : null, o.label]);
+      b.addEventListener("click", function () { onPick(o.value); });
+      d.appendChild(b);
+    });
+    return d;
+  }
+  function chartHost() { return el("div", { "class": "chart" }); }
+  function later(fn) { queue.push(fn); }
+
+  // ---- summary ----------------------------------------------------------------------------------
+  function renderSummary() {
+    var host = $("sec-summary"); clear(host);
+    var ids = pilotIds(), views = ids.map(view);
+    var counts = {};
+    views.forEach(function (v) { counts[v.status] = (counts[v.status] || 0) + 1; });
+    var parts = [];
+    ["running", "evaluating", "done", "planned", "failed", "stopped"].forEach(function (k) { if (counts[k]) parts.push(counts[k] + " " + STATUS[k].label.toLowerCase()); });
+    var evald = views.filter(function (v) { return v.ev && !v.smoke; }).length;
+    var lastAny = views.reduce(function (m, v) { return v.last != null && (m == null || v.last > m) ? v.last : m; }, null);
+    host.appendChild(el("div", { "class": "top" }, [
+      el("div", { "class": "stack-sm", style: "gap:4px" }, [
+        el("h2", null, "Stage A: single turn, execution reward"),
+        el("p", { "class": "sub" }, ids.length + (ids.length === 1 ? " pilot" : " pilots") + (parts.length ? ": " + parts.join(", ") : "") + ". " + evald + " evaluated against the baseline.")
+      ]),
+      el("div", { "class": "sub" }, lastAny != null ? "Latest update " + ago(lastAny) : "No update yet")
+    ]));
+
+    // the shared budget, taken from the real pilots' configs
+    var real = views.filter(function (v) { return !v.smoke; });
+    var keys = ["steps", "questions_per_step", "group_size", "temperature"];
+    var chips = el("div", { "class": "chips" }), differs = [];
+    var ref = (real[0] || views[0] || { cfg: {} }).cfg;
+    keys.forEach(function (k) { real.forEach(function (v) { if (num(v.cfg[k]) != null && num(ref[k]) != null && v.cfg[k] !== ref[k] && differs.indexOf(k) < 0) differs.push(k); }); });
+    function chip(k, val) { if (val == null || val === "") return; chips.appendChild(el("span", { "class": "chip" }, [k + " ", el("b", null, String(val))])); }
+    chip("steps", num(ref.steps) != null ? int(ref.steps) : null);
+    chip("questions a step", num(ref.questions_per_step) != null ? int(ref.questions_per_step) : null);
+    chip("rollouts each", num(ref.group_size) != null ? int(ref.group_size) : null);
+    chip("temperature", num(ref.temperature) != null ? ref.temperature.toFixed(1) : null);
+    if (chips.childNodes.length) {
+      host.appendChild(el("div", { "class": "stack-sm", style: "gap:6px" }, [el("h3", null, "Budget every pilot shares"), chips]));
+      if (differs.length) host.appendChild(el("div", null, el("span", { "class": "banner" }, [icon("warn"), "Budgets differ between pilots (" + differs.map(function (k) { return k.replace(/_/g, " "); }).join(", ") + "). The comparison is not like for like."])));
+    }
+
+    // baseline
+    var bl = el("div", { "class": "stack-sm", style: "gap:6px" });
+    if (baseline) {
+      bl.appendChild(el("div", { "class": "block-head" }, [el("h3", null, "Baseline every pilot is compared with"), el("span", { "class": "chip" }, baseline.name || "baseline")]));
+      bl.appendChild(el("div", { "class": "tiles" }, [
+        tile("Greedy pass@1", pct(g1(baseline)), "the released model"),
+        tile("Mean@8", pct(m8(baseline)), "sampled at temperature 1.0"),
+        tile("pass@" + (lastPk(baseline.pass_at_k) ? lastPk(baseline.pass_at_k).k : 8), pct(p8(baseline)), "any sampled answer right"),
+        tile("Never right", num(baseline.never) != null ? int(baseline.never) : "–", "questions SDPO and SRPO might reach")
+      ]));
+    } else {
+      bl.appendChild(el("h3", null, "Baseline"));
+      bl.appendChild(el("p", { "class": "sub" }, baselineSeen ? "The baseline numbers are not in the data store yet, so the changes against the baseline are left out." : "Loading the baseline numbers."));
+    }
+    host.appendChild(bl);
+  }
+  function tile(k, v, s) { return el("div", { "class": "tile" }, [el("div", { "class": "k" }, k), el("div", { "class": "v" }, v), s ? el("div", { "class": "s" }, s) : null]); }
+
+  // ---- overview table ---------------------------------------------------------------------------
+  function spark(vals) {
+    var W = 92, H = 26, p = 3;
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img" });
+    var pp = vals.filter(function (v) { return num(v) != null; });
+    if (pp.length < 2) { svg.setAttribute("aria-label", "Not enough steps for a trend"); svg.appendChild(sv("line", { x1: p, x2: W - p, y1: H - p, y2: H - p, style: "stroke:var(--grid)", "stroke-width": 1 })); if (pp.length === 1) svg.appendChild(sv("circle", { cx: p + 2, cy: H - p - 2, r: 3, style: "fill:var(--ink-2)" })); return svg; }
+    var mn = Math.min.apply(null, pp), mx = Math.max.apply(null, pp); if (mx - mn < 1e-9) { mn -= 0.05; mx += 0.05; }
+    function X(i) { return p + i / (pp.length - 1) * (W - 2 * p - 4); }
+    function Y(v) { return H - p - (v - mn) / (mx - mn) * (H - 2 * p); }
+    var d = ""; pp.forEach(function (v, i) { d += (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1); });
+    svg.setAttribute("aria-label", "Reward from " + pct(pp[0]) + " to " + pct(pp[pp.length - 1]) + " over " + pp.length + " steps");
+    svg.appendChild(sv("path", { d: d + "L" + X(pp.length - 1).toFixed(1) + " " + (H - p) + "L" + X(0).toFixed(1) + " " + (H - p) + "Z", style: "fill:var(--s1);fill-opacity:0.1;stroke:none" }));
+    svg.appendChild(sv("path", { d: d, style: "fill:none;stroke:var(--s1)", "stroke-width": 1.8, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    svg.appendChild(sv("circle", { cx: X(pp.length - 1), cy: Y(pp[pp.length - 1]), r: 3, style: "fill:var(--s1);stroke:var(--surface)", "stroke-width": 1.5 }));
+    return svg;
+  }
+  function metricCell(val, base, extra) {
+    if (val == null) return el("td", { "class": "n" }, "–");
+    return el("td", { "class": "n" }, el("div", { "class": "cellv" }, [el("b", null, pct(val) + (extra || "")), baseline && base != null ? deltaNode(val - base) : null]));
+  }
+  function statusPill(v) {
+    var info = STATUS[v.status] || { label: String(v.status), cls: "s-idle", icon: "info" };
+    return el("span", { "class": "pill " + info.cls }, [icon(info.icon), info.label]);
+  }
+  function renderOverview() {
+    var host = $("overview-body"); clear(host);
+    var ids = pilotIds();
+    var t = el("table", { "class": "ov" });
+    var heads = [["Pilot", "pn", ""], ["Status and steps", "", "RL steps done of the budget"], ["Reward", "", "Mean training reward a step"],
+      ["Greedy pass@1", "n", "Evalset, greedy decoding; change against the baseline"], ["Mean@8", "n", "Evalset, 8 samples a question"], ["pass@8", "n", "Share of questions any of 8 sampled answers gets right"],
+      ["Sign test", "", "Question by question against the baseline"], ["Reading", "", "A rough guide from the judging rules"]];
+    var hr = el("tr");
+    heads.forEach(function (h) { hr.appendChild(el("th", { "class": h[1], title: h[2] || null, scope: "col" }, h[0])); });
+    t.appendChild(el("thead", null, hr));
+    var tb = el("tbody");
+    ids.forEach(function (id) {
+      var v = view(id), ev = v.ev, d = v.d;
+      var tr = el("tr", { "class": (id === selected ? "sel " : "") + (v.smoke ? "smoke" : ""), "data-id": id });
+      var nameBtn = el("button", { type: "button", "class": "pname", "aria-label": "Show " + id }, id);
+      tr.appendChild(el("td", { "class": "pn" }, [
+        el("div", { "class": "row", style: "gap:6px" }, [el("i", { "class": "key dot", style: "background:" + v.color + ";margin:0" }), nameBtn, v.smoke ? el("span", { "class": "tag" }, "smoke") : null]),
+        d.method ? el("div", { "class": "pmeth" }, d.method) : null
+      ]));
+      var live = v.active && v.fresh ? el("span", { "class": "live" }, [el("i"), "Live"]) : (v.active && v.last != null ? el("span", { "class": "stale" }, [icon("warn"), "Quiet " + span(Date.now() - v.last)]) : null);
+      var tot = v.total, frac = tot ? Math.min(1, v.step / tot) : 0;
+      tr.appendChild(el("td", null, el("div", { "class": "stack-sm", style: "gap:5px;align-items:flex-start" }, [
+        el("div", { "class": "row", style: "gap:6px 10px" }, [statusPill(v), live]),
+        el("div", { "class": "row", style: "gap:8px" }, [
+          el("span", { "class": "sub", style: "font-variant-numeric:tabular-nums;white-space:nowrap" }, v.t || v.step ? int(v.step) + " / " + (tot ? int(tot) : "?") + " steps" : (tot ? "0 / " + int(tot) + " steps" : "–")),
+          el("div", { "class": "progress mini" + (v.status === "done" ? " good" : ""), role: "progressbar", "aria-label": id + " steps", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(frac * 100) }, el("div", { style: "width:" + (frac * 100).toFixed(1) + "%" }))
+        ])
+      ])));
+      var rew = v.steps.map(function (s) { return num(s.reward_mean); });
+      var lastR = null; for (var i = rew.length - 1; i >= 0; i--) if (rew[i] != null) { lastR = rew[i]; break; }
+      tr.appendChild(el("td", null, el("div", { "class": "spk" }, [spark(rew), el("span", { "class": "sv" }, lastR != null ? pct(lastR, 0) : "")])));
+      tr.appendChild(metricCell(g1(ev), baseline ? g1(baseline) : null));
+      tr.appendChild(metricCell(m8(ev), baseline ? m8(baseline) : null));
+      var l8 = ev ? lastPk(ev.pass_at_k) : null;
+      tr.appendChild(metricCell(l8 ? l8.v : null, baseline ? p8(baseline) : null, l8 && l8.k !== 8 ? " @" + l8.k : ""));
+      var st = ev ? signText(ev.vs_baseline) : null;
+      tr.appendChild(el("td", null, st ? el("div", { "class": "st-sign" }, [
+        el("div", null, (st.b != null ? st.b : "–") + " better · " + (st.w != null ? st.w : "–") + " worse"),
+        el("div", { "class": "muted" }, "p " + (st.p != null && st.p < 0.001 ? "" : "= ") + pfmt(st.p) + (st.clear ? " · clear" : ""))
+      ]) : el("span", { "class": "muted" }, "–")));
+      var rd = reading(v), can = canaries(v).filter(function (c) { return c.flag; });
+      var rdn = el("div", { "class": "stack-sm", style: "gap:2px" }, [
+        el("span", { "class": "rd rd-" + rd.kind }, [icon(rd.kind === "good" ? "check" : rd.kind === "bad" ? "cross" : rd.kind === "warn" ? "warn" : "ring"), rd.label]),
+        rd.sub ? el("span", { "class": "rdsub" }, rd.sub) : null,
+        can.length ? el("span", { "class": "rdsub" }, [icon("warn"), " Canary: " + can[0].flag]) : null
+      ]);
+      tr.appendChild(el("td", null, rdn));
+      (function (pid) {
+        tr.addEventListener("click", function () { selectPilot(pid); });
+        nameBtn.addEventListener("click", function (e) { e.stopPropagation(); selectPilot(pid); });
+      })(id);
+      for (var ci = 0; ci < tr.children.length && ci < heads.length; ci++) tr.children[ci].setAttribute("data-label", heads[ci][0]);
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    host.appendChild(el("div", { "class": "tablewrap" }, t));
+    host.appendChild(el("p", { "class": "note" }, baseline
+      ? "Changes are in percentage points against the baseline (greedy " + pct(g1(baseline)) + ", mean@8 " + pct(m8(baseline)) + ", pass@8 " + pct(p8(baseline)) + "). The evalset has 200 questions, so one question is 0.5 points; the sign test says whether a change is more than chance. Smoke runs only test the loop."
+      : "The baseline numbers are not loaded, so no changes are shown."));
+  }
+  function selectPilot(id) { selected = id; userPicked = true; renderAll(); }
+
+  // ---- comparison chart -------------------------------------------------------------------------
+  function renderCompare() {
+    var ctrl = $("compare-ctrl"), host = $("compare-body"); clear(ctrl); clear(host);
+    var ids = pilotIds();
+    var anySmokeEval = ids.some(function (id) { return isSmoke(id) && view(id).ev; });
+    var list = ids.map(view).filter(function (v) { return v.ev && (!v.smoke || ui.includeSmoke); });
+    if (anySmokeEval) {
+      var lb = el("label", { "class": "check-lb", "for": "inc-smoke" });
+      var cb = el("input", { type: "checkbox", id: "inc-smoke" }); cb.checked = ui.includeSmoke;
+      cb.addEventListener("change", function () { ui.includeSmoke = cb.checked; renderCompare(); flush(); });
+      lb.appendChild(cb); lb.appendChild(document.createTextNode("Include smoke runs"));
+      ctrl.appendChild(lb);
+    }
+    if (list.length) ctrl.appendChild(seg([{ value: "chart", label: "Chart" }, { value: "table", label: "Table" }], ui.cmpView, function (v) { ui.cmpView = v; renderCompare(); flush(); }, "Comparison view"));
+    var legend = el("div", { "class": "legend" });
+    list.forEach(function (v) { legend.appendChild(el("span", null, [el("b", { "class": "sw", style: "background:" + v.color }), v.id])); });
+    if (baseline) legend.appendChild(el("span", null, [el("b", { "class": "dash" }), "baseline"]));
+    if (legend.childNodes.length) host.appendChild(legend);
+    var box = chartHost(); host.appendChild(box);
+    if (ui.cmpView === "table" && list.length) box.appendChild(compareTable(list));
+    else later(function () { drawCompare(box, list); });
+    host.appendChild(el("p", { "class": "note" }, list.length
+      ? "Each group is one measure on the 200-question evalset. The dashed line is the baseline for that measure; a bar above it is an improvement."
+      : "No pilot has been evaluated yet. The bars appear when the first pilot's evaluation lands" + (baseline ? "; the dashed lines are the baseline to beat." : ".")));
+  }
+  function compareTable(list) {
+    var t = el("table");
+    var hr = el("tr");
+    ["Pilot", "Greedy pass@1", "Mean@8", "pass@8", "Sign test"].forEach(function (h, i) { hr.appendChild(el("th", { "class": i && i < 4 ? "n" : "", scope: "col" }, h)); });
+    t.appendChild(el("thead", null, hr));
+    var tb = el("tbody");
+    if (baseline) tb.appendChild(el("tr", { "class": "tot" }, [el("td", null, "baseline"), el("td", { "class": "n" }, pct(g1(baseline))), el("td", { "class": "n" }, pct(m8(baseline))), el("td", { "class": "n" }, pct(p8(baseline))), el("td", null, "–")]));
+    list.forEach(function (v) {
+      var st = signText(v.ev.vs_baseline);
+      function c(val, base) { return el("td", { "class": "n" }, el("div", { "class": "cellv" }, [el("b", null, pct(val)), baseline && base != null && val != null ? deltaNode(val - base) : null])); }
+      tb.appendChild(el("tr", null, [el("td", { "class": "nm" }, [el("span", { "class": "key", style: "background:" + v.color }), v.id]),
+        c(g1(v.ev), baseline ? g1(baseline) : null), c(m8(v.ev), baseline ? m8(baseline) : null), c(p8(v.ev), baseline ? p8(baseline) : null),
+        el("td", null, st ? st.b + " better · " + st.w + " worse, p " + (st.p != null && st.p < 0.001 ? "" : "= ") + pfmt(st.p) : "–")]));
+    });
+    t.appendChild(tb);
+    return el("div", { "class": "tablewrap" }, t);
+  }
+  function drawCompare(host, list) {
+    clear(host);
+    var defs = [
+      { label: "Greedy pass@1", get: function (b) { return g1(b); } },
+      { label: "Mean@8", get: function (b) { return m8(b); } },
+      { label: "pass@8", get: function (b) { return p8(b); } }
+    ];
+    var vals = [];
+    defs.forEach(function (df) { if (baseline) { var bv = df.get(baseline); if (bv != null) vals.push(bv); } list.forEach(function (v) { var x = df.get(v.ev); if (x != null) vals.push(x); }); });
+    if (!vals.length) { host.appendChild(el("div", { "class": "empty-chart" }, "Nothing to compare yet.")); return; }
+    var W = Math.max(260, Math.floor(host.clientWidth || 640)), H = 280, narrow = W < 520;
+    var m = { t: 18, r: 12, b: 52, l: 40 };
+    var vmax = Math.max.apply(null, vals), step = vmax <= 0.5 ? 0.1 : 0.2;
+    var ymax = Math.min(1, Math.ceil((vmax + 0.04) / step - 1e-9) * step); if (ymax < step * 2) ymax = step * 2;
+    var y0 = H - m.b, y1 = m.t;
+    function Y(v) { return y0 - v / ymax * (y0 - y1); }
+    var gw = (W - m.l - m.r) / defs.length;
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": "Grouped bars: greedy pass@1, mean@8 and pass@8 for each evaluated pilot, with the baseline as a dashed line. The table view lists every value." });
+    for (var v = 0; v <= ymax + 1e-9; v += step) {
+      svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), style: "stroke:" + (v < 1e-9 ? "var(--axis)" : "var(--grid)"), "stroke-width": 1 }));
+      svg.appendChild(sv("text", { x: m.l - 6, y: Y(v) + 3.5, "text-anchor": "end", text: Math.round(v * 100) + "%" }));
+    }
+    var n = list.length;
+    defs.forEach(function (df, gi) {
+      var gx = m.l + gw * gi, pad = gw * 0.12, inner = gw - 2 * pad;
+      var gap = 3, bw = n ? Math.max(6, Math.min(44, (inner - gap * (n - 1)) / n)) : 0;
+      var used = n * bw + gap * Math.max(0, n - 1), sx = gx + (gw - used) / 2;
+      list.forEach(function (p, i) {
+        var val = df.get(p.ev); if (val == null) return;
+        var x = sx + i * (bw + gap), top = Y(val), h = y0 - top, rr = Math.min(3, h);
+        svg.appendChild(sv("path", { d: "M" + x + " " + y0 + "V" + (top + rr) + "Q" + x + " " + top + " " + (x + rr) + " " + top + "H" + (x + bw - rr) + "Q" + (x + bw) + " " + top + " " + (x + bw) + " " + (top + rr) + "V" + y0 + "Z", style: "fill:" + p.color }));
+        if (bw >= 30 || n <= 2) svg.appendChild(sv("text", { x: x + bw / 2, y: top - 5, "text-anchor": "middle", "class": "val", text: pct(val) }));
+        var hit = sv("rect", { x: x - gap / 2, y: y1, width: bw + gap, height: y0 - y1, style: "fill:transparent" });
+        hit.addEventListener("pointermove", function (e) {
+          var bv = baseline ? df.get(baseline) : null, st = signText(p.ev.vs_baseline);
+          showTip([el("div", { "class": "t" }, p.id + " · " + df.label), trow(p.color, "Pilot", pct(val)),
+            bv != null ? trow("var(--ink)", "Baseline", pct(bv)) : null, bv != null ? el("div", { "class": "x" }, pts(val - bv) + " against the baseline") : null,
+            st ? el("div", { "class": "x" }, "Sign test: " + st.b + " better, " + st.w + " worse, p " + (st.p != null && st.p < 0.001 ? "" : "= ") + pfmt(st.p)) : null], e.clientX, e.clientY);
+        });
+        hit.addEventListener("pointerleave", hideTip);
+        svg.appendChild(hit);
+      });
+      if (baseline) {
+        var bv = df.get(baseline);
+        if (bv != null) svg.appendChild(sv("line", { x1: gx + pad * 0.4, x2: gx + gw - pad * 0.4, y1: Y(bv), y2: Y(bv), style: "stroke:var(--ink)", "stroke-width": 1.6, "stroke-dasharray": "6 4" }));
+        svg.appendChild(sv("text", { x: gx + gw / 2, y: y0 + 30, "text-anchor": "middle", text: bv != null ? "baseline " + pct(bv) : "" }));
+      }
+      svg.appendChild(sv("text", { x: gx + gw / 2, y: y0 + 15, "text-anchor": "middle", "class": "lbl", text: df.label }));
+    });
+    host.appendChild(svg);
+  }
+
+  // ---- detail -----------------------------------------------------------------------------------
+  function datasetNames(v) {
+    var names = DATASETS.slice();
+    function add(n) { if (n && names.indexOf(n) < 0) names.push(n); }
+    v.steps.forEach(function (s) { if (isObj(s.reward_by_set)) Object.keys(s.reward_by_set).sort().forEach(add); });
+    if (v.ev && isObj(v.ev.by_set)) Object.keys(v.ev.by_set).sort().forEach(add);
+    if (baseline && isObj(baseline.by_set)) Object.keys(baseline.by_set).sort().forEach(add);
+    return names;
+  }
+  function renderDetail() {
+    var ctrl = $("detail-ctrl"), host = $("detail-body"); clear(ctrl); clear(host);
+    var ids = pilotIds();
+    if (!ids.length) return;
+    if (!selected || !pilots[selected]) selected = defaultPick();
+    ctrl.appendChild(seg(ids.map(function (id) { return { value: id, label: id, color: pilotColor(id) }; }), selected, selectPilot, "Choose a pilot"));
+    var lb = el("label", { "class": "check-lb", "for": "smooth-box" });
+    var cb = el("input", { type: "checkbox", id: "smooth-box" }); cb.checked = ui.smooth;
+    cb.addEventListener("change", function () { ui.smooth = cb.checked; renderDetail(); flush(); });
+    lb.appendChild(cb); lb.appendChild(document.createTextNode("Smooth curves (3 steps)"));
+    ctrl.appendChild(lb);
+    var v = view(selected);
+    host.appendChild(detailStatus(v));
+    if (!v.steps.length) {
+      host.appendChild(el("div", { "class": "card gate" }, [el("h2", null, v.status === "planned" ? "Not started" : "No steps yet"), el("p", null, v.status === "planned" ? "This pilot has not started. Its curves appear after the first RL step finishes." : "The pilot is registered, but no RL step has finished yet.")]));
+      host.appendChild(eventsCard(v));
+      return;
+    }
+    host.appendChild(trainingCharts(v));
+    host.appendChild(evalSection(v));
+    host.appendChild(eventsCard(v));
+  }
+  function defaultPick() {
+    var vs = pilotIds().map(view);
+    var pick = vs.filter(function (v) { return v.active && !v.smoke; })[0] || vs.filter(function (v) { return v.active; })[0];
+    if (pick) return pick.id;
+    var started = vs.filter(function (v) { return v.last != null; }).sort(function (a, b) { return b.last - a.last; });
+    var real = started.filter(function (v) { return !v.smoke; })[0];
+    return (real || started[0] || vs[0]).id;
+  }
+
+  function detailStatus(v) {
+    var d = v.d, card = el("section", { "class": "card stack-sm", "aria-label": v.id + " status" });
+    var badge = null;
+    if (v.active && v.fresh) badge = el("span", { "class": "live" }, [el("i"), "Live"]);
+    else if (v.active && v.last != null) badge = el("span", { "class": "stale" }, [icon("warn"), "No update for " + span(Date.now() - v.last)]);
+    card.appendChild(el("div", { "class": "top" }, [
+      el("div", { "class": "row" }, [el("i", { "class": "key dot", style: "background:" + v.color + ";margin:0" }), el("h2", { "class": "mono" }, v.id), v.smoke ? el("span", { "class": "tag" }, "smoke") : null, statusPill(v), badge]),
+      el("div", { "class": "sub", title: v.last != null ? new Date(v.last).toLocaleString() : "" }, v.last != null ? "Updated " + ago(v.last) + (slow ? " (saved copy, store not reached yet)" : "") : "No update yet")
+    ]));
+    var title = d.title || d.method;
+    if (title) card.appendChild(el("p", { "class": "sub" }, title));
+    if (v.t && v.t.note) card.appendChild(el("p", { "class": "note-line" }, v.t.note));
+    var cfg = v.cfg, chips = el("div", { "class": "chips" });
+    var order = ["steps", "questions_per_step", "group_size", "temperature", "lr", "kl_beta", "clip", "lora_r"];
+    function addChip(k) { var val = cfg[k]; if (val == null || typeof val === "object") return; chips.appendChild(el("span", { "class": "chip", title: k }, [k.replace(/_/g, " ") + " ", el("b", null, typeof val === "number" ? (k === "temperature" ? val.toFixed(1) : cfgNum(val)) : String(val))])); }
+    order.forEach(addChip);
+    Object.keys(cfg).sort().forEach(function (k) { if (order.indexOf(k) < 0) addChip(k); });
+    if (chips.childNodes.length) card.appendChild(chips);
+    var started = ms(d.started_at);
+    var steps = v.steps, lastS = steps[steps.length - 1];
+    var stepSs = steps.map(function (s) { return num(s.step_s); }).filter(function (x) { return x != null; });
+    var avgStep = mean(stepSs);
+    var frac = v.total ? Math.min(1, v.step / v.total) : 0;
+    card.appendChild(el("div", { "class": "stack-sm", style: "gap:6px" }, [
+      el("div", { "class": "block-head" }, [el("h3", null, "Progress"), el("span", { "class": "sub" }, int(v.step) + " of " + (v.total ? int(v.total) : "?") + " steps · " + (frac * 100).toFixed(0) + "%")]),
+      el("div", { "class": "progress" + (v.status === "done" ? " good" : ""), role: "progressbar", "aria-label": "Steps done", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(frac * 100) }, el("div", { style: "width:" + (frac * 100).toFixed(1) + "%" }))
+    ]));
+    var eta = v.t ? num(v.t.eta_s) : null;
+    if (eta == null && avgStep != null && v.total && v.active && v.step < v.total) eta = avgStep * (v.total - v.step);
+    var rews = steps.map(function (s) { return num(s.reward_mean); });
+    var best = null, bestAt = null; rews.forEach(function (r, i) { if (r != null && (best == null || r > best)) { best = r; bestAt = steps[i].step; } });
+    var lastRew = null; for (var i = rews.length - 1; i >= 0; i--) if (rews[i] != null) { lastRew = rews[i]; break; }
+    var endT = v.active && v.fresh ? Date.now() : (v.last != null ? v.last : started);
+    card.appendChild(el("div", { "class": "tiles" }, [
+      tile("Latest reward", lastRew != null ? pct(lastRew) : "–", lastS && num(lastS.solve_rate) != null ? "solve rate " + pct(lastS.solve_rate) : "mean over the step's rollouts"),
+      tile("Best reward", best != null ? pct(best) : "–", bestAt != null ? "at step " + bestAt : null),
+      tile("Step time", avgStep != null ? span(avgStep * 1000) : "–", avgStep != null ? "mean over " + stepSs.length + (stepSs.length === 1 ? " step" : " steps") : null),
+      tile("Time left", eta != null && v.active ? span(eta * 1000) : "–", v.active ? (eta != null ? "estimate" : "not estimated yet") : "not running"),
+      tile("Elapsed", started != null && endT != null ? span(Math.max(0, endT - started)) : "–", started != null ? "started " + stamp(started) : null)
+    ]));
+    if (d.notes) card.appendChild(el("p", { "class": "sub pdesc" }, d.notes));
+    return card;
+  }
+
+  function trainingCharts(v) {
+    var wrap = el("div", { "class": "stack" }), steps = v.steps;
+    var xmax = Math.max(v.total || 0, steps[steps.length - 1].step, 2), xmin = 1;
+    var names = datasetNames(v);
+    var xt = function (x) { return "Step " + x; };
+    var grid = el("div", { "class": "res-grid" });
+
+    // reward
+    var cR = el("div", { "class": "card c7" });
+    var sets = names.filter(function (n) { return steps.some(function (s) { return isObj(s.reward_by_set) && num(s.reward_by_set[n]) != null; }); });
+    var lg = el("div", { "class": "legend" }, [el("span", null, [el("b", { style: "background:var(--ink)" }), "all datasets"])]);
+    sets.forEach(function (n) { lg.appendChild(el("span", null, [el("b", { style: "background:" + datasetColor(n, names) }), n])); });
+    cR.appendChild(el("div", { "class": "chart-head" }, [el("h3", null, "Training reward"), el("span", { "class": "sub" }, "share of rollouts the checker marks right")]));
+    cR.appendChild(lg);
+    var hR = chartHost(); cR.appendChild(hR);
+    cR.appendChild(el("p", { "class": "note" }, "Measured on the training questions only, so it is not the evalset score. It should climb; a flat curve means the pilot is not learning."));
+    var rs = [lineOf("all datasets", "var(--ink)", seriesOf(steps, function (s) { return s.reward_mean; }), { width: 2.4 })];
+    sets.forEach(function (n) { rs.push(lineOf(n, datasetColor(n, names), seriesOf(steps, function (s) { return isObj(s.reward_by_set) ? s.reward_by_set[n] : null; }), { width: 1.5 })); });
+    later(function () { lineChart(hR, { series: rs, xmin: xmin, xmax: xmax, h: 230, yfmt: pctTick, vfmt: function (y) { return pct(y); }, xtitle: xt, label: "Training reward per step, overall and per dataset", empty: "No reward values yet." }); });
+    grid.appendChild(cR);
+
+    // solve rate and informative fraction
+    var cS = el("div", { "class": "card c5" });
+    cS.appendChild(el("div", { "class": "chart-head" }, [el("h3", null, "What each step learns from")]));
+    var ss = [];
+    if (steps.some(function (s) { return num(s.solve_rate) != null; })) ss.push(lineOf("Solve rate", "var(--s1)", seriesOf(steps, function (s) { return s.solve_rate; })));
+    if (steps.some(function (s) { return num(s.informative_frac) != null; })) ss.push(lineOf("Informative groups", "var(--s3)", seriesOf(steps, function (s) { return s.informative_frac; })));
+    if (steps.some(function (s) { return num(s.undecided_frac) != null; })) ss.push(lineOf("Undecided answers", "var(--muted)", seriesOf(steps, function (s) { return s.undecided_frac; }), { dash: true }));
+    var lg2 = el("div", { "class": "legend" }); ss.forEach(function (s) { lg2.appendChild(el("span", null, [el("b", { style: "background:" + s.color }), s.name])); });
+    cS.appendChild(lg2);
+    var hS = chartHost(); cS.appendChild(hS);
+    cS.appendChild(el("p", { "class": "note" }, "Informative groups are the questions with some right and some wrong rollouts: the only ones that carry a gradient for GRPO-style methods. Undecided answers are ones the checker could not settle."));
+    later(function () { lineChart(hS, { series: ss, xmin: xmin, xmax: xmax, h: 230, yfmt: pctTick, vfmt: function (y) { return pct(y); }, xtitle: xt, label: "Solve rate, informative group share and undecided share per step", empty: "No solve-rate values yet." }); });
+    grid.appendChild(cS);
+    wrap.appendChild(grid);
+
+    // small multiples
+    var metrics = [
+      { key: "kl", title: "KL to the SFT model", color: "var(--s2)" },
+      { key: "entropy", title: "Entropy", color: "var(--s1)" },
+      { key: "resp_tokens", title: "Response length (tokens)", color: "var(--s3)" },
+      { key: "loss", title: "Loss", color: "var(--s4)" },
+      { key: "clip_frac", title: "Clip fraction", color: "var(--s5)", pct: true },
+      { key: "grad_norm", title: "Gradient norm", color: "var(--s6)" },
+      { key: "lr", title: "Learning rate", color: "var(--ink-2)", exp: true }
+    ];
+    var extras = {};
+    steps.forEach(function (s) { Object.keys(s).forEach(function (k) { if (KNOWN_STEP_KEYS.indexOf(k) < 0 && num(s[k]) != null) extras[k] = true; }); });
+    Object.keys(extras).sort().slice(0, 12).forEach(function (k) { metrics.push({ key: k, title: cap(k), color: "var(--ink-2)", extra: true }); });
+    var minis = el("div", { "class": "minis" });
+    metrics.forEach(function (mt) {
+      var pp = seriesOf(steps, function (s) { return s[mt.key]; });
+      if (!pp.length) return;
+      var c = el("div", { "class": "card" });
+      var lastV = pp[pp.length - 1][1];
+      c.appendChild(el("div", { "class": "chart-head" }, [el("h3", null, mt.title), el("span", { "class": "sub", style: "font-variant-numeric:tabular-nums" }, mt.pct ? pct(lastV) : (mt.exp ? lastV.toExponential(1) : fnum(lastV)))]));
+      var h = chartHost(); c.appendChild(h);
+      var vf = mt.pct ? function (y) { return pct(y); } : (mt.exp ? function (y) { return y.toExponential(2); } : fnum);
+      later(function () { lineChart(h, { series: [lineOf(mt.title, mt.color, pp)], xmin: xmin, xmax: xmax, h: 130, l: mt.exp ? 52 : 44, yfmt: mt.pct ? pctTick : (mt.exp ? expTick : tickFmt), vfmt: vf, xtitle: xt, label: mt.title + " per step" }); });
+      minis.appendChild(c);
+    });
+    if (minis.childNodes.length) {
+      wrap.appendChild(el("div", { "class": "block-head" }, [el("h3", null, "Optimiser and policy signals"), el("span", { "class": "sub" }, "latest value at the top right of each chart")]));
+      wrap.appendChild(minis);
+    }
+
+    // step time + canaries
+    var grid2 = el("div", { "class": "res-grid" });
+    var cT = el("div", { "class": "card c7" });
+    cT.appendChild(el("div", { "class": "chart-head" }, [el("h3", null, "Where a step's time goes"), el("span", { "class": "sub" }, "minutes a step")]));
+    var lgT = el("div", { "class": "legend" }, [
+      el("span", null, [el("b", { "class": "sw", style: "background:var(--s1)" }), "Rollouts"]),
+      el("span", null, [el("b", { "class": "sw", style: "background:var(--s4)" }), "Scoring"]),
+      el("span", null, [el("b", { "class": "sw", style: "background:var(--s3)" }), "Training"]),
+      el("span", null, [el("b", { "class": "sw", style: "background:var(--grid)" }), "Other"])
+    ]);
+    cT.appendChild(lgT);
+    var hT = chartHost(); cT.appendChild(hT);
+    cT.appendChild(el("p", { "class": "note" }, "This decides whether a stage runs on the local card or on Modal. A real step is the whole loop: generate, check, train, convert the adapter."));
+    later(function () { drawStepTime(hT, steps, xmax); });
+    grid2.appendChild(cT);
+    var cC = el("div", { "class": "card c5" });
+    cC.appendChild(el("div", { "class": "chart-head" }, [el("h3", null, "Canaries")]));
+    cC.appendChild(canaryTable(v));
+    grid2.appendChild(cC);
+    wrap.appendChild(grid2);
+    return wrap;
+  }
+
+  function canaryTable(v) {
+    var rows = canaries(v), host = el("div", { "class": "stack-sm" });
+    if (!rows.length) { host.appendChild(el("p", { "class": "sub" }, "Entropy, response length and KL appear here once the pilot logs them.")); return host; }
+    var t = el("table");
+    t.appendChild(el("thead", null, el("tr", null, [el("th", { scope: "col" }, "Signal"), el("th", { "class": "n", scope: "col" }, "Start"), el("th", { "class": "n", scope: "col" }, "Now"), el("th", { "class": "n", scope: "col" }, "Change")])));
+    var tb = el("tbody");
+    rows.forEach(function (r) {
+      var chg = r.change == null ? "–" : (r.change >= 0 ? "+" : "−") + Math.abs(r.change * 100).toFixed(0) + "%";
+      tb.appendChild(el("tr", null, [
+        el("td", null, r.flag ? el("span", { "class": "warn-text", style: "display:inline-flex;gap:5px;align-items:center" }, [icon("warn"), r.name]) : r.name),
+        el("td", { "class": "n" }, r.first != null ? fnum(r.first) : "–"), el("td", { "class": "n" }, fnum(r.last)), el("td", { "class": "n" }, chg)]));
+    });
+    t.appendChild(tb);
+    host.appendChild(el("div", { "class": "tablewrap" }, t));
+    var flagged = rows.filter(function (r) { return r.flag; });
+    host.appendChild(el("p", { "class": "note" }, flagged.length
+      ? "Flagged: " + flagged.map(function (r) { return r.flag; }).join("; ") + "."
+      : "Steady. Start and now are averages of the first and last 3 steps. Flagged when entropy moves more than 50% or response length more than 40%."));
+    return host;
+  }
+
+  function drawStepTime(host, steps, xmax) {
+    clear(host);
+    var parts = [{ key: "rollout_s", name: "Rollouts", color: "var(--s1)" }, { key: "score_s", name: "Scoring", color: "var(--s4)" }, { key: "train_s", name: "Training", color: "var(--s3)" }];
+    var cols = steps.map(function (s) {
+      var segs = parts.map(function (p) { return { name: p.name, color: p.color, v: num(s[p.key]) || 0 }; });
+      var sum = segs.reduce(function (a, b) { return a + b.v; }, 0), tot = num(s.step_s);
+      if (tot != null && tot > sum * 1.03) segs.push({ name: "Other", color: "var(--grid)", v: tot - sum }); else tot = sum;
+      return { step: s.step, segs: segs, total: tot };
+    }).filter(function (c) { return c.total > 0; });
+    if (!cols.length) { host.appendChild(el("div", { "class": "empty-chart" }, "No step times logged yet.")); return; }
+    var W = Math.max(220, Math.floor(host.clientWidth || 420)), H = 220, m = { t: 12, r: 12, b: 28, l: 44 };
+    var maxM = Math.max.apply(null, cols.map(function (c) { return c.total / 60; }));
+    var st = niceStep(maxM, 4), ymax = Math.ceil(maxM / st - 1e-9) * st; if (ymax <= 0) ymax = st;
+    var y0 = H - m.b, y1 = m.t, slot = (W - m.l - m.r) / xmax;
+    function Y(v) { return y0 - v / ymax * (y0 - y1); }
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": "Stacked bars of minutes per step: rollouts, scoring, training and other" });
+    for (var v = 0; v <= ymax + st * 1e-6; v += st) {
+      svg.appendChild(sv("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), style: "stroke:" + (v === 0 ? "var(--axis)" : "var(--grid)"), "stroke-width": 1 }));
+      svg.appendChild(sv("text", { x: m.l - 6, y: Y(v) + 3.5, "text-anchor": "end", text: tickFmt(v, st) }));
+    }
+    var xs = Math.max(1, niceStep(xmax - 1, W < 360 ? 4 : 7));
+    function XC(x) { return m.l + (x - 0.5) * slot; }
+    svg.appendChild(sv("text", { x: XC(1), y: H - 10, "text-anchor": "middle", text: "1" }));
+    for (var t = Math.ceil(1 / xs) * xs; t <= xmax + 1e-9; t += xs) if (t > 1 + xs * 0.4) svg.appendChild(sv("text", { x: XC(t), y: H - 10, "text-anchor": "middle", text: String(t) }));
+    var bw = Math.max(2, Math.min(26, slot * 0.72));
+    cols.forEach(function (c) {
+      var acc = 0, cx = XC(c.step) - bw / 2;
+      c.segs.forEach(function (sg) {
+        if (sg.v <= 0) return;
+        var ya = Y(acc / 60), yb = Y((acc + sg.v) / 60);
+        svg.appendChild(sv("rect", { x: cx, y: yb, width: bw, height: Math.max(0.5, ya - yb), style: "fill:" + sg.color + ";stroke:var(--surface)", "stroke-width": 1 }));
+        acc += sg.v;
+      });
+      var hit = sv("rect", { x: XC(c.step) - slot / 2, y: y1, width: slot, height: y0 - y1, style: "fill:transparent" });
+      hit.addEventListener("pointermove", function (e) {
+        showTip([el("div", { "class": "t" }, "Step " + c.step)].concat(c.segs.filter(function (sg) { return sg.v > 0; }).map(function (sg) { return trow(sg.color, sg.name, span(sg.v * 1000)); })).concat([el("div", { "class": "x" }, "Total " + span(c.total * 1000))]), e.clientX, e.clientY);
+      });
+      hit.addEventListener("pointerleave", hideTip);
+      svg.appendChild(hit);
+    });
+    host.appendChild(svg);
+  }
+
+  // ---- evaluation -------------------------------------------------------------------------------
+  function evalSection(v) {
+    var ev = v.ev, wrap = el("div", { "class": "stack" });
+    wrap.appendChild(el("div", { "class": "top" }, [el("h3", { style: "font-size:0.98rem" }, "Evaluation on the 200-question evalset"),
+      el("span", { "class": "sub" }, "Step 1's measurement, the same questions and settings as the baseline")]));
+    if (!ev) {
+      wrap.appendChild(el("div", { "class": "card gate", style: "padding:24px 16px" }, [el("h2", null, v.status === "evaluating" ? "Evaluation is running" : "Not evaluated yet"),
+        el("p", null, v.status === "evaluating" ? "The numbers appear here when the pilot's 200 questions have been answered and scored." : v.status === "done" ? "This pilot finished without an evaluation." : "The evaluation runs after the last RL step.")]));
+      return wrap;
+    }
+    var names = datasetNames(v), b = baseline;
+    var l = lastPk(ev.pass_at_k), bl = b ? lastPk(b.pass_at_k) : null;
+    var st = signText(ev.vs_baseline), rd = reading(v);
+    var room = l && g1(ev) != null ? l.v - g1(ev) : null;
+    function dt(val, base) { return b && base != null && val != null ? pts(val - base) + " against the baseline" : null; }
+    wrap.appendChild(el("div", { "class": "card stack-sm" }, [
+      el("div", { "class": "tiles" }, [
+        tile("Greedy pass@1", pct(g1(ev)), dt(g1(ev), b && g1(b))),
+        tile("Mean@8", pct(m8(ev)), dt(m8(ev), b && m8(b))),
+        tile("pass@" + (l ? l.k : 8), l ? pct(l.v) : "–", dt(l && l.v, bl && bl.v)),
+        tile("Room left", room != null ? pts(room) : "–", "pass@" + (l ? l.k : 8) + " minus greedy" + (b && bl && g1(b) != null ? " (baseline " + pts(bl.v - g1(b)) + ")" : "")),
+        tile("Sometimes right", num(ev.sometimes) != null ? int(ev.sometimes) : "–", b && num(b.sometimes) != null ? "baseline " + int(b.sometimes) : "questions right 1 to 7 of 8"),
+        tile("Never right", num(ev.never) != null ? int(ev.never) : "–", b && num(b.never) != null ? "baseline " + int(b.never) : "questions right 0 of 8")
+      ]),
+      el("div", { "class": "row" }, [
+        el("span", { "class": "rd rd-" + rd.kind }, [icon(rd.kind === "good" ? "check" : rd.kind === "bad" ? "cross" : rd.kind === "warn" ? "warn" : "ring"), rd.label]),
+        st ? el("span", { "class": "sub" }, "Sign test against the baseline: " + st.b + " questions better, " + st.w + " worse, p " + (st.p != null && st.p < 0.001 ? "" : "= ") + pfmt(st.p) + (st.clear ? " (clear)" : " (within noise)")) : el("span", { "class": "sub" }, "No sign test sent with this evaluation.")
+      ])
+    ]));
+
+    var grid = el("div", { "class": "res-grid" });
+    var cK = el("div", { "class": "card c7" });
+    cK.appendChild(el("div", { "class": "chart-head" }, [el("h3", null, "pass@k: share of questions solved with k tries"),
+      seg([{ value: "chart", label: "Chart" }, { value: "table", label: "Table" }], ui.passView, function (x) { ui.passView = x; renderDetail(); flush(); }, "Pass at k view")]));
+    var lgK = el("div", { "class": "legend" }, [el("span", null, [el("b", { style: "background:" + v.color }), v.id])]);
+    if (b && Array.isArray(b.pass_at_k)) lgK.appendChild(el("span", null, [el("b", { "class": "dash" }), "baseline"]));
+    cK.appendChild(lgK);
+    var hK = chartHost(); cK.appendChild(hK);
+    var K = Math.max(Array.isArray(ev.pass_at_k) ? ev.pass_at_k.length : 0, b && Array.isArray(b.pass_at_k) ? b.pass_at_k.length : 0, 2);
+    if (ui.passView === "table") hK.appendChild(passTable(ev, b, K, v));
+    else {
+      var pp = (ev.pass_at_k || []).map(function (y, i) { return [i + 1, num(y)]; }).filter(function (p) { return p[1] != null; });
+      var bp = b && Array.isArray(b.pass_at_k) ? b.pass_at_k.map(function (y, i) { return [i + 1, num(y)]; }).filter(function (p) { return p[1] != null; }) : [];
+      var series = [{ name: v.id, color: v.color, pts: pp, marker: true, width: 2 }];
+      if (bp.length) series.push({ name: "baseline", color: "var(--ink)", pts: bp, dash: true, marker: true, hollow: true, width: 1.5 });
+      var xt = []; for (var k = 1; k <= K; k++) xt.push(k);
+      later(function () {
+        lineChart(hK, { series: series, xmin: 1, xmax: K, xticks: xt, h: 240, yfmt: pctTick, vfmt: function (y) { return pct(y); }, xtitle: function (x) { return "pass@" + x + ": any of " + x + (x === 1 ? " sampled answer" : " sampled answers") + " right"; },
+          extra: function (x) { var a = pp.filter(function (q) { return q[0] === x; })[0], c = bp.filter(function (q) { return q[0] === x; })[0]; return a && c ? el("div", { "class": "x" }, pts(a[1] - c[1]) + " against the baseline") : null; },
+          label: "pass@k for " + v.id + " and the baseline" });
+      });
+    }
+    cK.appendChild(el("p", { "class": "note" }, "The curve should rise at the left (pass@1 up) without dropping at the right (pass@8). A pilot below the dashed line at high k has narrowed the model's answers."));
+    grid.appendChild(cK);
+
+    var cB = el("div", { "class": "card c5" });
+    cB.appendChild(el("div", { "class": "chart-head" }, [el("h3", null, "Never, sometimes, always right")]));
+    cB.appendChild(el("div", { "class": "legend" }, [
+      el("span", null, [el("b", { "class": "sw", style: "background:var(--b-never)" }), "Never"]),
+      el("span", null, [el("b", { "class": "sw", style: "background:var(--b-some)" }), "Sometimes"]),
+      el("span", null, [el("b", { "class": "sw", style: "background:var(--b-always)" }), "Always"])]));
+    var bk = el("div", { "class": "bstack" }); cB.appendChild(bk);
+    bucketRows(bk, ev, b, names);
+    cB.appendChild(el("p", { "class": "note" }, "In each pair, the top bar is the pilot and the faded bar below is the baseline. Questions move from never to sometimes and from sometimes to always when RL works."));
+    grid.appendChild(cB);
+    wrap.appendChild(grid);
+
+    // per dataset
+    var rowsList = names.filter(function (n) { return isObj(ev.by_set) && isObj(ev.by_set[n]); });
+    if (rowsList.length) {
+      var tc = el("div", { "class": "card stack-sm" });
+      tc.appendChild(el("h3", null, "By dataset"));
+      tc.appendChild(el("div", { "class": "tablewrap" }, datasetTable(ev, b, rowsList, names)));
+      tc.appendChild(el("p", { "class": "note" }, "Each pair is the pilot with its change against the baseline. text2cypher is mostly never-right at baseline, so a gain there is where SDPO and SRPO would show their worth."));
+      wrap.appendChild(tc);
+    }
+    return wrap;
+  }
+  function passTable(ev, b, K, v) {
+    var t = el("table");
+    var hr = el("tr", null, [el("th", { scope: "col" }, "Series"), el("th", { "class": "n", scope: "col" }, "Greedy")]);
+    for (var k = 1; k <= K; k++) hr.appendChild(el("th", { "class": "n nt", scope: "col" }, "pass@" + k));
+    t.appendChild(el("thead", null, hr));
+    var tb = el("tbody");
+    function row(name, color, blk) {
+      var r = el("tr", null, [el("td", { "class": "nm" }, [el("span", { "class": "key", style: "background:" + color }), name]), el("td", { "class": "n" }, pct(g1(blk)))]);
+      for (var k = 1; k <= K; k++) r.appendChild(el("td", { "class": "n" }, pct(Array.isArray(blk.pass_at_k) ? num(blk.pass_at_k[k - 1]) : null)));
+      tb.appendChild(r);
+    }
+    row(v.id, v.color, ev);
+    if (b) row("baseline", "var(--ink)", b);
+    t.appendChild(tb);
+    return el("div", { "class": "tablewrap" }, t);
+  }
+  function bucketRows(host, ev, b, names) {
+    var rows = [{ name: "overall", blk: ev, base: b, overall: true }];
+    names.forEach(function (n) { if (isObj(ev.by_set) && isObj(ev.by_set[n])) rows.push({ name: n, blk: ev.by_set[n], base: b && isObj(b.by_set) ? b.by_set[n] : null }); });
+    function barOf(blk, ghost) {
+      var nev = num(blk && blk.never) || 0, som = num(blk && blk.sometimes) || 0, alw = num(blk && blk.always) || 0, tot = nev + som + alw;
+      var bar = el("div", { "class": "bar" + (tot ? "" : " none") + (ghost ? " ghost" : "") });
+      if (!tot) return { bar: bar, tot: 0 };
+      [["never", nev, "Never right"], ["some", som, "Sometimes right"], ["always", alw, "Always right"]].forEach(function (s) {
+        if (!s[1]) return;
+        var sg = el("div", { "class": "sg " + s[0], style: "flex:" + s[1] + " 1 0" }, s[1] / tot >= 0.09 ? String(s[1]) : null);
+        sg.addEventListener("pointermove", function (e) { showTip([el("div", { "class": "t" }, (ghost ? "baseline" : "pilot")), trow(null, s[2], s[1] + (s[1] === 1 ? " question" : " questions")), el("div", { "class": "x" }, (s[1] / tot * 100).toFixed(0) + "% of " + tot)], e.clientX, e.clientY); });
+        sg.addEventListener("pointerleave", hideTip);
+        bar.appendChild(sg);
+      });
+      return { bar: bar, tot: tot };
+    }
+    rows.forEach(function (r) {
+      var a = barOf(r.blk, false), c = r.base ? barOf(r.base, true) : null;
+      host.appendChild(el("div", { "class": "brow" }, [
+        el("div", { "class": "bl", style: r.overall ? "font-weight:600" : "" }, r.name),
+        el("div", { "class": "bpair" }, [a.bar, c ? c.bar : null]),
+        el("div", { "class": "bt" }, a.tot ? int(a.tot) : "")]));
+    });
+  }
+  function datasetTable(ev, b, list, names) {
+    var t = el("table");
+    var heads = ["Dataset", "Greedy pass@1", "Mean@8", "pass@8", "Never", "Sometimes", "Always"];
+    var hr = el("tr"); heads.forEach(function (h, i) { hr.appendChild(el("th", { "class": i ? "n" : "", scope: "col" }, h)); });
+    t.appendChild(el("thead", null, hr));
+    var tb = el("tbody");
+    function mc(val, base) { return el("td", { "class": "n" }, el("div", { "class": "cellv" }, [el("b", null, pct(val)), b && base != null && val != null ? deltaNode(val - base) : null])); }
+    function cc(val, base) { return el("td", { "class": "n" }, el("div", { "class": "cellv" }, [el("b", null, num(val) != null ? int(val) : "–"), b && num(base) != null && num(val) != null ? el("span", { "class": "dl flat" }, "was " + int(base)) : null])); }
+    list.forEach(function (n) {
+      var e = ev.by_set[n], bs = b && isObj(b.by_set) && isObj(b.by_set[n]) ? b.by_set[n] : null;
+      tb.appendChild(el("tr", null, [el("td", { "class": "nm" }, [el("span", { "class": "key", style: "background:" + datasetColor(n, names) }), n]),
+        mc(g1(e), bs && g1(bs)), mc(m8(e), bs && m8(bs)), mc(p8(e), bs && p8(bs)), cc(e.never, bs && bs.never), cc(e.sometimes, bs && bs.sometimes), cc(e.always, bs && bs.always)]));
+    });
+    t.appendChild(tb);
+    return t;
+  }
+
+  function eventsCard(v) {
+    var card = el("section", { "class": "card stack-sm", "aria-label": "Events" });
+    card.appendChild(el("h3", null, "Latest events"));
+    var evs = v.t && Array.isArray(v.t.events) ? v.t.events.filter(function (e) { return isObj(e) && e.text; }) : [];
+    evs.sort(function (a, b) { return (ms(b.at) || 0) - (ms(a.at) || 0); });
+    if (!evs.length) { card.appendChild(el("div", { "class": "sub" }, "No events yet.")); return card; }
+    var ul = el("ul", { "class": "events" });
+    evs.slice(0, 20).forEach(function (e) {
+      var kind = e.kind === "warn" || e.kind === "error" ? e.kind : "info", t = ms(e.at);
+      ul.appendChild(el("li", { "class": "ev-" + kind }, [
+        icon(kind === "info" ? "info" : kind === "warn" ? "warn" : "cross"),
+        el("span", { "class": "tm", title: t != null ? new Date(t).toLocaleString() : "" }, t != null ? clock(t) : ""),
+        el("span", { "class": "tx" }, [el("span", { "class": "muted" }, kind === "info" ? "" : kind + ": "), String(e.text)])
+      ]));
+    });
+    card.appendChild(ul);
+    return card;
+  }
+
+  // ---- gate / render ----------------------------------------------------------------------------
+  function setGate(h, p) {
+    var g = $("gate"); clear(g);
+    g.appendChild(el("h2", null, h)); if (p) g.appendChild(el("p", null, p));
+    g.hidden = false;
+  }
+  function flush() { var q = queue; queue = []; q.forEach(function (fn) { try { fn(); } catch (e) { if (window.console) console.error(e); } }); }
+  function renderAll() {
+    hideTip(); queue = [];
+    var main = $("main"), gate = $("gate"), ids = pilotIds();
+    if (gateMode === "nodb") { gate.hidden = false; main.hidden = true; setGate("The live data isn't available in this view", "Open the page on claude.ai while signed in to see the pilots."); return; }
+    if (!ids.length) {
+      main.hidden = true;
+      if (!pilotsDefinitive && !slow) setGate("Connecting to the pilot data", "Nothing on this page is typed in by hand. It reads each pilot's own files, pushed here as the runs go.");
+      else if (!pilotsDefinitive) setGate("Can't reach the pilot data yet", "The page keeps trying. Nothing is shown until the store answers.");
+      else setGate("No pilot has started", "Pilots appear here as they are registered. The numbers come from each pilot's own files, pushed here during the run. Nothing is shown until then.");
+      return;
+    }
+    gate.hidden = true; main.hidden = false;
+    if (!selected || !pilots[selected]) selected = defaultPick();
+    renderSummary();
+    renderOverview();
+    renderCompare();
+    renderDetail();
+    flush();
+  }
+  function schedule() { clearTimeout(raf); raf = setTimeout(renderAll, 30); }
+
+  // ---- data -------------------------------------------------------------------------------------
+  function subscribePilot(id) {
+    try {
+      subs[id] = db.collection("pilots/" + id + "/ticks").orderBy("seq", "desc").limit(1).onSnapshot(function (snap) {
+        var d = snap.docs.length ? snap.docs[0].data() : null;
+        latest[id] = d && typeof d === "object" ? d : null;
+        schedule();
+      }, function () { schedule(); });
+    } catch (e) { schedule(); }
+  }
+  async function start() {
+    var loadTimer = setTimeout(function () { slow = true; schedule(); }, 10000);
+    try { db = await window.claude.use("db"); } catch (e) { db = null; }
+    if (!db) { clearTimeout(loadTimer); gateMode = "nodb"; schedule(); return; }
+    try {
+      db.doc("reference/baseline").onSnapshot(function (snap) {
+        baselineSeen = true;
+        var d = snap.exists ? snap.data() : null;
+        baseline = d && typeof d === "object" ? d : null;
+        schedule();
+      }, function () { baselineSeen = true; schedule(); });
+    } catch (e) { baselineSeen = true; }
+    db.collection("pilots").onSnapshot(function (snap) {
+      if (!snap.metadata.fromCache) { pilotsDefinitive = true; slow = false; clearTimeout(loadTimer); }
+      var next = {};
+      snap.docs.forEach(function (d) { var v = d.data(); if (v && typeof v === "object") { v = Object.assign({}, v); if (!v.name) v.name = d.id; next[d.id] = v; } });
+      Object.keys(subs).forEach(function (id) { if (!next[id]) { try { subs[id](); } catch (e) {} delete subs[id]; delete latest[id]; } });
+      pilots = next;
+      Object.keys(pilots).forEach(function (id) { if (!subs[id]) subscribePilot(id); });
+      if (selected && !pilots[selected]) { selected = null; userPicked = false; }
+      if (!userPicked) selected = null;
+      schedule();
+    }, function () { slow = true; schedule(); });
+  }
+  if (window.claude && typeof window.claude.use === "function") start(); else { gateMode = "nodb"; schedule(); }
+
+  // keep "updated 3 min ago" and the live flags honest, and redraw charts when the width changes
+  setInterval(function () { if (!$("main").hidden) renderAll(); }, 60000);
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(function (entries) {
+      var w = Math.round(entries[0].contentRect.width);
+      if (w !== lastW) { var first = lastW === 0; lastW = w; if (!first) schedule(); }
+    }).observe(document.querySelector(".wrap"));
+  }
+})();
+</script>

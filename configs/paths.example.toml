@@ -14,3 +14,9 @@ greedy_scores = '<drive>:\<folder>\scores_llamacpp_release-eval-Q8_0.json'
 trainer_repo = '<drive>:\<folder>\nfl-ask-trainer'
 # The trainer's venv inside WSL (it has the checker's dependencies, W&B and pytest).
 wsl_venv = '~/venvs/<venv>'
+# Step 2: the released model, merged bf16 (the RL trainer's starting weights) and its Q8_0
+# (the rollout server's), copied to a fast disk.
+model_hf = '<drive>:\<folder>\Spark-X2.6-4B-SQL-Cypher-Agent'
+model_gguf = '<drive>:\<folder>\Spark-X2.6-4B-SQL-Cypher-Agent-Q8_0.gguf'
+# A llama.cpp source tree with Spark support (its convert_lora_to_gguf.py and gguf-py).
+llama_cpp_src = '<drive>:\<folder>\llama.cpp'
