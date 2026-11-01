@@ -34,6 +34,10 @@ def pause(name: str, after_step: bool = False) -> dict:
         (run_dir / "STOP").write_text("", encoding="utf-8")
         event(run_dir, "warn", "pause requested: stopping after the current step")
         return {"pilot": name, "stop_after_step": True}
+    queue_pid = run_dir.parent / "queue.pid"  # a queue would start the next pilot: stop it too
+    if queue_pid.exists():
+        _run(["taskkill", "/PID", queue_pid.read_text().strip(), "/T", "/F"])
+        queue_pid.unlink(missing_ok=True)
     pid_file = run_dir / "run.pid"
     killed = None
     if pid_file.exists():

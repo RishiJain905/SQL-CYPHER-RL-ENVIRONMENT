@@ -68,13 +68,17 @@ class Server:
             self._prompts[row["id"]] = ids
         return ids
 
-    def complete(self, ids: list[int], n: int, cfg: dict[str, Any], seed: int,
-                 stop: list[str] | None = None) -> dict[str, Any]:  # fmt: skip
+    def complete(
+        self, ids: list[int], n: int, cfg: dict[str, Any], seed: int,
+        stop: list[str] | None = None, slot: int | None = None,
+    ) -> dict[str, Any]:  # fmt: skip
         body = {"prompt": ids, "n_predict": n, "temperature": cfg["temperature"],
                 "top_p": cfg["top_p"], "top_k": 0, "min_p": 0.0, "seed": seed,
                 "return_tokens": True, "n_probs": 1, "cache_prompt": True}  # fmt: skip
         if stop:
             body["stop"] = stop
+        if slot is not None:
+            body["id_slot"] = slot
         return _post(self.url + "/completion", body)
 
 
@@ -109,7 +113,8 @@ def rollout(server: Server, row: dict[str, Any], g: int, seed: int, cfg: dict[st
         mask.append(0)
         lp1 = (lp1 or []) + [None] if lp1 is not None else None
     room = max(cfg["max_tokens"] - len(think), 1)
-    r2 = server.complete(prompt + think, room, cfg, seed + 1)
+    # the same slot: its cache already holds the prompt and the thought (no second prefill)
+    r2 = server.complete(prompt + think, room, cfg, seed + 1, slot=r1.get("id_slot"))
     answer = list(r2.get("tokens") or [])
     lp2 = _chosen_logprobs(r2)
     behavior = lp1 + lp2 if lp1 is not None and lp2 is not None else None

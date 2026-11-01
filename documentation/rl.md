@@ -101,6 +101,12 @@ time a real step on the 7800 XT, which decides whether a stage runs locally or o
 settle the remaining settings with the method: the sampling temperature, the group size, the KL
 weight, the learning rate.
 
+### As built (2026-11-01)
+
+Rishi narrowed step 2 to **two pilots of 10 steps**: GRPO and SRPO (decisions R4). The loop, the
+budget, the pause and resume and the live tracker: `documentation/pilots/TRACKER.md`; the two
+runs and the methods explained: `documentation/rl-runs.md`. Code: `src/sqlrl/step2_pilots/`.
+
 ## Step 3 and onwards: the real RL run
 
 A curriculum; each stage starts from the one before and passes the gate before the next one starts.

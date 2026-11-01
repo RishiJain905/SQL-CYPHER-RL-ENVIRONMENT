@@ -45,3 +45,40 @@ last.
   started from inside WSL (`setsid nohup`, logs in the run folder), and the cause looked for.
 - **Resumes are safe:** `sample.drop_partial_line` cuts a half-written last line before
   appending; the driver writes its own `driver.log`.
+- **Update (step 2):** the likely cause is a console window. A process started without a
+  console gets a new, visible one for each console child (`wsl.exe`, `powershell`), and closing
+  such a window ends it with exactly this exit code. Step 2 starts every process hidden
+  (`CREATE_NO_WINDOW`, also for the children); its runs have had no interruption since.
+
+## R4: two pilots, 10 steps, and how they're built (2026-11-01)
+
+- **Rishi's call:** 10 steps per pilot (not 40), and only the two methods that matter most in
+  theory: **GRPO** (the reference; learns from "sometimes" questions) and **SRPO** (learns from
+  failures too, through a right sibling's solution; reported to beat GRPO and SDPO without
+  SDPO's collapse). DAPO and GSPO stay defined but aren't run. Pilots can be paused at any
+  moment to free the GPU (`pause.py`), and resumed with the command that started them.
+- **The loop on 16 GB:** llama-server (Windows) and the trainer (WSL) take turns on the GPU.
+  WSL can't reach a server on Windows (NAT networking, the server listens on localhost only),
+  so a Windows orchestrator runs the rollouts and calls one WSL process per update (it loads
+  the model, ~80 s, trains, saves, converts the LoRA to GGUF, exits, freeing the GPU).
+- **Exact tokens:** rollouts use the raw `/completion` endpoint with the server's own template
+  rendering (`/apply-template`) and tokenizer, and return token ids; the trainer computes
+  log-probabilities on those same ids. The thinking budget is the yardstick's: 1,024 tokens,
+  then `</think>` (one token) is appended and masked out of the loss.
+- **Same questions for both pilots:** `pool-v1`, 1,280 `gold-full` training questions (320 per
+  set, interleaved, evalset and test questions excluded by id and text), 32 a step. The model
+  saw these questions in SFT (as thinking-off gold calls); `rl-runs.md` raises whether a fresh
+  pool would be better for the real run.
+- **GRPO here** is Dr. GRPO's form (r - mean, constant normaliser) with a k3 KL to the SFT
+  model at beta 0.01 (the adapter switched off is the reference: no second model).
+- **SRPO here** follows the paper's configuration where it fits: routing per rollout (a wrong
+  one with a right sibling distils, the rest take GRPO's branch), an EMA teacher of the LoRA at
+  0.05, the teacher shown the sibling's query as the correct solution (no environment
+  feedback), JSD over the student's top-100 tokens plus a tail bucket, entropy weights
+  exp(-H) normalised to mean 1, one token-level average, no KL. **Departures:** the same lr as
+  GRPO (1e-5, LoRA; the paper tunes per method), no warmup or weight decay (10 steps), no
+  rollout importance-sampling clip (the trainer's own old log-probs are the ratio's base).
+- **Groups with no signal** are left out of the update for every method (DAPO's dynamic
+  sampling); for GRPO this also leaves their KL term out.
+- **Rollout-vs-trainer mismatch** is logged every step (the server's log-probs of the sampled
+  tokens against the trainer's): 0.013 a token on the smoke run.

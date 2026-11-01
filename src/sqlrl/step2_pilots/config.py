@@ -52,14 +52,25 @@ METHODS: dict[str, dict[str, Any]] = {
     "grpo": {"adv": "center", "agg": "constant", "clip": [0.2, 0.2], "kl_beta": 0.01},
     "dapo": {"adv": "std", "agg": "token_mean", "clip": [0.2, 0.28], "kl_beta": 0.0},
     "gspo": {"adv": "std", "agg": "seq", "clip": [3e-4, 4e-4], "kl_beta": 0.0},
+    # SRPO (arXiv 2604.02288): wrong rollouts with a right sibling learn by self-distillation
+    # from an EMA teacher that sees the sibling's query; the rest take the GRPO branch (std
+    # advantage, clip-higher); one token-level average over both branches; no KL.
+    "srpo": {
+        "adv": "std",
+        "agg": "token_mean",
+        "clip": [0.2, 0.28],
+        "kl_beta": 0.0,
+        "sdpo": {"top_k": 100, "ema": 0.05, "entropy_beta": 1.0},
+    },  # fmt: skip
 }
 
 # Two pilots (decisions R4): GRPO, the standard, and SRPO, the method built to learn from failed
 # answers too. DAPO and GSPO stay defined (refinements in GRPO's family) but aren't run.
 PILOTS: dict[str, dict[str, Any]] = {
     "p0-smoke": {"method": "grpo", "smoke": True, "steps": 2, "questions_per_step": 8},
+    "p0-srpo-smoke": {"method": "srpo", "smoke": True, "steps": 2, "questions_per_step": 8},
     "p1-grpo": {"method": "grpo"},
-    # "p2-srpo": added once its loss is built (documentation/pilots/TRACKER.md)
+    "p2-srpo": {"method": "srpo"},
 }
 
 

@@ -137,8 +137,9 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
     from asktrainer.config import LoraSpec
     from asktrainer.modelio import apply_lora, backbone_of, head_weight, load_base, save_adapter
 
+    from sqlrl.step2_pilots import srpo
     from sqlrl.step2_pilots.logprobs import sequence_logprobs
-    from sqlrl.step2_pilots.losses import norm_for, sequence_loss
+    from sqlrl.step2_pilots.losses import norm_for, route, sequence_loss
 
     t_all = time.time()
     rows = pcfg.step_questions(load_pool(cfg["pool"]), cfg, k)
@@ -149,14 +150,20 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
     mcfg = cfg["method_cfg"]
     rewards.advantages(rollouts, mcfg["adv"])
     stats = rewards.group_stats(rollouts)
-    trainable = [r for r in rollouts if r["adv"] not in (None, 0.0)]
+    sd = mcfg.get("sdpo")  # SRPO: the self-distillation branch's settings
+    if sd:
+        route(rollouts)
+        trainable = [r for r in rollouts if r["route"] == "sdpo"
+                     or (r["route"] == "grpo" and r["adv"] not in (None, 0.0))]  # fmt: skip
+    else:
+        trainable = [r for r in rollouts if r["adv"] not in (None, 0.0)]
     too_long = [r for r in trainable if len(r["prompt_ids"]) + len(r["gen_ids"]) > cfg["max_seq"]]
     trainable = [r for r in trainable if r not in too_long]
 
     # the model and the LoRA after step k-1
     t_load = time.time()
     torch.manual_seed(cfg["seed"])
-    model, _tok, _info = load_base(p.model_hf, device="cuda", log=lambda *a: None)
+    model, tok, _info = load_base(p.model_hf, device="cuda", log=lambda *a: None)
     spec = LoraSpec(r=cfg["lora_r"], alpha=cfg["lora_alpha"], dropout=cfg["lora_dropout"],
                     targets=cfg["lora_targets"])  # fmt: skip
     model = apply_lora(model, spec, gradient_checkpointing=True)
@@ -176,23 +183,45 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
                                  len(r["prompt_ids"]), entropy)  # fmt: skip
 
     t_train = time.time()
+    sd_stats: dict[str, Any] = {}
+    if sd:  # the EMA teacher's view of every distilled rollout, before any update
+        student0 = trainable_state(model)
+        ema_file = prev / "ema_state.safetensors"
+        ema = load_file(str(ema_file)) if k > 1 and ema_file.exists() else student0
+        by_qid_g = {(r["qid"], r["g"]): r for r in rollouts}
+        rows_by_id = {row["id"]: row for row in rows}
+        sd_stats = srpo.prepare_teacher(model, backbone, head,
+                                        [r for r in trainable if r["route"] == "sdpo"],
+                                        by_qid_g, rows_by_id, tok, ema, student0,
+                                        sd["entropy_beta"])  # fmt: skip
+        first = rollouts[0]
+        sd_stats["template_match"] = srpo.student_prompt_matches(tok, rows_by_id[first["qid"]],
+                                                                 first["prompt_ids"])  # fmt: skip
     model.train()
     batches = minibatches(trainable, cfg["minibatches"], cfg["seed"] * 100_000 + k)
     with torch.no_grad():  # "old" for the later minibatches, the KL reference for all
         for b in batches[1:]:
             for r in b:
-                r["_old"] = lps(r)[0]
+                if r.get("route") != "sdpo":
+                    r["_old"] = lps(r)[0]
         if mcfg.get("kl_beta", 0) > 0:
             with model.disable_adapter():
                 for r in trainable:
                     r["_ref"] = lps(r)[0]
     tot = {"loss": 0.0, "tokens": 0.0, "clipped": 0.0, "kl_sum": 0.0, "ent_sum": 0.0,
-           "mis_abs": 0.0, "mis_n": 0}  # fmt: skip
+           "ent_n": 0.0, "mis_abs": 0.0, "mis_n": 0, "jsd_sum": 0.0, "jsd_n": 0.0}  # fmt: skip
     grad_norms = []
     for bi, b in enumerate(batches):
         opt.zero_grad(set_to_none=True)
         norm = norm_for(mcfg["agg"], b, cfg)
         for r in b:
+            if r.get("route") == "sdpo":
+                loss, st = srpo.distill_loss(backbone, head, r, sd["top_k"], norm)
+                loss.backward()
+                tot["loss"] += float(loss)
+                tot["jsd_sum"] += st["jsd_sum"]
+                tot["jsd_n"] += st["tokens"]
+                continue
             lp, ent = lps(r, entropy=True)
             old = r.pop("_old", None)
             old = lp.detach() if old is None else old
@@ -204,6 +233,7 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
             for key in ("tokens", "clipped", "kl_sum"):
                 tot[key] += st[key]
             tot["ent_sum"] += float((ent * m).sum())
+            tot["ent_n"] += float(m.sum())
             if bi == 0 and r.get("behavior_lp"):  # the server's view of the same tokens
                 known = torch.tensor([x is not None for x in r["behavior_lp"]], device=lp.device)
                 beh = torch.tensor([x if x is not None else 0.0 for x in r["behavior_lp"]],
@@ -220,6 +250,9 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
     sdir.mkdir(parents=True, exist_ok=True)
     save_file(trainable_state(model), str(sdir / "lora_state.safetensors"))
     torch.save(opt.state_dict(), sdir / "optim.pt")
+    if sd:  # the teacher follows the student slowly
+        save_file(srpo.ema_update(ema, trainable_state(model), sd["ema"]),
+                  str(sdir / "ema_state.safetensors"))  # fmt: skip
     adapter = save_adapter(model, sdir / "adapter")
     t_conv = time.time()
     convert_gguf(adapter, sdir / "adapter.gguf")
@@ -237,7 +270,9 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
         "skipped_too_long": len(too_long),
         "loss": tot["loss"],
         "kl": tot["kl_sum"] / toks if mcfg.get("kl_beta", 0) > 0 else None,
-        "entropy": tot["ent_sum"] / toks,
+        "entropy": tot["ent_sum"] / max(tot["ent_n"], 1.0),
+        "distill_jsd": tot["jsd_sum"] / tot["jsd_n"] if tot["jsd_n"] else None,
+        **sd_stats,
         "clip_frac": tot["clipped"] / toks,
         "grad_norm": sum(grad_norms) / len(grad_norms) if grad_norms else None,
         "lr": cfg["lr"],

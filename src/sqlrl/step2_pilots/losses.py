@@ -82,6 +82,64 @@ def sequence_objective(
     return loss, stats
 
 
+def _jsd_chunk(hs: torch.Tensor, ht: torch.Tensor, w: torch.Tensor, k: int) -> torch.Tensor:
+    """Per-token JSD between the student (from `hs`, with grad) and the teacher (from `ht`, no
+    grad) over the student's top-k tokens plus one bucket for the rest of the vocabulary."""
+    ls = torch.log_softmax(torch.nn.functional.linear(hs, w).float(), dim=-1)
+    with torch.no_grad():
+        lt = torch.log_softmax(torch.nn.functional.linear(ht, w).float(), dim=-1)
+        idx = ls.detach().topk(k, dim=-1).indices
+    ps = ls.gather(-1, idx).exp()
+    pt = lt.gather(-1, idx).exp()
+    ps = torch.cat([ps, (1 - ps.sum(-1, keepdim=True)).clamp(min=1e-12)], dim=-1)
+    pt = torch.cat([pt, (1 - pt.sum(-1, keepdim=True)).clamp(min=1e-12)], dim=-1)
+    m = 0.5 * (ps + pt)
+
+    def kl(a, b):
+        return (a * (a.clamp(min=1e-12).log() - b.clamp(min=1e-12).log())).sum(-1)
+
+    return 0.5 * kl(ps, m) + 0.5 * kl(pt, m)
+
+
+def topk_jsd(
+    student_h: torch.Tensor, teacher_h: torch.Tensor, head: torch.Tensor, k: int = 100
+) -> torch.Tensor:
+    """SDPO's distillation term per answer token: the JSD between the student's next-token
+    distribution and the self-teacher's on the same token prefix (Hübotter et al., 2026; SRPO's
+    configuration: top-k 100, Jensen-Shannon). Chunked; under grad each chunk is checkpointed."""
+    from torch.utils.checkpoint import checkpoint
+
+    out = []
+    for s in range(0, student_h.shape[0], 256):
+        hs, ht = student_h[s : s + 256], teacher_h[s : s + 256]
+        if torch.is_grad_enabled():
+            out.append(checkpoint(_jsd_chunk, hs, ht, head, k, use_reentrant=False))
+        else:
+            out.append(_jsd_chunk(hs, ht, head, k))
+    return torch.cat(out)
+
+
+def route(rollouts: list[dict[str, Any]]) -> None:
+    """SRPO's routing (Sample-Routed Policy Optimization, arXiv 2604.02288), in place: a wrong
+    rollout (reward < 0.5, decided) with at least one right sibling in its group goes to the
+    self-distillation branch (`route` "sdpo", `teacher_qid_g` the sibling it learns from);
+    everything else to GRPO ("grpo"). Undecided rollouts take no part (`route` None)."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for r in rollouts:
+        groups.setdefault(r["qid"], []).append(r)
+    for rs in groups.values():
+        right = sorted((r for r in rs if r["reward"] is not None and r["reward"] >= 0.5),
+                       key=lambda r: r["g"])  # fmt: skip
+        for r in rs:
+            if r["reward"] is None:
+                r["route"] = None
+            elif r["reward"] < 0.5 and right:
+                r["route"] = "sdpo"
+                r["teacher_g"] = right[0]["g"]
+            else:
+                r["route"] = "grpo"
+
+
 def norm_for(agg: str, seqs: list[dict[str, Any]], cfg: dict[str, Any]) -> float:
     """The minibatch's divisor: "constant" G * max_tokens per group in it (Dr. GRPO);
     "token_mean" its trainable tokens (DAPO); "seq" its sequences (GSPO)."""

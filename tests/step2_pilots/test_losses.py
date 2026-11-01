@@ -48,6 +48,30 @@ def test_norms():
     assert losses.norm_for("seq", seqs, cfg) == 3
 
 
+def test_topk_jsd_zero_for_the_same_model_and_grad_only_to_the_student():
+    torch.manual_seed(1)
+    head = torch.randn(50, 8)
+    hs = torch.randn(5, 8, requires_grad=True)
+    same = losses.topk_jsd(hs, hs.detach(), head, k=10)
+    assert same.abs().max() < 1e-6
+    ht = torch.randn(5, 8)
+    d = losses.topk_jsd(hs, ht, head, k=10)
+    assert (d > 0).all() and (d <= torch.log(torch.tensor(2.0)) + 1e-6).all()
+    d.sum().backward()
+    assert hs.grad is not None and hs.grad.abs().sum() > 0
+
+
+def test_srpo_routing():
+    def r(g, reward, qid="q"):
+        return {"qid": qid, "g": g, "reward": reward}
+
+    rs = [r(0, 0.0), r(1, 1.0), r(2, -0.1), r(3, None), r(4, 1.0),  # mixed group
+          r(0, 0.0, "w"), r(1, 0.0, "w")]  # fmt: skip # all wrong: GRPO fallback
+    losses.route(rs)
+    assert [x["route"] for x in rs] == ["sdpo", "grpo", "sdpo", None, "grpo", "grpo", "grpo"]
+    assert rs[0]["teacher_g"] == 1 and rs[2]["teacher_g"] == 1
+
+
 def test_answer_logprobs_match_a_full_softmax():
     torch.manual_seed(0)
     hidden, head = torch.randn(6, 4), torch.randn(10, 4)
