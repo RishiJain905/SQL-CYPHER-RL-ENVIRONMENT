@@ -34,9 +34,9 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 
 | Command | What it does |
 |---|---|
-| `C:\Python314\python.exe -I scripts\baseline.py --name <run>` | the sampling baseline, start to finish (~45 min; start it detached with no console) |
-| `C:\Python314\python.exe -I scripts\baseline_feed.py --run-dir <dir>` | one tick for the live page |
-| `PYTHONPATH=src <venv>/bin/python -m sqlrl.baseline.score --run-dir <dir> --wandb` (WSL) | score a baseline's sample files, write `summary.json`, log to W&B |
+| `C:\Python314\python.exe -I scripts\step1_baseline\run.py --name <run>` | the sampling baseline, start to finish (~45 min; start it detached with no console) |
+| `C:\Python314\python.exe -I scripts\step1_baseline\feed.py --run-dir <dir>` | one tick for the live page |
+| `PYTHONPATH=src <venv>/bin/python -m sqlrl.step1_baseline.score --run-dir <dir> --wandb` (WSL) | score a baseline's sample files, write `summary.json`, log to W&B |
 | `PYTHONPATH=src <venv>/bin/python -m pytest -q` / `ruff check .` (WSL) | the tests (CPU) and lint |
 
 ## Documentation

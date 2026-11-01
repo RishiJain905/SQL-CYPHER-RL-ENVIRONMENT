@@ -25,8 +25,8 @@ import sys
 import time
 from pathlib import Path
 
-from sqlrl.baseline import sample
 from sqlrl.paths import REPO, get_paths, to_wsl
+from sqlrl.step1_baseline import sample
 
 PORT = 8092
 TEXT = {"text": True, "encoding": "utf-8", "errors": "replace"}
@@ -62,7 +62,8 @@ def serve(start: bool, log: Path) -> None:
 
 def score(run_dir: Path, launched_by: str) -> None:
     p = get_paths()
-    cmd = (f"cd {to_wsl(REPO)} && PYTHONPATH=src {p.wsl_venv}/bin/python -m sqlrl.baseline.score "
+    cmd = (f"cd {to_wsl(REPO)} && PYTHONPATH=src {p.wsl_venv}/bin/python "
+           f"-m sqlrl.step1_baseline.score "
            f"--run-dir {to_wsl(run_dir)} --wandb --launched-by {launched_by}")  # fmt: skip
     with (run_dir / "score.log").open("a", encoding="utf-8") as f:
         r = subprocess.run(["wsl", "-d", "Ubuntu", "--", "bash", "-lc", cmd], stdout=f,

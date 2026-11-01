@@ -1,7 +1,7 @@
 """Answer every evalset question `samples` times, sampled, through llama-server (Windows,
 standard library only, next to the server).
 
-    python -m sqlrl.baseline.sample --run-dir <dir> [--url http://127.0.0.1:8092]
+    python -m sqlrl.step1_baseline.sample --run-dir <dir> [--url http://127.0.0.1:8092]
 
 Sample k's answers go to `<run-dir>/preds_s<k>.jsonl`, in the trainer's prediction format
 ({"id", "output", "finish", "secs", "completion_tokens", "seed"}), so its checker scores each

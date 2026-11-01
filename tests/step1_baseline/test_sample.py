@@ -1,6 +1,6 @@
 import json
 
-from sqlrl.baseline import sample
+from sqlrl.step1_baseline import sample
 
 
 class FakeLlamaeval:

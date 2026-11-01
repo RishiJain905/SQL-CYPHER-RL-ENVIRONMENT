@@ -12,7 +12,7 @@
 
 - **2026-10-31 / 11-01:** Repo created (public, `RishiJain905/SQL-CYPHER-RL-ENVIRONMENT`), plan
   copied from the trainer (`rl.md`), CLAUDE.md / AGENTS.md / Codex config / the secret hook. Rishi
-  said to start the baseline. Built step 1 (`src/sqlrl/baseline/`: sample, score, feed, run;
+  said to start the baseline. Built step 1 (`src/sqlrl/step1_baseline/`: sample, score, feed, run;
   `passk.py`), smoke-tested the scorer (43.17% on the greedy answers, as released) and sampling
   (seeds reproduce), ran it (two stray Ctrl+C interruptions, both resumed with nothing lost: R3).
   Live page built by the sonnet-xhigh subagent at Rishi's request (`documentation/dashboard/`).

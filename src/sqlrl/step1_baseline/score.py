@@ -1,7 +1,7 @@
 """Score the baseline's sample files with the trainer's checker, then summarise (inside WSL, with
 the trainer's venv: the checker needs its SQLite fills and the trainer's Neo4j).
 
-    python -m sqlrl.baseline.score --run-dir <dir> [--checker 4] [--wandb]
+    python -m sqlrl.step1_baseline.score --run-dir <dir> [--checker 4] [--wandb]
 
 Each `preds_s<k>.jsonl` gets `scores_s<k>.json` (the trainer's `publiceval.verify` result:
 summary and one item per question), written as soon as it's scored, so the dashboard shows
@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from sqlrl import passk
-from sqlrl.baseline.sample import SETTINGS, read_preds
 from sqlrl.paths import get_paths
+from sqlrl.step1_baseline.sample import SETTINGS, read_preds
 
 WANDB_PROJECT = "sql-cypher-rl"
 

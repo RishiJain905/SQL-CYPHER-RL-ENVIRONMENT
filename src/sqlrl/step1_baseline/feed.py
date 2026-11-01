@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from sqlrl import passk
-from sqlrl.baseline.sample import SETTINGS, read_preds
 from sqlrl.paths import get_paths
+from sqlrl.step1_baseline.sample import SETTINGS, read_preds
 
 STALL_S = 15 * 60
 MODEL = "Spark-X2.6-4B-SQL-Cypher-Agent Q8_0"

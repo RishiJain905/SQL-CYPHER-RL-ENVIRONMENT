@@ -40,7 +40,7 @@ preds_s0..7.jsonl ──► score.py (WSL) ──► the trainer's checker 4 (SQ
 feed.py (Windows) reads all of it ──► dashboard/tick-NNNNN.json ──► the live page
 ```
 
-- `src/sqlrl/baseline/sample.py` builds each request exactly like the greedy evaluation (the
+- `src/sqlrl/step1_baseline/sample.py` builds each request exactly like the greedy evaluation (the
   trainer's `llamaeval.request_body`: same messages, tools, thinking level), then switches
   sampling on: temperature 1.0, top-p 1.0, top-k off, **min-p 0** (llama.cpp's default 0.05 would
   quietly cut the tail), seed `1000 * (k + 1) + i`. The same seed gives the same answer.
@@ -55,8 +55,8 @@ feed.py (Windows) reads all of it ──► dashboard/tick-NNNNN.json ──► 
 ## Running it
 
 ```
-C:\Python314\python.exe -I scripts\baseline.py --name <run>          (Windows, ~45 min)
-C:\Python314\python.exe -I scripts\baseline_feed.py --run-dir <dir>  (a dashboard tick)
+C:\Python314\python.exe -I scripts\step1_baseline\run.py --name <run>          (Windows, ~45 min)
+C:\Python314\python.exe -I scripts\step1_baseline\feed.py --run-dir <dir>  (a dashboard tick)
 ```
 
 Start `baseline.py` as a detached process with **no console** (`Win32_Process.Create` with
@@ -65,7 +65,7 @@ Needs the trainer's Neo4j (`asktrainer-neo4j`) and nothing else on the GPU. A re
 answered questions and scored files are kept. Scoring alone, inside WSL:
 
 ```
-cd <repo> && PYTHONPATH=src <trainer venv>/bin/python -m sqlrl.baseline.score --run-dir <wsl dir> --wandb
+cd <repo> && PYTHONPATH=src <trainer venv>/bin/python -m sqlrl.step1_baseline.score --run-dir <wsl dir> --wandb
 ```
 
 ## What it produces
