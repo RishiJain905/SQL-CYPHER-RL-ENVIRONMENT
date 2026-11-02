@@ -43,8 +43,8 @@ def main(argv: list[str] | None = None) -> int:
     (root / "queue.pid").write_text(str(os.getpid()), encoding="utf-8")
     from sqlrl.step2_pilots.orchestrate import run
 
-    def say(text: str) -> None:
-        print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), text, flush=True)
+    def say(text: str) -> None:  # to the queue's own log: each pilot redirects stdout to its own
+        print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), text, file=log, flush=True)
 
     if a.after:
         say(f"waiting for {a.after}")

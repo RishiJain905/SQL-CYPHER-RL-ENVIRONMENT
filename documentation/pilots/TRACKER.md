@@ -103,8 +103,8 @@ With 10 steps the changes may be small; a pilot that moves nothing outside noise
 | Pilot | Method | Status | Started | Finished | Steps | Final reward | Mean step time |
 |---|---|---|---|---|---|---|---|
 | `p0-smoke` | GRPO, loop test | done | 2026-11-01 | 2026-11-01 | 2 / 2 | 0.368 | 6.8 min (8 questions) |
-| `p1-grpo` | GRPO | running | 2026-11-01 | - | - / 10 | - | - |
-| `p0-srpo-smoke` | SRPO, loop test | queued (after `p1-grpo`) | - | - | - / 2 | - | - |
+| `p1-grpo` | GRPO | done | 2026-11-01 | 2026-11-02 | 10 / 10 | 0.495 | 15.3 min |
+| `p0-srpo-smoke` | SRPO, loop test | running | 2026-11-02 | - | - / 2 | - | - |
 | `p2-srpo` | SRPO | queued (after the SRPO smoke) | - | - | - / 10 | - | - |
 
 Status values: not started, queued, running, evaluating, done, failed, stopped / paused.
@@ -116,7 +116,7 @@ points. Sign test: questions better / worse than the baseline, and p.
 
 | Pilot | Greedy pass@1 | Mean@8 | pass@8 | Sign test (greedy) | Canaries | Verdict |
 |---|---|---|---|---|---|---|
-| `p1-grpo` | - | - | - | - | - | running |
+| `p1-grpo` | 45.4% (+2.2) | 37.5% (+0.6) | 62.6% (0.0) | 10 better / 6 worse, p = 0.45 (sampled 43 / 41, p = 0.91) | steady | **no gain at 10 steps** (pass@8 held) |
 | `p2-srpo` | - | - | - | - | - | queued |
 
 Verdict values: **candidate** (pass@1 up, pass@8 held, canaries steady), **check pass@8**
@@ -154,7 +154,34 @@ Template:
 
 ### p1-grpo: GRPO
 
-Running.
+- **Status and dates:** trained 2026-11-01 (steps 1-10; the PC lost power during step 2 and the
+  run resumed with nothing lost), evaluated 2026-11-02 (paused once mid-evaluation to free the
+  GPU, resumed).
+- **Config:** the budget above; Dr. GRPO (r - mean, constant normaliser), clip [0.8, 1.2], KL
+  beta 0.01. W&B: `sql-cypher-rl`, run `p1-grpo`.
+- **Training:** reward by step 0.356, 0.415, 0.415, 0.577, 0.464, 0.285, 0.308, 0.388, 0.425,
+  0.495 (each step new questions, 8 per set, so it swings with the batch). Informative groups
+  38-63%. Entropy 0.45-0.53, KL 0.0001-0.0002 a token (the LoRA moved the model very little),
+  answers 295-436 tokens, forced `</think>` 16% -> 4-10%, malformed calls ~3%. Mean step 15.3 min
+  (rollouts ~8.5, scoring ~1.2, load ~1, update ~5); peak GPU 12.2 GB; rollout-vs-trainer
+  mismatch ~0.014 a token.
+- **Evaluation** (baseline in brackets):
+
+  | Set | Greedy pass@1 | Mean@8 | pass@8 | Never | Sometimes | Always |
+  |---|---|---|---|---|---|---|
+  | Overall | 45.4 (43.2) | 37.5 (36.9) | 62.6 (62.6) | 74 (74) | 92 (94) | 32 (30) |
+  | CypherBench | 44.0 (44.9) | 36.1 (37.9) | 78.0 (80.0) | 11 | 36 | 3 |
+  | gretel | 64.0 (64.0) | 62.5 (59.5) | 80.0 (80.0) | 10 | 21 | 19 |
+  | SQaLe | 42.2 (42.2) | 34.4 (34.3) | 55.1 (57.1) | 22 | 20 | 7 |
+  | text2cypher | 27.5 (15.4) | 16.5 (15.2) | 36.7 (32.7) | 31 | 15 | 3 |
+
+  pass@1-8: 37.5, 47.4, 52.9, 56.4, 59.0, 60.6, 61.7, 62.6 (baseline 36.9 ... 62.6).
+- **Sign tests:** greedy 10 better / 6 worse (p = 0.45); sampled 43 / 41 (p = 0.91).
+- **Reading:** a small greedy gain inside noise, pass@8 exactly held (no narrowing), canaries
+  steady. text2cypher's greedy +12 points is the one large move; text2cypher is the noisiest set
+  (random graphs), so it's a lead, not a result. With a KL this small, 10 steps at lr 1e-5 barely
+  moved the LoRA: a longer run or a higher learning rate is what would show GRPO's effect.
+- **Verdict:** no gain at 10 steps (pass@8 held, canaries steady).
 
 ### p0-srpo-smoke: loop test (SRPO)
 
