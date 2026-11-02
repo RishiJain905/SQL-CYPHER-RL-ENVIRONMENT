@@ -1,12 +1,12 @@
-# Progress
+﻿# Progress
 
 ## Status
 
 | Step | Status | Notes |
 |---|---|---|
-| 1. Sampling baseline | ✅ done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
-| 2. Method pilots | 🟡 running | two pilots of 10 steps (R4): `p1-grpo` running, then `p0-srpo-smoke` and `p2-srpo` (queued); `pilots/TRACKER.md` |
-| 3+. The real RL run | ⏳ not started | stage A single-turn, stage B multi-turn, optional stage C (`rl-runs.md` has the open questions) |
+| 1. Sampling baseline | âœ… done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
+| 2. Method pilots | ðŸŸ¡ running | two pilots of 10 steps (R4): `p1-grpo` running, then `p0-srpo-smoke` and `p2-srpo` (queued); `pilots/TRACKER.md` |
+| 3+. The real RL run | â³ not started | stage A single-turn, stage B multi-turn, optional stage C (`rl-runs.md` has the open questions) |
 
 ## Session log
 

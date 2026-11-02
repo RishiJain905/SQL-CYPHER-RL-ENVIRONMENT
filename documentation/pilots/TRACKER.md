@@ -104,8 +104,8 @@ With 10 steps the changes may be small; a pilot that moves nothing outside noise
 |---|---|---|---|---|---|---|---|
 | `p0-smoke` | GRPO, loop test | done | 2026-11-01 | 2026-11-01 | 2 / 2 | 0.368 | 6.8 min (8 questions) |
 | `p1-grpo` | GRPO | done | 2026-11-01 | 2026-11-02 | 10 / 10 | 0.495 | 15.3 min |
-| `p0-srpo-smoke` | SRPO, loop test | running | 2026-11-02 | - | - / 2 | - | - |
-| `p2-srpo` | SRPO | queued (after the SRPO smoke) | - | - | - / 10 | - | - |
+| `p0-srpo-smoke` | SRPO, loop test | done | 2026-11-02 | 2026-11-02 | 2 / 2 | 0.341 | 6.3 min (8 questions) |
+| `p2-srpo` | SRPO | done | 2026-11-02 | 2026-11-02 | 10 / 10 | 0.542 | 15.2 min |
 
 Status values: not started, queued, running, evaluating, done, failed, stopped / paused.
 
@@ -117,7 +117,12 @@ points. Sign test: questions better / worse than the baseline, and p.
 | Pilot | Greedy pass@1 | Mean@8 | pass@8 | Sign test (greedy) | Canaries | Verdict |
 |---|---|---|---|---|---|---|
 | `p1-grpo` | 45.4% (+2.2) | 37.5% (+0.6) | 62.6% (0.0) | 10 better / 6 worse, p = 0.45 (sampled 43 / 41, p = 0.91) | steady | **no gain at 10 steps** (pass@8 held) |
-| `p2-srpo` | - | - | - | - | - | queued |
+| `p2-srpo` | 45.4% (+2.2) | 39.7% (+2.8) | 64.2% (+1.6) | 10 better / 6 worse, p = 0.45 (sampled 48 / 33, p = 0.12) | steady | **no gain outside noise at 10 steps; ahead of GRPO on every sampled number** |
+
+**Head to head, SRPO against GRPO** (same questions, same budget): sampled per question, SRPO
+better on 45, worse on 36 (p = 0.37); greedy 12 / 12. **The "never" questions** (the
+baseline's 44 with all 8 answers decided and none right): GRPO now gets 5 of them right at least
+once, SRPO 7; both turned 10 "sometimes" questions into "never" (sampling noise at 8 tries).
 
 Verdict values: **candidate** (pass@1 up, pass@8 held, canaries steady), **check pass@8**
 (pass@1 up but pass@8 down inside noise), **narrowed** (pass@8 down by more than noise),
@@ -185,12 +190,40 @@ Template:
 
 ### p0-srpo-smoke: loop test (SRPO)
 
-Queued: tests the self-distillation branch (routing, the EMA teacher's pass, the JSD loss) on
-the GPU before `p2-srpo`.
+- **2026-11-02, 2 steps of 8 questions.** The self-distillation branch ran on the GPU: 14 of 64
+  rollouts routed to it (wrong, with a right sibling; 7,564 tokens), the teacher prompt rendered
+  by the trainer equal to the server's, JSD 0.029 a token, peak 11.0 GB. Rewards 0.331, 0.341.
+- **Note:** SRPO's token-mean loss gives a gradient norm of ~0.12 against GRPO's ~0.007 (its
+  constant normaliser), so at the same lr SRPO takes larger steps. Each method as its paper
+  defines it; part of what the comparison measures.
 
 ### p2-srpo: SRPO
 
-Queued.
+- **Status and dates:** trained 2026-11-02 (paused after step 4 to free the GPU, resumed),
+  evaluated 2026-11-02.
+- **Config:** the budget above; the SRPO block (std advantage, clip [0.8, 1.28], token-level
+  average, no KL; distillation: EMA 0.05, top-100 JSD, entropy weights). W&B: `sql-cypher-rl`,
+  run `p2-srpo`.
+- **Training:** reward by step 0.369, 0.381, 0.425, 0.623, 0.443, 0.333, 0.291, 0.392, 0.438,
+  0.542 (GRPO on the same questions: 0.356, 0.415, 0.415, 0.577, 0.464, 0.285, 0.308, 0.388,
+  0.425, 0.495; means 0.424 vs 0.414). 31-83 rollouts a step distilled from a right sibling,
+  JSD ~0.03 a token. Entropy 0.43-0.50, answers 296-439 tokens, malformed 1-3.5%. Mean step
+  15.2 min.
+- **Evaluation** (baseline in brackets; 193 questions decided):
+
+  | Set | Greedy pass@1 | Mean@8 | pass@8 | Never | Sometimes | Always |
+  |---|---|---|---|---|---|---|
+  | Overall | 45.4 (43.2) | 39.7 (36.9) | 64.2 (62.6) | 69 (74) | 93 (94) | 31 (30) |
+  | CypherBench | 42.0 (44.9) | 36.8 (37.9) | 76.0 (80.0) | 12 | 34 | 4 |
+  | gretel | 68.0 (64.0) | 64.5 (59.5) | 82.0 (80.0) | 9 | 21 | 20 |
+  | SQaLe | 40.4 (42.2) | 37.0 (34.3) | 59.6 (57.1) | 19 | 22 | 6 |
+  | text2cypher | 25.0 (15.4) | 18.7 (15.2) | 37.0 (32.7) | 29 | 16 | 1 |
+
+  pass@1-8: 39.7, 49.8, 54.9, 58.0, 60.3, 61.9, 63.2, 64.2 (baseline 36.9 ... 62.6).
+- **Sign tests vs the baseline:** greedy 10 / 6 (p = 0.45); sampled 48 / 33 (p = 0.12).
+- **Reading:** every overall number is up (mean@8 +2.8, pass@8 +1.6, "never" 74 -> 69), none
+  outside noise yet; CypherBench slipped in both pilots (pass@8 80 -> 76/78), worth watching.
+- **Verdict:** no gain outside noise at 10 steps; the stronger of the two on the sampled measure.
 
 ## Decision: which method goes to the real run, and why
 
