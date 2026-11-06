@@ -50,6 +50,7 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 
 - [`documentation/rl.md`](documentation/rl.md): the plan
 - [`documentation/rl-runs.md`](documentation/rl-runs.md): the two RL runs, the methods, the RL facts that matter here, the open questions
+- [`documentation/run1-design.md`](documentation/run1-design.md): run 1's design (draft): environment, questions, method, length, stop rules
 - [`documentation/pilots/`](documentation/pilots/): step 2's tracker and live page
 - [`documentation/guides/sampling-baseline.md`](documentation/guides/sampling-baseline.md): pass@k, how the baseline works, how to run it
 - [`documentation/results/`](documentation/results/): each step's numbers
