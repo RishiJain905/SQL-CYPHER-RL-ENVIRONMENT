@@ -82,3 +82,30 @@ last.
   sampling); for GRPO this also leaves their KL term out.
 - **Rollout-vs-trainer mismatch** is logged every step (the server's log-probs of the sampled
   tokens against the trainer's): 0.013 a token on the smoke run.
+
+## R5: how close to production each run's environment is (2026-11-05)
+
+Agreed with Rishi after the pilots. The question was "mimic production (the real harness and
+databases) or an artificial sandbox?". The rule: **what the model reads, and what decides its
+reward, must match deployment; the plumbing behind it may be artificial.**
+
+| Must match deployment | May be artificial |
+|---|---|
+| The prompt: chat template, system prompt, how the schema is written | Where the databases run (containers, local files) |
+| The tool's call format and how results come back (row cap, truncation, error text) | Isolation: read-only, no network, reset after each episode |
+| Real database engines, so errors are the real ones | Timeouts and concurrency sized for training speed |
+| Realistic data wherever the model gets to look at it | Live system or frozen snapshot |
+
+- **Run 1 (single turn): a sandbox.** The model never sees what its query returns, so the
+  environment is a reward function. What matters is the prompt matching deployment and a checker
+  that is hard to fool. Production databases wouldn't help: production has no reference answers.
+- **Run 2 (multi-turn): a sandbox that matches deployment in everything the model reads.** One
+  tool protocol, trained on and documented in the model card (for a public model, we define
+  "production"). Real engines and real data where the model looks; random-fill sets (SQaLe,
+  text2cypher) either get real data or stay single-turn. Frozen snapshots, read-only, short
+  timeouts. What can't be pinned down across other people's harnesses (row caps, schema layout,
+  result rendering) is randomised.
+- **Stage C (the NFL harness): matches production fully.** The same guard, schema and result
+  format as Ask the Engine, on a frozen copy of the NFL databases (not the weekly-appended live
+  ones), with training questions kept apart from Ask's golden and held-out sets.
+- **The runs are designed one at a time:** run 1 first (`run1-design.md`), then run 2.

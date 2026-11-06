@@ -6,7 +6,7 @@
 |---|---|---|
 | 1. Sampling baseline | ✅ done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
-| 3+. The real RL run | ⏳ not started | stage A single-turn, stage B multi-turn, optional stage C (`rl-runs.md` has the open questions) |
+| 3+. The real RL run | 📝 run 1 being designed | stage A single-turn, stage B multi-turn, optional stage C; environments per R5; run 1's draft `run1-design.md` |
 
 ## Session log
 
@@ -28,6 +28,10 @@
 - **2026-11-01 / 02:** two power cuts (each left Docker and the checker's Neo4j down: training
   and scoring now refuse to run without Neo4j) and two pauses for Rishi's GPU; every resume kept
   its work. `p1-grpo` and `p2-srpo` trained and evaluated. Results in `pilots/TRACKER.md`.
+- **2026-11-05:** discussed the environments with Rishi: what the model reads and what decides
+  the reward match deployment, the plumbing is a sandbox (decisions R5). Runs are designed one at
+  a time; run 1's draft is `run1-design.md`, waiting on Rishi's three choices (dataset mix,
+  learning rate, length).
 
 ## Rishi-run steps and waivers
 
