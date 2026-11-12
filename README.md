@@ -25,8 +25,10 @@ holds the RL environments, the training loop and the measurements.
 **Step 1 is done** (2026-11-01): greedy 43.2%, sampled mean 36.9%, **pass@8 62.6%** on the
 200-question evalset; 94 of 198 questions are right sometimes, the pool RL learns from
 ([`documentation/results/step1-baseline.md`](documentation/results/step1-baseline.md)).
-**Step 2 is running:** two pilots of 10 RL steps, GRPO and SRPO
-([`documentation/pilots/TRACKER.md`](documentation/pilots/TRACKER.md)). Progress:
+**Step 2 is done** (2026-11-02): two pilots of 10 RL steps, GRPO and SRPO, neither outside noise,
+SRPO ahead on every sampled measure ([`documentation/pilots/TRACKER.md`](documentation/pilots/TRACKER.md)).
+**Run 1 (stage A) is built and loop-tested, not started**
+([`documentation/run1/`](documentation/run1/README.md)). Progress:
 [`documentation/PROGRESS.md`](documentation/PROGRESS.md).
 
 ## Running it
@@ -44,13 +46,18 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 | `C:\Python314\python.exe -I scripts\step2_pilots\pilot_queue.py --after <id> <id> ...` | pilots one after another |
 | `C:\Python314\python.exe -I scripts\step2_pilots\pause.py --pilot <id> [--after-step]` | free the GPU now (or after the current step) |
 | `C:\Python314\python.exe -I scripts\step2_pilots\feed.py --pilot <id>` | one tick for the pilots' live page |
+| `PYTHONPATH=src <venv>/bin/python -m sqlrl.run1.pool` (WSL) | run 1's question pool (`pool-v2`; CPU, ~30 min, resumable) |
+| `C:\Python314\python.exe -I scripts\run1\run.py --run run1` | run 1: start or resume (start it hidden and detached); `--mix`, `--lr`, `--steps` for a new run |
+| `C:\Python314\python.exe -I scripts\run1\pause.py --run run1 [--after-step]` | free the GPU now (or after the current step) |
+| `C:\Python314\python.exe -I scripts\run1\run.py --run smoke-1 --smoke --pool pool-test` | a loop test of run 1 (2 steps, 8 SQL questions) |
+| `C:\Python314\python.exe -I scripts\run1\bench_decode.py` / `bench_rollouts.py` | the rollout server's speed (`documentation/run1/harness.md`) |
 | `PYTHONPATH=src <venv>/bin/python -m pytest -q` / `ruff check .` (WSL) | the tests (CPU) and lint |
 
 ## Documentation
 
 - [`documentation/rl.md`](documentation/rl.md): the plan
 - [`documentation/rl-runs.md`](documentation/rl-runs.md): the two RL runs, the methods, the RL facts that matter here, the open questions
-- [`documentation/run1-design.md`](documentation/run1-design.md): run 1's design (draft): environment, questions, method, length, stop rules
+- [`documentation/run1/`](documentation/run1/README.md): run 1: operating it (`README.md`), its design and the review behind it (`design.md`), the rollout loop on 16 GB and its measurements (`harness.md`)
 - [`documentation/pilots/`](documentation/pilots/): step 2's tracker and live page
 - [`documentation/guides/sampling-baseline.md`](documentation/guides/sampling-baseline.md): pass@k, how the baseline works, how to run it
 - [`documentation/results/`](documentation/results/): each step's numbers

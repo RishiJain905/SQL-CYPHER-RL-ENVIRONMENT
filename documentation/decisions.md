@@ -109,3 +109,110 @@ reward, must match deployment; the plumbing behind it may be artificial.**
   format as Ask the Engine, on a frozen copy of the NFL databases (not the weekly-appended live
   ones), with training questions kept apart from Ask's golden and held-out sets.
 - **The runs are designed one at a time:** run 1 first (`run1-design.md`), then run 2.
+
+## R6: run 1 lives in its own folders (2026-11-12)
+
+Rishi: "begin run 1 inside a separate folder so that way nothing is intertwined". Run 1's code
+is `src/sqlrl/run1/` and `scripts/run1/`, its tests `tests/run1/`, its docs
+`documentation/run1/`, its data `<data>/run1/`. It imports nothing from `step2_pilots/`, and
+the pilots import nothing from it. This replaces the shared `src/sqlrl/rl/` module the design
+draft proposed.
+
+- The piloted loss, reward, log-prob and SRPO code is **copied**, not shared, so a change to
+  run 1 can't alter what the pilots' record says they ran. `tests/run1` proves the copies give
+  the pilots' numbers on the same inputs.
+- What stays shared is repo-level and not a step's: `paths.py`, `passk.py`, and step 1's
+  sampler and scorer, because the yardstick must be the same measurement every time.
+- Run 1 starts llama-server itself (`run1/server.py`), with its own port, logs and pid file, so
+  it doesn't depend on the trainer repo's `serve.ps1`.
+
+## R7: the rollout model is the LoRA merged into Q8_0, and the trainer under-reads a small LoRA (2026-11-12)
+
+**What was found.** The pilots logged a gap between the server's and the trainer's
+log-probabilities that grew with the LoRA (0.013 a token with no LoRA, 0.031 after 10 SRPO
+steps). Three measurements on `p2-srpo`'s step-10 rollouts explain it:
+
+| Compared with the server's log-probs | Mean gap a token |
+|---|---|
+| Trainer, LoRA on | 0.032 |
+| Trainer, LoRA off | 0.037 |
+| Trainer, LoRA at 2x its strength | **0.016** |
+| (Trainer, LoRA on against LoRA off) | 0.011 |
+
+A model with the LoRA merged into its weights and quantised (no runtime adapter at all) shows
+the same 0.030 gap against the trainer, so the server is right and **the trainer's forward pass
+under-reads the LoRA, by about half at this size**. The cause is bf16: each adapted layer's
+output is a bf16 number, the LoRA's small addition is computed in fp32 and the sum is rounded
+back to bf16, so additions smaller than half a bf16 step vanish. The gradients are unaffected
+(the backward pass doesn't round), and the effect fades as the LoRA grows.
+
+**What it means.**
+- The pilots' rollouts and evaluations were right: they ran the real policy. What was off is
+  the trainer's own view: the pilots' logged KL to the SFT model (0.0002 a token for GRPO)
+  understates how far the policy moved. Measured from the server's side, SRPO's policy was
+  0.004 a token from the SFT model after 10 steps.
+- **No importance weighting.** The design draft proposed weighting tokens by the trainer's
+  probability over the server's. That would pull the update toward the trainer's rounded view,
+  away from the policy that is deployed. Dropped.
+- **Drift is measured from the server.** `kl_sft` is the mean of (the server's log-prob of its
+  own token) minus (the SFT model's, adapter off), on the rollouts that carry log-probs. That is
+  KL(rollout policy || SFT) on the policy's own samples. `mismatch` stays logged as a reading of
+  how far the trainer's view lags; its stop bound is 0.10.
+- **The learning rate stays 1e-5.** The draft's case for 2e-5 was that GRPO "barely moved"; the
+  real policy moved more than the logs showed.
+
+**The rollout model.** Each step the update merges the LoRA into the 180 adapted matrices
+(W + scaling x B x A, in fp32 on the GPU), quantises them to Q8_0 and writes them over the same
+bytes of a copy of the released GGUF (`run1/gguf_merge.py`). Same shapes, type and offsets, so
+it takes ~22 s instead of a conversion. This replaces `--lora`:
+- it is what a release does (merge, then quantise), so rollouts and evaluations run the model
+  that would ship (R5);
+- a runtime adapter costs 23% of the decoding speed (415 against 542 tokens/s).
+Checked: quantising the trainer's own base weights reproduces the released file (99.91% of the
+int8 values equal, the rest differ by 1: rounding ties). A marker file says which step's LoRA
+the file holds; a merge that was cut is redone from the saved LoRA.
+
+## R8: a floor under the group's standard deviation (2026-11-12)
+
+SRPO's GRPO branch divides each advantage by its group's standard deviation. A group with no
+right answer and one malformed call has rewards 0 and -0.1 (std 0.03), which the division turns
+into advantages as large as a right-versus-wrong group's: seven wrong answers pushed up at full
+strength for being well-formed. Run 1 divides by max(std, 0.25). A group of eight with one right
+answer has std 0.33, so every right-versus-wrong group is unchanged; the malformed-only group's
+advantages become 0.05 and -0.35, in proportion to the 0.1 its rewards differ by.
+
+## R9: the rollout harness, measured (2026-11-12)
+
+Rishi asked for the llama.cpp harness to be made faster before run 1. Measured on the 7800 XT
+with the fork build, 16 slots all decoding (`scripts/run1/bench_decode.py`):
+
+| Setting | Tokens/s |
+|---|---|
+| The pilots': one shared KV pool (`-kvu`), `--lora`, log-probs on | ~170-200 |
+| Shared KV pool, no LoRA | 208 |
+| **A KV per slot** (no `-kvu`), no LoRA | **542** |
+| A KV per slot, `--lora` | 415 |
+| A KV per slot, log-probs on every rollout (`n_probs`) | 423 |
+
+- **The shared KV pool was the brake.** With `-kvu` every decoding step attends over all slots'
+  tokens, so a step's cost grows with the square of the slot count: 80 tokens/s at 1 slot, 247
+  at 8, 208 at 16, 148 at 32. With a KV per slot: 392 at 8, 542 at 16, 535 at 32 (12, 20 and
+  24 slots are slower than 16). Run 1 uses 16 slots of 8,192 tokens each.
+- **Not the cause:** the sampler chain (the same speed with only the temperature sampler),
+  CPU threads (4, 8, 16), the context size. Sampling on the GPU (`-bs`) isn't available: this
+  ROCm build lacks an operation the sampler chain needs.
+- **Scheduling** (`run1/rollouts.py`): one worker per slot, a question's eight rollouts one
+  after another on one slot (its prompt is computed once, not eight times), long questions
+  first, idle workers take over waiting rollouts. A rollout's two requests always find their
+  own cache; in the pilots a quarter of the second requests had lost it to another rollout.
+- **Log-probs on one rollout per group.** They cost a fifth of the speed and are only needed
+  for the canaries (R7).
+- **One full step of rollouts** (the pilots' step-1 questions and seeds, 256 rollouts, 117k
+  tokens): **292 s**, against 504 s and 540 s in the two pilots.
+
+The update side: scoring runs in its own process while the model loads. **WSL is kept awake
+for the whole run:** it shut itself down during every rollout phase, so each update started
+cold and its model load took 195-210 s in the first loop tests; with a keep-alive process and
+the model's copy on WSL's own disk held in the file cache, 17-22 s. Padding several sequences
+into one pass was tried and was far slower on this GPU, so the update keeps one sequence per
+pass.

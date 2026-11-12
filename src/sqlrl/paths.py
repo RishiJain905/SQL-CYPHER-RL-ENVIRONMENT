@@ -38,6 +38,15 @@ class Paths:
     model_hf: Path | None = None
     model_gguf: Path | None = None
     llama_cpp_src: Path | None = None
+    # run 1: the llama.cpp build's `bin` folder (llama-server.exe), the ROCm `bin` folder (its
+    # DLLs), the discrete GPU's HIP index, and the merged model's BF16 GGUF (the weights a
+    # merged rollout model is quantised from)
+    llama_bin: Path | None = None
+    rocm_bin: Path | None = None
+    hip_device: str | None = None
+    model_gguf_bf16: Path | None = None
+    # a copy of `model_hf` on WSL's own disk (a WSL path, e.g. ~/models/...): faster to load
+    model_hf_wsl: str | None = None
 
     @property
     def serve_script(self) -> Path:
@@ -65,4 +74,9 @@ def get_paths() -> Paths:
         model_hf=p("model_hf") if "model_hf" in raw else None,
         model_gguf=p("model_gguf") if "model_gguf" in raw else None,
         llama_cpp_src=p("llama_cpp_src") if "llama_cpp_src" in raw else None,
+        llama_bin=p("llama_bin") if "llama_bin" in raw else None,
+        rocm_bin=p("rocm_bin") if "rocm_bin" in raw else None,
+        hip_device=str(raw["hip_device"]) if "hip_device" in raw else None,
+        model_gguf_bf16=p("model_gguf_bf16") if "model_gguf_bf16" in raw else None,
+        model_hf_wsl=raw.get("model_hf_wsl"),
     )

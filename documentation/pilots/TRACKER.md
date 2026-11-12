@@ -225,10 +225,21 @@ Template:
   outside noise yet; CypherBench slipped in both pilots (pass@8 80 -> 76/78), worth watching.
 - **Verdict:** no gain outside noise at 10 steps; the stronger of the two on the sampled measure.
 
+## Found later (2026-11-12, decisions R7 and R9)
+
+- **The pilots' logged KL and "rollout-vs-trainer mismatch" need a footnote.** The trainer's
+  bf16 forward pass under-reads a small LoRA (about half of its effect at the pilots' size).
+  The rollouts and the evaluations ran the real policy, so every score above stands. The KL
+  column (0.0001-0.0002 a token for GRPO) is the trainer's view and too low: measured from the
+  server, SRPO's policy was 0.004 a token from the SFT model after 10 steps. The mismatch that
+  grew from 0.013 to 0.031 is this effect, not a server error.
+- **The pilots' rollouts ran at about a third of the speed the card allows:** the shared KV
+  pool made every decoding step attend over all 16 slots' tokens. Run 1 uses a KV per slot.
+
 ## Decision: which method goes to the real run, and why
 
-Not decided yet. Fill this in when both pilots have been evaluated. Log the choice in
-`../decisions.md` (the next `R` number) and name it here.
+**SRPO**, for run 1 (`../run1/design.md`, section 3, which also says what the pilots do and
+don't show). The fields below are answered there.
 
 - **Chosen method:**
 - **Why (the numbers it rests on):**

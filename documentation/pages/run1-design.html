@@ -110,14 +110,16 @@ footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule
   <div class="eyebrow">SQL + Cypher RL · step 3 · run 1 (stage A)</div>
   <h1>Run 1 Design</h1>
   <p class="lede">Single turn, execution reward: turn "sometimes right" into "right first time".
-    A draft for Rishi, built on decision R5 and the two pilots.</p>
+    Reviewed line by line, then built and loop-tested. It waits for Rishi to start it.</p>
   <div class="chips">
     <span class="chip r1">Run 1 · single turn</span>
-    <span class="chip plain">Draft · 2026-11-05</span>
-    <span class="chip plain">Nothing built or run yet</span>
+    <span class="chip plain">Reviewed and built · 2026-11-12</span>
+    <span class="chip plain">Not started</span>
     <span class="chip ask">3 decisions for Rishi</span>
   </div>
   <nav class="toc" aria-label="Sections">
+    <a href="#review">Review</a>
+    <a href="#speed">Speed</a>
     <a href="#env">1 · Environment</a>
     <a href="#questions">2 · Questions</a>
     <a href="#method">3 · Method</a>
@@ -132,7 +134,7 @@ footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule
   <div class="stats" role="list">
     <div class="stat" role="listitem"><div class="v">SRPO</div><div class="k">method, as piloted</div></div>
     <div class="stat" role="listitem"><div class="v">100</div><div class="k">steps first, then decide</div></div>
-    <div class="stat" role="listitem"><div class="v">~26 h</div><div class="k">GPU time at ~15.5 min a step</div></div>
+    <div class="stat" role="listitem"><div class="v">~18 h</div><div class="k">GPU time at ~11 min a step (pilots: 15.2)</div></div>
     <div class="stat" role="listitem"><div class="v">32 × 8</div><div class="k">questions × samples a step</div></div>
     <div class="stat" role="listitem"><div class="v">25 · 50 · 100</div><div class="k">evaluation steps</div></div>
   </div>
@@ -140,6 +142,67 @@ footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule
     <p>It starts from the released SFT model with a new LoRA, exactly like the pilots. Run 2
       (multi-turn) gets its own design once this one is settled.</p>
   </div>
+</section>
+
+<section id="review">
+  <h2><span class="num-h">R</span>The review: what held, what changed</h2>
+  <div class="callout col">
+    <p><b>The finding behind most of the changes:</b> the trainer's forward pass under-reads a
+      small LoRA, by about half at the pilots' size. Each adapted layer's output is rounded to
+      bf16 after the LoRA's small addition, so part of it is rounded away. The rollout server
+      applies all of it. The pilots' rollouts and scores were right; their logged KL was too
+      low, and the "growing gap" between server and trainer was this effect.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Draft choice</th><th>Verdict</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>SRPO as piloted</td><td><b>Kept</b></td><td>The only recipe here that learns from failed answers; it matched or beat GRPO on every measure, inside noise</td></tr>
+        <tr><td>Rewards 1 / 0 / −0.1, checker 4</td><td><b>Kept</b>, with a floor under the group's std</td><td>Without it, a group with no right answer and one malformed call pushes its seven wrong answers up at full strength</td></tr>
+        <tr><td>Learning rate 1e-5, 5 warm-up steps</td><td><b>Kept</b></td><td>The real policy moved further than the pilots' logs showed, so there is no case for 2e-5</td></tr>
+        <tr><td>Importance weights for the server/trainer gap</td><td><b>Dropped</b></td><td>The gap is the trainer's rounding; weighting would pull the update toward the rounded view</td></tr>
+        <tr><td>KL to SFT logged</td><td><b>Kept, measured from the server</b></td><td>The server's own log-probs see the whole LoRA</td></tr>
+        <tr><td>Rollouts from Q8_0 + a runtime LoRA</td><td><b>Changed:</b> the LoRA merged into the Q8_0 weights each step</td><td>It is the model that would ship, and 23% faster</td></tr>
+        <tr><td>A shared code module</td><td><b>Changed:</b> run 1 in its own folders</td><td>Rishi's instruction: nothing intertwined</td></tr>
+        <tr><td>Mix, 100 steps, no probe, <code>high</code> thinking, pool filters</td><td><b>Kept</b></td><td>The mix and the length stay Rishi's calls</td></tr>
+        <tr><td>New</td><td><b>Added:</b> a teacher-leak canary</td><td>SRPO's teacher reads a solution; a student that starts citing one is copying the wrong thing</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="speed">
+  <h2><span class="num-h">S</span>Speed: the rollout harness</h2>
+  <div class="col">
+    <p>The pilots' rollout server made about 200 tokens a second; the same card makes 542. The
+      brake was the shared KV pool: every decoding step attended over all 16 slots' tokens, so a
+      step's cost grew with the square of the slot count.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>16 slots, all decoding</th><th>Tokens/s</th></tr></thead>
+      <tbody>
+        <tr><td>One shared KV pool (the pilots' setting)</td><td class="num">208</td></tr>
+        <tr><td><b>A KV per slot</b></td><td class="num"><b>542</b></td></tr>
+        <tr><td>A KV per slot, runtime LoRA</td><td class="num">415</td></tr>
+        <tr><td>A KV per slot, log-probs on every rollout</td><td class="num">423</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Part of a step</th><th>Pilots</th><th>Run 1</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td>Rollouts (256)</td><td class="num">504–540 s</td><td class="num"><b>292 s</b></td><td>A KV per slot, merged weights, one worker per slot, each prompt computed once</td></tr>
+        <tr><td>Scoring</td><td class="num">50–118 s</td><td class="num">hidden</td><td>Its own process, while the model loads</td></tr>
+        <tr><td>Model load</td><td class="num">55–90 s</td><td class="num"><b>17–22 s</b></td><td>WSL kept awake during the run, the model held in its file cache</td></tr>
+        <tr><td>Update</td><td class="num">190–380 s</td><td class="num">the same</td><td>Batching sequences was tried and was slower on this card</td></tr>
+        <tr><td>Next rollout model</td><td class="num">5–8 s</td><td class="num">~22 s</td><td>Merged and quantised over the same bytes of the file</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub col">Measured on the pilots' own step-1 questions and seeds. The full step time
+    (expected about 11 minutes) is confirmed by the run's first steps.</p>
 </section>
 
 <section id="env">
@@ -166,8 +229,10 @@ footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule
     <li><b>The prompt:</b> the tool-call prompt SFT trained on, which the pilots and the yardstick
       already use (schema, up to two tested examples, the question), rendered with the release's
       chat template by llama-server itself.</li>
-    <li><b>To check before the run:</b> the model card shows this exact system prompt and tool
-      schema. If it doesn't, add it, so people who run the model send what it was trained on.</li>
+    <li><b>To check before release:</b> the model card shows this exact system prompt and tool
+      schema, so people who run the model send what it was trained on.</li>
+    <li><b>What samples the answers:</b> the SFT weights with the LoRA merged in, quantised to
+      Q8_0. That is the model that would ship.</li>
     <li><b>Thinking level:</b> <code>high</code> everywhere, as in the pilots and the yardstick.
       Mixing levels would make the model robust to a user's choice, but would change what the
       yardstick measures.</li>
@@ -179,29 +244,32 @@ footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule
   <ul class="col">
     <li><b>Checker 4</b>, imported unchanged. 1 right, 0 wrong, −0.1 for no parsable call; an
       undecided answer is left out of its group and the loss.</li>
-    <li><b>Fixed copies.</b> The checker's databases use fixed seeds, so a question sees the same
-      copies on every visit, and a query tuned to them could pass without being right. Low risk:
-      100 steps visit 3,200 of ~95,000 questions. Rule: no question more than twice.</li>
-    <li><b>Questions that can't teach are dropped:</b> references that return nothing (or only
-      zeros and NULLs), and references the checker can't decide. The evalset drops both already.</li>
-    <li><b>Hacking canaries</b> every step: share using <code>DISTINCT</code>, using
-      <code>SELECT *</code>, columns against the reference's, several calls in one reply. Plus
-      reading the top-reward and most-changed samples at each evaluation.</li>
+    <li><b>A floor under the group's standard deviation</b> (0.25), so a small reward difference
+      never becomes a full-size advantage.</li>
+    <li><b>Every question is used once.</b> The checker's databases use fixed seeds, so a question
+      seen often could be answered for those copies only.</li>
+    <li><b>Questions that can't teach are left out:</b> each reference query is scored by the
+      checker as if the model had written it. One the checker can't decide (it returns nothing,
+      or only zeros and NULLs) would make every rollout "undecided".</li>
+    <li><b>Canaries</b> every step: share of queries using <code>DISTINCT</code>, using
+      <code>SELECT *</code>, replies with several calls, thoughts that cite a "correct solution"
+      (the teacher leak). Plus reading the top-reward samples at each evaluation.</li>
   </ul>
-  <p class="rec col">Infrastructure stays as piloted: llama-server on Windows, one WSL process per
-    update, the checker's Neo4j in Docker (training refuses to run without it), and the pause
-    switch.</p>
+  <p class="rec col">Infrastructure: llama-server on Windows started by run 1 itself, one WSL
+    process per update, the checker's Neo4j in Docker (the update refuses to run without it),
+    and the pause switch (tested mid-rollout).</p>
 </section>
 
 <section id="questions">
   <h2><span class="num-h">02</span>The questions</h2>
   <div class="callout col">
     <p><b>From the pilots:</b> 38–63% of groups carried a signal (about half on average). The rest
-      were all right or all wrong and cost rollout time only, about 4 of each step's ~15 minutes.</p>
+      were all right or all wrong and cost rollout time only.</p>
   </div>
   <ul class="col">
     <li><b>A fresh <code>pool-v2</code></b> from the training split, with the filters above;
-      evalset and test questions excluded by id and text as before.</li>
+      evalset and test questions excluded by id and text, prompts of at most 4,000 tokens. Enough
+      questions for 200 steps.</li>
     <li><b>No probe pass.</b> Probing 2,000 questions × 8 samples would take about as long as the
       rollout time it saves over 100 steps. Groups with no signal are skipped, and the
       informative share is logged.</li>
@@ -217,63 +285,76 @@ footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule
     <p><b>SRPO, as piloted</b> (R4): routed per rollout, an EMA teacher at 0.05, the right
       sibling's query as the correct solution, top-100 JSD, entropy weights, token-mean loss. It
       led on every sampled measure; none of it was outside noise.</p>
+    <p>Two caveats the draft left out. The pilots compared two whole recipes (SRPO's against
+      Dr. GRPO's, whose gradient is ~12× smaller by construction), not the distillation alone.
+      And SRPO gives the "never" questions no direct signal: distillation needs a right sibling.
+      What it adds is a token-by-token target for the wrong answers of mixed groups.</p>
   </div>
   <div class="tablewrap">
     <table>
       <thead><tr><th>From the pilots' logs</th><th>GRPO</th><th>SRPO</th><th>What run 1 does with it</th></tr></thead>
       <tbody>
-        <tr><td>Update size (gradient norm)</td><td class="num">≈ 0.005</td><td class="num">≈ 0.06</td><td>SRPO already moves ~12× more at 1e-5, so keep 1e-5 with 5 warm-up steps <span class="chip ask">Your call</span></td></tr>
-        <tr><td>KL to SFT</td><td class="num">0.0002</td><td class="num">not logged</td><td>Log it every step as a canary; the reference is free (adapter off)</td></tr>
-        <tr><td>Server vs trainer log-prob gap, step 1 → 10</td><td class="num">0.014 → 0.019</td><td class="num">0.013 → 0.031</td><td>Weight each token by the trainer/server ratio, capped at 2 (truncated importance sampling); stop above 0.05</td></tr>
+        <tr><td>Update size (gradient norm)</td><td class="num">≈ 0.005</td><td class="num">≈ 0.06</td><td>Keep 1e-5 with 5 warm-up steps <span class="chip ask">Your call</span></td></tr>
+        <tr><td>KL to SFT</td><td class="num">0.0002 (trainer's view)</td><td class="num">0.004 (from the server)</td><td>Log it every step from the server's log-probs; pause above 0.05 a token</td></tr>
+        <tr><td>Server vs trainer log-prob gap, step 1 → 10</td><td class="num">0.014 → 0.019</td><td class="num">0.013 → 0.031</td><td>Understood: the trainer under-reads a small LoRA. Logged; no correction; pause above 0.10</td></tr>
       </tbody>
     </table>
   </div>
-  <p class="sub col">The growing gap matters most: over 100 steps it could make the "on-policy"
-    update quietly off-policy. The server's log-probs are already collected, so the correction
-    costs nothing.</p>
+  <p class="sub col">The gap's cause was found before the build: with the pilot's LoRA applied
+    at twice its strength, the trainer's log-probs match the server's again (0.016 a token,
+    close to the 0.013 of no LoRA at all). The gradients are not affected, and the effect fades
+    as the LoRA grows.</p>
 </section>
 
 <section id="length">
   <h2><span class="num-h">04</span>Length, evaluations and the gate</h2>
   <ul class="col">
-    <li><b>100 steps first</b>, about 26 GPU hours plus pauses, evaluated at steps 25, 50 and 100
-      on step 1's yardstick (evalset, temperature 1.0, 8 samples, checker 4, plus greedy).</li>
+    <li><b>100 steps first</b>, about 18 GPU hours plus pauses, evaluated after steps 25, 50 and
+      100 on step 1's yardstick (evalset, temperature 1.0, 8 samples, checker 4, plus greedy),
+      served from the merged model.</li>
     <li><b>Extend to 200</b> only if mean@8 is still rising at 100 and the gate holds; 300 stays the
       ceiling. <span class="chip ask">Your call</span></li>
-    <li><b>The gate:</b> pass@8 not down by a question-by-question sign test. A significant drop
-      stops the run and keeps the last good adapter.</li>
+    <li><b>The gate:</b> pass@8 not down, question by question: questions that lost their last
+      right answer against questions that gained a first one. More lost than gained with
+      p &lt; 0.05 pauses the run and keeps the last good adapter.</li>
     <li><b>The test set</b> is used once, on the adapter we keep.</li>
   </ul>
 </section>
 
 <section id="stops">
   <h2><span class="num-h">05</span>Stop rules</h2>
-  <p class="col">Any one pauses the run for a look; the thresholds are set from the pilots' own ranges.</p>
+  <p class="col">Any one pauses the run for a look. "The start" is the mean of the run's first five steps.</p>
   <div class="tablewrap">
     <table>
       <thead><tr><th>Canary</th><th>Pilot values</th><th>Stop when</th></tr></thead>
       <tbody>
-        <tr><td>Mean token entropy</td><td class="num">0.43–0.53</td><td>below 0.22 (half)</td></tr>
+        <tr><td>Mean token entropy</td><td class="num">0.43–0.53</td><td>below half of the start</td></tr>
         <tr><td>Informative share</td><td class="num">0.38–0.63</td><td>below 0.25 for 5 steps in a row</td></tr>
-        <tr><td>Malformed calls</td><td class="num">0–3.5%</td><td>above 5% for 3 steps</td></tr>
-        <tr><td>Server vs trainer gap</td><td class="num">0.013–0.031</td><td>above 0.05</td></tr>
-        <tr><td>KL to SFT</td><td class="num">not logged for SRPO</td><td>set from the first 10 steps</td></tr>
-        <tr><td>Response length</td><td class="num">295–439 tokens</td><td>median changes by more than 2×</td></tr>
-        <tr><td><code>DISTINCT</code> share</td><td class="num">to log</td><td>up 10 points from step 1</td></tr>
+        <tr><td>Malformed calls</td><td class="num">0–3.5%</td><td>above 5% for 3 steps in a row</td></tr>
+        <tr><td>KL to SFT, from the server</td><td class="num">0.004 after 10 SRPO steps</td><td>above 0.05 a token</td></tr>
+        <tr><td>Server vs trainer gap</td><td class="num">0.013–0.031</td><td>above 0.10</td></tr>
+        <tr><td>Median response length</td><td class="num">~160–400 tokens</td><td>more than 2× or less than half of the start</td></tr>
+        <tr><td><code>DISTINCT</code> share</td><td class="num">15–22%</td><td>10 points above the start</td></tr>
+        <tr><td>Thoughts citing a given solution</td><td class="num">0%</td><td>above 2%</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
 <section id="code">
-  <h2><span class="num-h">06</span>Where the code goes</h2>
+  <h2><span class="num-h">06</span>Where the code is</h2>
   <div class="col">
-    <p>Each step's code stays in its own folder, and pilots don't pollute the runs. The tested,
-      general pieces (rollouts, rewards, losses, log-probs, SRPO, pause) move out of
-      <code>step2_pilots/</code> into a shared <code>src/sqlrl/rl/</code>; the pilots import them
-      from there with behaviour unchanged (the 22 tests prove it). Run 1 lives in
-      <code>src/sqlrl/run1/</code> and <code>scripts/run1/</code>, with its runs under
-      <code>&lt;data&gt;/run1/</code>.</p>
+    <p>Run 1 is self-contained: <code>src/sqlrl/run1/</code>, <code>scripts/run1/</code>,
+      <code>tests/run1/</code>, <code>documentation/run1/</code>, its runs under
+      <code>&lt;data&gt;/run1/</code>. It imports nothing from the pilots and the pilots import
+      nothing from it; the piloted loss code is copied, and tests prove the copies give the
+      pilots' numbers. Shared: only the yardstick (step 1's sampler and scorer) and the paths.</p>
+    <p>Built: the pool builder, the server launcher, the rollout scheduler, the update with its
+      probe, the merge into the GGUF, the canaries and stop rules, the run loop with evaluations
+      and the gate, pause. 20 CPU tests; two loop tests end to end (2 steps of SQL questions);
+      pause and resume tested mid-rollout.</p>
+    <p><b>Not yet run:</b> the pool build and an evaluation end to end. Both need the checker's
+      Neo4j, and Docker's engine would not start during the build session.</p>
   </div>
 </section>
 
@@ -291,26 +372,27 @@ footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--rule
       <h3>2 · The learning rate</h3>
       <div class="opts">
         <div class="opt pick"><span class="tag">Recommended</span>1e-5 with 5 warm-up steps; raise it only if step 25 shows no movement.</div>
-        <div class="opt"><span class="tag alt">Alternative</span>2e-5 from the start: faster movement, more risk of drift or collapse.</div>
+        <div class="opt"><span class="tag alt">Alternative</span>2e-5 from the start. The review found no case for it: the real policy already moved more than the pilots' logs showed.</div>
       </div>
     </div>
     <div class="askcard">
       <h3>3 · The length</h3>
       <div class="opts">
-        <div class="opt pick"><span class="tag">Recommended</span>100 steps (~26 GPU hours), then decide on 200 from the evaluations.</div>
+        <div class="opt pick"><span class="tag">Recommended</span>100 steps (~18 GPU hours), then decide on 200 from the evaluations.</div>
         <div class="opt"><span class="tag alt">Alternative</span>A fixed number now (200 or 300), with the same gate and stop rules.</div>
       </div>
     </div>
     <div class="askcard">
-      <h3>Agreed as recommended unless you say otherwise</h3>
-      <p style="margin:0"><code>high</code> thinking · the pool filters · no probe · KL logged · the
-        importance-sampling correction · the stop rules · the code layout.</p>
+      <h3>Built with the recommended value of each</h3>
+      <p style="margin:0">The three choices above are arguments of the start command
+        (<code>--mix</code>, <code>--lr</code>, <code>--steps</code>), so another value needs no
+        code change. Everything else is as the review settled it.</p>
     </div>
   </div>
 </section>
 
 <footer>
-  Source: <code>documentation/run1-design.md</code> and decision R5 in <code>documentation/decisions.md</code>,
+  Source: <code>documentation/run1/design.md</code>, <code>documentation/run1/harness.md</code> and decisions R5–R9 in <code>documentation/decisions.md</code>,
   repository SQL-CYPHER-RL-ENVIRONMENT. Companion pages: The Two RL Runs, Spark RL Pilots.
 </footer>
 </div>

@@ -20,3 +20,11 @@ model_hf = '<drive>:\<folder>\Spark-X2.6-4B-SQL-Cypher-Agent'
 model_gguf = '<drive>:\<folder>\Spark-X2.6-4B-SQL-Cypher-Agent-Q8_0.gguf'
 # A llama.cpp source tree with Spark support (its convert_lora_to_gguf.py and gguf-py).
 llama_cpp_src = '<drive>:\<folder>\llama.cpp'
+# Run 1: the llama.cpp build's `bin` folder (llama-server.exe), the ROCm `bin` folder (its
+# DLLs) and the discrete GPU's HIP index (0 when there is no integrated GPU).
+llama_bin = '<drive>:\<folder>\llama.cpp\build\bin'
+rocm_bin = '<drive>:\<folder>\ROCm\<version>\bin'
+hip_device = '1'
+# Optional: a copy of `model_hf` on WSL's own disk (a WSL path). Used when it is in WSL's file
+# cache (the run keeps it there): the update's model load takes ~20 s instead of ~58 s.
+model_hf_wsl = '~/models/Spark-X2.6-4B-SQL-Cypher-Agent'
