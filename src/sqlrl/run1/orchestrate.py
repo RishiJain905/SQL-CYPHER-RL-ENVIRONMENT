@@ -260,9 +260,43 @@ def run(name: str, launched_by: str = "agent", new: dict[str, Any] | None = None
         keeper.kill()
 
 
+def evalcheck(name: str = "evalcheck", launched_by: str = "agent") -> int:
+    """The yardstick on the SFT model itself, through run 1's own evaluation path (the copy
+    of the released GGUF, the run's server settings, the scorer): no training. It proves the
+    path end to end and shows that it reproduces the baseline. Writes `<name>/eval-0000/`."""
+    run_dir = run_dir_of(name)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    sys.stdout = sys.stderr = (run_dir / "driver.log").open("a", encoding="utf-8", buffering=1)
+    if not (run_dir / "config.json").exists():
+        rcfg.save(rcfg.new_config({"run": name, "steps": 1, "eval_steps": []}), run_dir)
+    cfg = rcfg.load(run_dir)
+    (run_dir / "run.pid").write_text(str(os.getpid()), encoding="utf-8")
+    keeper = keep_wsl_warm()
+    try:
+        if server.running():
+            raise RuntimeError("another llama-server is running: one GPU job at a time")
+        o = evaluate(cfg, run_dir, 0, launched_by)["overall"]
+        event(
+            run_dir,
+            "info",
+            f"yardstick on the SFT model: greedy {o['greedy_pass1']:.3f}, "
+            f"mean@8 {o['mean_at8']:.3f}, pass@8 {o['pass_at_k'][-1]:.3f}",
+            phase="done",
+        )
+        return 0
+    except Exception as e:
+        event(run_dir, "error", f"evaluation check failed: {type(e).__name__}: {str(e)[:300]}",
+              phase="failed")  # fmt: skip
+        return 1
+    finally:
+        keeper.kill()
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--run", default="run1", help="the run's name (its folder under run1/)")
+    ap.add_argument("--evalcheck", action="store_true",
+                    help="only run the yardstick on the SFT model (no training)")  # fmt: skip
     ap.add_argument("--launched-by", default="agent")
     new = ap.add_argument_group("a new run's settings (ignored when the run exists)")
     new.add_argument("--mix", choices=sorted(rcfg.MIXES), default=None)
@@ -272,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
     new.add_argument("--smoke", action="store_true",
                      help="a loop test: 2 steps of 8 SQL questions, no evaluation")  # fmt: skip
     a = ap.parse_args(argv)
+    if a.evalcheck:
+        return evalcheck("evalcheck" if a.run == "run1" else a.run, a.launched_by)
     over: dict[str, Any] = {"lr": a.lr, "steps": a.steps, "pool": a.pool}
     if a.mix:
         over["mix"] = rcfg.MIXES[a.mix]

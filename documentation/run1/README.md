@@ -4,7 +4,8 @@ Run 1 is stage A of the real RL run: single turn, an execution reward, SRPO, a n
 released SFT model. The design and the review behind it: [`design.md`](design.md). How the
 rollout loop works and what it measured: [`harness.md`](harness.md).
 
-**Status (2026-11-12): built and loop-tested, not started. Rishi starts it.**
+**Status (2026-11-12): built and loop-tested, not started.** Starting and watching it:
+[`RUNBOOK.md`](RUNBOOK.md). The dashboard's task: [`dashboard-brief.md`](dashboard-brief.md).
 
 ## Before the first start
 
@@ -23,6 +24,8 @@ rollout loop works and what it measured: [`harness.md`](harness.md).
 | A new run with other choices | add `--mix even`, `--lr 2e-5`, `--steps 200` (only when the run is created) |
 | **Free the GPU now** | `C:\Python314\python.exe -I scripts\run1\pause.py --run run1` |
 | Stop after the current step | `C:\Python314\python.exe -I scripts\run1\pause.py --run run1 --after-step` |
+| The yardstick on the SFT model through run 1's evaluation path (no training, ~35 min) | `C:\Python314\python.exe -I scripts\run1\run.py --evalcheck` |
+| One tick of the dashboard's data | `C:\Python314\python.exe -I scripts\run1\feed.py --run run1` (writes `<run>/feed/*.json`; `dashboard-brief.md` describes the fields) |
 | A loop test (2 steps, 8 SQL questions, ~10 min) | `C:\Python314\python.exe -I scripts\run1\run.py --run smoke-<n> --smoke --pool pool-test` |
 
 Start it detached, for example from PowerShell:
