@@ -236,3 +236,27 @@ significant loss. A sudden jump between two steps is still read as a fault. Rish
 (0.014 at step 1, 0.034 at step 10) says how far its view has fallen behind the policy that
 samples; it is a question of whether the updates are still right, not of distance. If it
 nears 0.10 before step 25, Rishi decides.
+## R11: run 1 continues past the KL bound after a step-19 evaluation (2026-11-13)
+
+**What:** the KL rule (0.10, R10) paused run 1 after step 19 (`kl_sft` 0.115). With Rishi's OK
+the run was evaluated there (step 19 added to `eval_steps`, a `STOP` file so it stopped before
+step 20), then resumed with `stop.kl_max` 0.30 and two more evaluations, after steps 35 and 75
+(`eval_steps` 19, 25, 35, 50, 75, 100). The earlier files are kept beside `config.json`
+(`.before-eval19`, `.before-kl030`).
+
+**Why:** the evaluation after step 19, on the 200-question evalset (195 scored):
+
+| | greedy pass@1 | mean@8 | pass@8 | always / sometimes / never |
+|---|---|---|---|---|
+| SFT, the baseline | 43.2 | 36.9 | 62.6 | 30 / 94 / 74 |
+| SFT, measured again through run 1's path | 44.5 | 36.4 | 59.9 | 29 / 89 / 79 |
+| **after step 19** | **45.6** | **40.8** | **66.2** | 37 / 92 / 66 |
+
+Sign tests against the baseline (better / worse, p): greedy 21 / 16 (0.51), sampled 60 / 41
+(0.07), pass@8 14 / 9 (0.40); the SFT model measured again gave a sampled 37 / 44. By dataset
+(greedy / mean@8 / pass@8): CypherBench, tested on graphs it never trains on, 44.9 / 37.9 / 80
+to 53.1 / 42.2 / 78; gretel 64 / 59.5 / 80 to 62 / 64 / 86; text2cypher 15.4 / 15.2 / 32.7 to
+25.0 / 22.0 / 46.8; SQaLe 42.2 / 34.3 / 57.1 to 36.2 / 33.7 / 52.1 (down, within the noise of
+48 questions; watched as a possible overfit). pass@8 rose and "never" fell, so the gain is not
+the policy narrowing. The drift that fired the KL rule bought accuracy, so the bound became a
+backstop and the evaluations the main check.
