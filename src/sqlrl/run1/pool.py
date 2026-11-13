@@ -6,7 +6,8 @@ Training-split questions only (the SFT run's `gold-full` set), never the evalset
 set (excluded by id and by question text). Three filters the pilots' pool didn't have:
 
 1. **The reference must be able to earn the reward.** Each question's own reference query is
-   scored by checker 4 as if the model had written it. A reference the checker can't decide
+   scored by checker 4 as if the model had written it (with its first keyword in the other
+   case, so the checker runs it instead of passing it as an exact copy). A reference the checker can't decide
    (it returns nothing, or only zeros and nulls, on the checker's databases; or no rule proves
    it) would give every rollout "undecided": the question is left out. For gretel, whose
    reference runs on the dataset's own rows, the rows must also say something.
@@ -26,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -69,14 +71,24 @@ def candidates(train: list[dict[str, Any]], held_out: list[dict[str, Any]], seed
     return by_set
 
 
+FIRST_WORD = re.compile(r"[A-Za-z]+")
+
+
+def probe_query(gold: str) -> str:
+    """The reference with its first keyword in the other case: the same query to SQLite and
+    Neo4j (keywords are case-insensitive), but not the same text. The checker passes an answer
+    that is textually the reference without running it ("exact"); the probe must be run."""
+    return FIRST_WORD.sub(lambda m: m[0].swapcase(), gold, count=1)
+
+
 def reference_call(ex: dict[str, Any]) -> tuple[str, str]:
-    """(the reference query, the reply text a model would write to call the tool with it)."""
+    """(the reference query, the reply text of a model that calls the tool with the probe)."""
     fn = ex["messages"][-1]["tool_calls"][0]["function"]
     args = fn["arguments"] if isinstance(fn["arguments"], dict) else json.loads(fn["arguments"])
     arg = next(iter(args))
     gold = (ex.get("meta") or {}).get("gold") or args[arg]
     text = (f"</think><tool_call>{fn['name']}<arg_key>{arg}</arg_key>"
-            f"<arg_value>{gold}</arg_value></tool_call>")  # fmt: skip
+            f"<arg_value>{probe_query(gold)}</arg_value></tool_call>")  # fmt: skip
     return gold, text
 
 

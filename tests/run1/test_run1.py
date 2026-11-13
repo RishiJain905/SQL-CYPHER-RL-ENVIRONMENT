@@ -274,4 +274,10 @@ def test_reference_call_writes_the_tool_call_text():
     gold, text = pool.reference_call(ex)
     assert gold == "SELECT 1"
     assert text == ("</think><tool_call>run_sql<arg_key>query</arg_key>"
-                    "<arg_value>SELECT 1</arg_value></tool_call>")  # fmt: skip
+                    "<arg_value>select 1</arg_value></tool_call>")  # fmt: skip
+
+
+def test_probe_query_changes_the_text_not_the_query():
+    assert pool.probe_query("MATCH (n) RETURN n") == "match (n) RETURN n"
+    assert pool.probe_query("  select a FROM t") == "  SELECT a FROM t"
+    assert pool.probe_query("(SELECT 1)") == "(select 1)"

@@ -49,7 +49,8 @@ in, quantised to Q8_0 (R7). The pilots loaded the LoRA at run time instead.
 - **Every question is used once.** The checker's filled databases use fixed seeds, so a question
   seen often could be answered for those copies only. `pool-v2` never repeats a question.
 - **Questions that can't teach are left out:** each reference query is scored by the checker as
-  if the model had written it. One that the checker can't decide (it returns nothing, or only
+  if the model had written it (with its first keyword in the other case: the checker passes
+  an exact copy of the reference without running it). One that the checker can't decide (it returns nothing, or only
   zeros and nulls, or no rule proves it) would make every rollout "undecided"; for gretel the
   reference's rows must also say something.
 - **Canaries, logged every step** (`canaries.py`): the share of queries with `DISTINCT`, with
@@ -64,8 +65,10 @@ all right or all wrong and cost rollout time only.
 
 - **The pool:** `pool-v2` (`run1/pool.py`), from the training split, the filters of section 1
   applied, evalset and test questions excluded by id and text, duplicates of a question kept
-  once, prompts of at most 4,000 tokens. Up to 2,000 CypherBench, 2,000 gretel, 1,600 SQaLe and
-  1,000 text2cypher questions: enough for 200 steps at the recommended mix.
+  once, prompts of at most 4,000 tokens. Built 2026-11-12: 6,600 questions (2,000 CypherBench,
+  2,000 gretel, 1,600 SQaLe, 1,000 text2cypher), enough for 200 steps at the recommended mix.
+  The filter rejected 30% of the text2cypher candidates, 24% of gretel's, 7% of SQaLe's and
+  4% of CypherBench's.
 - **No probe pass.** Probing 2,000 questions x 8 samples costs about what it would save.
   Groups with no signal are skipped and the informative share is logged.
 - **The mix per step of 32** is a real choice (section 8). The pilots used 8 per dataset.
