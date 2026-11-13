@@ -84,7 +84,7 @@ check the table below; say nothing unless something is off or it is a reporting 
 | `events.jsonl`, `status` | `step k done`, then the next step's rollouts | `failed`: section 5. `paused`: section 6 |
 | `informative_frac` | 0.4-0.6 | below 0.25 for several steps: the batch has too few "sometimes" questions; tell Rishi |
 | `entropy` | near the first steps' (0.43-0.59 in tests) | falling steadily: the policy is narrowing; watch pass@8 at the next evaluation |
-| `kl_sft` | ~0.0005 at step 1, rising slowly (0.004 after 10 pilot steps) | a jump between two steps, or a path that will cross 0.05 well before step 100: tell Rishi before the rule fires |
+| `kl_sft` | ~0.0005 at step 1, rising slowly (0.004 after 10 pilot steps) | a jump between two steps, or a path that will cross the bound well before step 100: tell Rishi before the rule fires (the bound is 0.10 since step 10, R10; a steady rise is expected, the evaluations judge it) |
 | `mismatch` | ~0.012-0.015 at step 1, rising with the LoRA | above 0.06: report; 0.10 pauses the run |
 | `malformed_frac`, `multi_call_frac`, `leak_frac` | 0-3%, 0, 0 | any rising trend; `leak_frac` above 0: read those thoughts |
 | `distinct_frac`, `select_star_frac`, `query_chars_median` | flat | a trend: read the highest-reward rollouts for a trick |

@@ -58,4 +58,4 @@
 - **2026-11-01:** Rishi told the agent to begin step 2's pilots (run with `--launched-by agent`).
 - **2026-11-12:** Rishi told the agent to begin run 1 with the recommended choices (run with
   `--launched-by agent`); started 2026-11-13 18:14 UTC from an Opus 5.5 session following
-  `run1/RUNBOOK.md`.
+  `run1/RUNBOOK.md`. After step 10 the KL stop bound was raised to 0.10 with his OK (R10).

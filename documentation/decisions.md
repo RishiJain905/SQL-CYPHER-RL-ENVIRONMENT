@@ -216,3 +216,23 @@ cold and its model load took 195-210 s in the first loop tests; with a keep-aliv
 the model's copy on WSL's own disk held in the file cache, 17-22 s. Padding several sequences
 into one pass was tried and was far slower on this GPU, so the update keeps one sequence per
 pass.
+
+## R10: run 1's KL stop bound raised from 0.05 to 0.10 after step 10 (2026-11-13)
+
+**What:** `stop.kl_max` in run 1's `config.json`, 0.05 to 0.10, with the run stopped cleanly
+between steps 10 and 11 (a `STOP` file) and resumed. Nothing else changed; the old file is kept
+next to it as `config.json.before-kl010`.
+
+**Why:** at the full learning rate (from step 5) `kl_sft` grew steadily, 0.0006 at step 5 to
+0.0040 at step 9 (0.0033 at step 10), close to the square of the steps taken, which is what a
+constant learning rate moving the LoRA in one direction gives. Extended, it crossed 0.05 near
+step 25, and the stop rules are checked before the evaluation, so the run would have paused
+without its first held-out measurement. KL to the SFT model is expected to grow (RL is meant to
+change the answers); it says how far the model moved, not whether the move helped. The
+evaluations after steps 25, 50 and 100 judge that, and the pass@8 gate still pauses on a
+significant loss. A sudden jump between two steps is still read as a fault. Rishi agreed.
+
+**Not changed:** `mismatch_max` (0.10). The trainer under-reads the LoRA (R7) and `mismatch`
+(0.014 at step 1, 0.034 at step 10) says how far its view has fallen behind the policy that
+samples; it is a question of whether the updates are still right, not of distance. If it
+nears 0.10 before step 25, Rishi decides.
