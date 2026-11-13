@@ -7,7 +7,8 @@ set (excluded by id and by question text). Three filters the pilots' pool didn't
 
 1. **The reference must be able to earn the reward.** Each question's own reference query is
    scored by checker 4 as if the model had written it (with its first keyword in the other
-   case, so the checker runs it instead of passing it as an exact copy). A reference the checker can't decide
+   case, so the checker runs it instead of passing it as an exact copy). A reference the
+   checker can't decide
    (it returns nothing, or only zeros and nulls, on the checker's databases; or no rule proves
    it) would give every rollout "undecided": the question is left out. For gretel, whose
    reference runs on the dataset's own rows, the rows must also say something.
