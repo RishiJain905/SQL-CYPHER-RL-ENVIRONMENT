@@ -6,7 +6,7 @@
 |---|---|---|
 | 1. Sampling baseline | ✅ done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
-| 3+. The real RL run | 🔧 run 1 built and loop-tested, **not started (Rishi starts it)** | stage A single-turn, stage B multi-turn, optional stage C; environments per R5; run 1: `run1/README.md`, `run1/design.md`, `run1/harness.md` (R6-R9). `pool-v2` built, the evaluation path checked; start and watch it with `run1/RUNBOOK.md` |
+| 3+. The real RL run | ▶️ run 1 **running** (started 2026-11-13, 100 steps, ~18 h) | stage A single-turn, stage B multi-turn, optional stage C; environments per R5; run 1: `run1/README.md`, `run1/design.md`, `run1/harness.md` (R6-R9). `pool-v2` built, the evaluation path checked; start and watch it with `run1/RUNBOOK.md` |
 
 ## Session log
 
@@ -56,3 +56,6 @@
 - **2026-10-31:** Rishi started the baseline by telling the agent to begin it (run with
   `--launched-by agent`).
 - **2026-11-01:** Rishi told the agent to begin step 2's pilots (run with `--launched-by agent`).
+- **2026-11-12:** Rishi told the agent to begin run 1 with the recommended choices (run with
+  `--launched-by agent`); started 2026-11-13 18:14 UTC from an Opus 5.5 session following
+  `run1/RUNBOOK.md`.

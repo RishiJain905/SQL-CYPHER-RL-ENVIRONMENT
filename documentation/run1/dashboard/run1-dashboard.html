@@ -1,0 +1,1351 @@
+<title>Run 1 Dashboard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: an instrument panel. A sticky status bar, a header with the run's state and the
+   six numbers that matter, then nine panels of small charts in a responsive grid. Same colours
+   and type as the run-1 design page; chart colours come from the validated categorical set. */
+:root {
+  --bg: #F5F7F9;
+  --surface: #FFFFFF;
+  --surface-2: #EBEFF3;
+  --ink: #141D26;
+  --ink-2: #4A5866;
+  --muted: #647180;
+  --rule: #D5DCE3;
+  --grid: #E8ECF0;
+  --axis: #C3CCD5;
+  --accent: #0B7285;
+  --accent-bg: #E1F1F4;
+  /* chart series: categorical slots 1-4, validated on the surface */
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --s-other: #9AA6B2;
+  /* ordered split: never < sometimes < always */
+  --ord1: #86b6ef;
+  --ord2: #2a78d6;
+  --ord3: #0d366b;
+  /* status, always with an icon and words */
+  --bound: #d03b3b;
+  --ok: #006300;
+  --ok-bg: #E3F4E3;
+  --warn: #7A5200;
+  --warn-bg: #FFF1CF;
+  --bad: #A02323;
+  --bad-bg: #FBE2E2;
+  --neutral-bg: #E3E8ED;
+  --shadow: 0 4px 14px rgba(20, 29, 38, .16);
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141A; --surface: #151D25; --surface-2: #1C2630; --ink: #E4EBF1; --ink-2: #9AA9B7;
+    --muted: #8696A6; --rule: #2B3844; --grid: #212C37; --axis: #34424F;
+    --accent: #4DB8CC; --accent-bg: #12303A;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #5A6978;
+    --ord1: #184f95; --ord2: #3987e5; --ord3: #9ec5f4;
+    --bound: #e66767;
+    --ok: #5FD35F; --ok-bg: #123A12; --warn: #F0C04A; --warn-bg: #3A2E0C;
+    --bad: #F08A8A; --bad-bg: #3F1717; --neutral-bg: #232F3B;
+    --shadow: 0 4px 14px rgba(0, 0, 0, .55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141A; --surface: #151D25; --surface-2: #1C2630; --ink: #E4EBF1; --ink-2: #9AA9B7;
+  --muted: #8696A6; --rule: #2B3844; --grid: #212C37; --axis: #34424F;
+  --accent: #4DB8CC; --accent-bg: #12303A;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #5A6978;
+  --ord1: #184f95; --ord2: #3987e5; --ord3: #9ec5f4;
+  --bound: #e66767;
+  --ok: #5FD35F; --ok-bg: #123A12; --warn: #F0C04A; --warn-bg: #3A2E0C;
+  --bad: #F08A8A; --bad-bg: #3F1717; --neutral-bg: #232F3B;
+  --shadow: 0 4px 14px rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 64px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 14px/1.45 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+  -webkit-text-size-adjust: 100%;
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+  z-index: 40; background: var(--bg);
+}
+.wrap { max-width: 1280px; margin: 0 auto; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; }
+code, .mono { font-family: var(--mono); }
+code { font-size: .88em; background: var(--surface-2); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+button { font: inherit; color: inherit; }
+button:focus-visible, .chart:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px;
+}
+a { color: var(--accent); }
+
+/* sticky status bar */
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30;
+  background: var(--bg); border-bottom: 1px solid var(--rule);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 0;
+}
+.bar .name { font-weight: 600; }
+.bar .step { font: 500 13px var(--mono); white-space: nowrap; }
+.bar .prog { flex: 1 1 140px; min-width: 100px; }
+.bar .upd { font: 12px var(--sans); color: var(--ink-2); margin-left: auto; white-space: nowrap; }
+.bar .upd.stale { color: var(--warn); font-weight: 600; }
+
+.chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 var(--sans); letter-spacing: .05em;
+  text-transform: uppercase; padding: 5px 8px 5px 6px; border-radius: 3px; white-space: nowrap; }
+.chip svg { width: 12px; height: 12px; flex: none; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.neutral { background: var(--neutral-bg); color: var(--ink-2); }
+.chip.plain { background: transparent; border: 1px solid var(--rule); color: var(--ink-2); font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) { .chip.ok.live svg { animation: pulse 1.8s ease-in-out infinite; } }
+@keyframes pulse { 50% { opacity: .35; } }
+
+.meter { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; width: 0; transition: width .4s ease; }
+@media (prefers-reduced-motion: reduce) { .meter > i { transition: none; } }
+
+/* header */
+.hero { padding: 18px 0 6px; display: grid; gap: 14px; }
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+h1 { font: 600 clamp(26px, 5vw, 34px)/1.15 var(--sans); letter-spacing: -.015em; }
+.hero-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.hgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
+.hcell { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; min-width: 0; display: grid; gap: 4px; align-content: start; }
+.hcell .k { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.hcell .v { font: 600 17px/1.25 var(--sans); overflow-wrap: anywhere; }
+.hcell .s { font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+
+.banner { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--rule); font-size: 13.5px; }
+.banner svg { width: 16px; height: 16px; margin-top: 1px; }
+.banner.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.banner.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+.banner b { font-weight: 600; }
+.banner ul { margin: 2px 0 0; padding-left: 1.1em; }
+.banner li { overflow-wrap: anywhere; }
+
+/* the six numbers */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 10px; }
+.tile { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; display: grid; gap: 3px; min-width: 0; }
+.tile .k { font-size: 12px; color: var(--ink-2); }
+.tile .v { font: 600 24px/1.1 var(--sans); }
+.tile .s { font-size: 12px; color: var(--ink-2); }
+.tile .chip { justify-self: start; margin-top: 3px; }
+
+/* filter row */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 14px 0 4px; }
+.filters .lbl { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin-right: 6px; }
+.seg { display: inline-flex; max-width: 100%; border: 1px solid var(--rule); border-radius: 5px; overflow-x: auto; overflow-y: hidden; background: var(--surface); }
+.seg button { flex: none; }
+.seg button { border: 0; background: transparent; padding: 6px 11px; cursor: pointer; font-size: 13px; color: var(--ink-2); border-right: 1px solid var(--rule); min-height: 32px; }
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--surface-2); }
+.seg button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-left: auto; font-size: 13px; }
+nav.toc a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule); }
+nav.toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+/* panels */
+section.panel { margin-top: 30px; }
+.panel > h2 { font: 600 19px/1.25 var(--sans); letter-spacing: -.005em; }
+.panel > .intro { color: var(--ink-2); max-width: 78ch; margin: 3px 0 12px; font-size: 13.5px; }
+.panel > .intro + .intro { margin-top: -6px; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: stretch; }
+.grid.sm { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
+.grid.md { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
+.grid + .grid, .grid + .rule-note, .rule-note + .grid { margin-top: 12px; }
+.subhead { font: 600 12px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin: 16px 0 8px; }
+.rule-note { font-size: 13px; color: var(--ink-2); max-width: 90ch; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 4px 4px 0; }
+.rule-note b { color: var(--ink); font-weight: 600; }
+
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px 8px; min-width: 0; display: flex; flex-direction: column; }
+.card .chart { margin-top: auto; padding-top: 4px; width: 100%; }
+.ch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.ch { align-items: center; }
+.ch h3 { font: 600 13.5px/1.3 var(--sans); flex: 1 1 auto; }
+.ch .lat { order: 3; flex: 1 0 100%; font: 500 12px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; min-height: 1.3em; overflow-wrap: anywhere; }
+.ch .tb { border: 1px solid var(--rule); background: transparent; border-radius: 4px; font-size: 11.5px; padding: 2px 8px; color: var(--ink-2); cursor: pointer; min-height: 24px; }
+.ch .tb:hover { background: var(--surface-2); }
+.card .sub { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 3px 14px; margin: 6px 0 0; font-size: 12px; color: var(--ink-2); }
+.legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--c, var(--s1)); }
+.sw.box { width: 10px; height: 10px; border: 0; background: var(--c); border-radius: 2px; }
+.sw.dot { width: 8px; height: 8px; border: 0; background: var(--c); border-radius: 50%; opacity: .6; }
+.sw.ring { width: 9px; height: 9px; border: 2px solid var(--c); background: var(--surface); border-radius: 50%; }
+.sw.bound { border-top: 2px dashed var(--bound); }
+.sw.ref { border-top: 2px dotted var(--muted); }
+.chart { position: relative; margin-top: 4px; touch-action: pan-y; }
+.chart svg { display: block; max-width: 100%; }
+.chart .msg { display: grid; place-items: center; min-height: 110px; color: var(--muted); font-size: 12.5px; text-align: center; padding: 8px; }
+.chart.as-table { max-height: 270px; overflow: auto; border-top: 1px solid var(--rule); }
+.card .foot { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+.card .foot:empty { display: none; }
+.card .foot .warn { color: var(--warn); font-weight: 600; }
+
+/* svg bits */
+.gl { stroke: var(--grid); stroke-width: 1; }
+.ax { stroke: var(--axis); stroke-width: 1; }
+.tk { fill: var(--muted); font: 10.5px var(--mono); }
+.hl { font: 500 10.5px var(--sans); fill: var(--ink-2); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.band { fill: var(--surface-2); opacity: .8; }
+.xl { stroke: var(--axis); stroke-width: 1; }
+.hm { stroke: var(--surface); stroke-width: 2; }
+.hot { fill: var(--surface-2); opacity: .9; }
+
+/* tooltip */
+.tip { position: absolute; z-index: 6; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); border-radius: 5px;
+  box-shadow: var(--shadow); padding: 6px 9px; font: 12px/1.4 var(--sans); min-width: 130px; max-width: 280px; top: 6px; }
+.tip .tt { font: 500 11px var(--mono); color: var(--ink-2); margin-bottom: 3px; }
+.tip .tr { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.tip .tr .k { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); min-width: 0; }
+.tip .tr b { font: 600 12px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tip .tr .sw { width: 12px; flex: none; }
+
+/* tables */
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: middle; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+thead th { position: sticky; top: 0; background: var(--surface-2); font: 600 11px var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); z-index: 1; }
+td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td .d { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+.chart.as-table table { font-size: 12px; }
+.chart.as-table th, .chart.as-table td { padding: 4px 9px; }
+.splitbar { display: flex; height: 8px; width: 120px; border-radius: 4px; overflow: hidden; gap: 2px; background: transparent; }
+.splitbar i { display: block; height: 100%; min-width: 0; }
+.splitbar i:nth-child(1) { background: var(--ord1); }
+.splitbar i:nth-child(2) { background: var(--ord2); }
+.splitbar i:nth-child(3) { background: var(--ord3); }
+.evtools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 0 0 8px; font-size: 13px; }
+.gate { display: inline-flex; align-items: center; gap: 5px; }
+td.gatecol { background: var(--accent-bg); }
+th.gatecol { color: var(--accent); }
+
+/* events */
+.events { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; max-height: 420px; overflow: auto; }
+.ev { display: grid; grid-template-columns: 8.5em 4.8em 1fr; gap: 4px 10px; padding: 7px 12px; border-bottom: 1px solid var(--rule); align-items: baseline; }
+.ev:last-child { border-bottom: 0; }
+.ev .t { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.ev .x { overflow-wrap: anywhere; }
+.ev .x small { color: var(--muted); font: 11.5px var(--mono); margin-left: 6px; }
+.ev.warn { background: var(--warn-bg); }
+.ev.error { background: var(--bad-bg); }
+.ev .kd { font: 600 10.5px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.ev.warn .kd { color: var(--warn); }
+.ev.error .kd { color: var(--bad); }
+@media (max-width: 520px) { .ev { grid-template-columns: 1fr; } .ev .t, .ev .kd { display: inline; } }
+
+/* settings, empty and notes */
+details.cfg { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 12px; }
+details.cfg summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+dl.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 6px 18px; margin: 10px 0 2px; }
+dl.kv div { min-width: 0; }
+dl.kv dt { font: 600 11px var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
+dl.kv dd { margin: 0; font: 13px var(--mono); overflow-wrap: anywhere; }
+.empty { background: var(--surface); border: 1px dashed var(--axis); border-radius: 8px; padding: 22px 20px; display: grid; gap: 8px; margin-top: 18px; }
+.empty h2 { font: 600 18px var(--sans); }
+.empty p { color: var(--ink-2); max-width: 70ch; }
+.note { font-size: 12.5px; color: var(--ink-2); padding: 6px 0 0; }
+.note.warn { color: var(--warn); font-weight: 600; }
+footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 12.5px; color: var(--ink-2); max-width: 90ch; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 520px) {
+  body { font-size: 14px; }
+  .bar .upd { margin-left: 0; }
+  nav.toc { margin-left: 0; }
+}
+</style>
+
+<div class="wrap">
+
+<div class="bar" id="bar" aria-label="Run status">
+  <span class="name">Run 1</span>
+  <span id="bar-status"></span>
+  <span class="step" id="bar-step">no data yet</span>
+  <div class="prog"><div class="meter" role="progressbar" aria-label="Steps trained" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar-meter"><i id="bar-fill"></i></div></div>
+  <span class="upd" id="bar-upd"></span>
+</div>
+
+<header class="hero">
+  <div class="hero-top">
+    <h1>Run 1 dashboard</h1>
+    <span class="chip plain" id="feedname" hidden></span>
+  </div>
+  <div class="eyebrow">SQL + Cypher RL · stage A single turn · SRPO · live from the training log</div>
+  <div id="netnote" class="note" hidden></div>
+  <div id="banners" style="display:grid;gap:8px"></div>
+  <div class="hgrid" id="hgrid"></div>
+  <div class="tiles" id="tiles"></div>
+  <details class="cfg" id="cfg" hidden><summary>Run settings</summary><dl class="kv" id="cfgbody"></dl></details>
+</header>
+
+<div class="empty" id="empty">
+  <h2>Waiting for the first feed</h2>
+  <p>Nothing has been pushed into this page's store yet. After every training step the watching agent writes the run's
+    <code>state</code> and the <code>steps-n</code> files into it, and this page redraws on its own the moment they land.</p>
+  <p>Before the first step you will see the SFT baseline and the stop bounds. After step 1 the rollout, optimizer, drift and canary charts fill in,
+    and the first evaluation shows up after step 25.</p>
+</div>
+
+<div id="content">
+
+<div class="filters" role="group" aria-label="View options">
+  <span><span class="lbl">Steps shown</span><span class="seg" id="seg-range">
+    <button type="button" data-v="all" aria-pressed="true">All</button>
+    <button type="button" data-v="50" aria-pressed="false">Last 50</button>
+    <button type="button" data-v="25" aria-pressed="false">Last 25</button></span></span>
+  <span><span class="lbl">Charts as</span><span class="seg" id="seg-view">
+    <button type="button" data-v="charts" aria-pressed="true">Charts</button>
+    <button type="button" data-v="tables" aria-pressed="false">Tables</button></span></span>
+  <nav class="toc" aria-label="Panels">
+    <a href="#p-rollouts">Rollouts</a><a href="#p-optimizer">Optimizer</a><a href="#p-drift">Drift</a><a href="#p-canaries">Canaries</a>
+    <a href="#p-evals">Evaluations</a><a href="#p-general">Generalising</a><a href="#p-timing">Timing</a><a href="#p-events">Events</a>
+  </nav>
+</div>
+
+<section class="panel" id="p-rollouts"><h2>Rollouts</h2></section>
+<section class="panel" id="p-optimizer"><h2>Optimizer</h2></section>
+<section class="panel" id="p-drift"><h2>Drift from the SFT model</h2></section>
+<section class="panel" id="p-canaries"><h2>Canaries</h2></section>
+<section class="panel" id="p-evals"><h2>Evaluations</h2></section>
+<section class="panel" id="p-general"><h2>Generalising or overfitting</h2></section>
+<section class="panel" id="p-timing"><h2>Timing and memory</h2></section>
+<section class="panel" id="p-events"><h2>Events</h2></section>
+
+<footer>
+  Every series is a number from the run's own training log (the same values W&amp;B receives as <code>train/*</code>), written by
+  <code>scripts/run1/feed.py</code> after each step. Dashed red lines are the run's stop bounds; dotted grey lines are the SFT model's numbers
+  on the same yardstick. Colours are validated for colour-blind readers; each chart has a table twin.
+</footer>
+
+</div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* ------------------------------------------------------------------ constants */
+var SETS = ['cypherbench', 'gretel', 'sqale', 'text2cypher'];
+var SET_NAME = { cypherbench: 'CypherBench', gretel: 'Gretel', sqale: 'SQaLe', text2cypher: 'Text2Cypher' };
+var ROLL = 5;
+var BASE_STEPS = 5;
+var CARD_GB = 16;
+
+var view = { range: 'all', tables: false, evalScope: 'overall' };
+var D = { state: null, rows: [], loaded: false };
+var cards = [];
+
+/* ------------------------------------------------------------------ small helpers */
+function isNum(v) { return typeof v === 'number' && isFinite(v); }
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function avg(a) { var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return a.length ? s / a.length : null; }
+function $(sel, root) { return (root || document).querySelector(sel); }
+function h(tag, props) {
+  var e = document.createElement(tag);
+  if (props) Object.keys(props).forEach(function (k) {
+    var v = props[k];
+    if (v === false || v == null) return;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, '');
+    else e.setAttribute(k, v);
+  });
+  for (var i = 2; i < arguments.length; i++) append(e, arguments[i]);
+  return e;
+}
+function append(e, c) {
+  if (c == null || c === false) return;
+  if (Array.isArray(c)) { c.forEach(function (x) { append(e, x); }); return; }
+  e.append(c.nodeType ? c : document.createTextNode(String(c)));
+}
+function setText(id, t) { var e = document.getElementById(id); if (e) e.textContent = t; }
+
+var F = {
+  pct: function (v) { return isNum(v) ? (v * 100).toFixed(1) + '%' : '–'; },
+  pctA: function (v) {
+    if (!isNum(v)) return '–';
+    var p = v * 100, a = Math.abs(p);
+    return (a >= 10 ? p.toFixed(1) : a >= 1 ? p.toFixed(2) : p.toFixed(3)) + '%';
+  },
+  d2: function (v) { return isNum(v) ? v.toFixed(2) : '–'; },
+  d3: function (v) { return isNum(v) ? v.toFixed(3) : '–'; },
+  d1: function (v) { return isNum(v) ? v.toFixed(1) : '–'; },
+  sig: function (v) { return isNum(v) ? (v === 0 ? '0' : String(Number(v.toPrecision(3)))) : '–'; },
+  sci: function (v) { return isNum(v) ? (v === 0 ? '0' : v.toExponential(1)) : '–'; },
+  int: function (v) { return isNum(v) ? Math.round(v).toLocaleString('en-US') : '–'; },
+  sec: function (v) { return isNum(v) ? v.toFixed(0) + ' s' : '–'; },
+  gb: function (v) { return isNum(v) ? v.toFixed(2) + ' GB' : '–'; },
+  signed: function (v, d) { return isNum(v) ? (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d == null ? 1 : d) : '–'; }
+};
+
+function niceScale(lo, hi, n) {
+  if (!(hi > lo)) hi = lo + 1;
+  var raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  var step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  var a = Math.floor(lo / step + 1e-9) * step, b = Math.ceil(hi / step - 1e-9) * step, ticks = [];
+  for (var v = a; v <= b + step * 1e-6; v += step) ticks.push(+v.toPrecision(12));
+  return { lo: a, hi: b, step: step, ticks: ticks };
+}
+function xTicks(x0, x1, max) {
+  var span = x1 - x0;
+  if (span <= 0) return [x0];
+  var opts = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000], st = 1000, i;
+  for (i = 0; i < opts.length; i++) { if (span / opts[i] <= max) { st = opts[i]; break; } }
+  var out = [], v = Math.ceil(x0 / st) * st;
+  if (v - x0 >= st * 0.6) out.push(x0);
+  for (; v <= x1; v += st) out.push(v);
+  return out;
+}
+function axisFmt(kind, step) {
+  if (kind === 'pct') { var ps = step * 100, dec = ps >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(ps) - 1e-9)); return function (v) { return (v * 100).toFixed(dec) + '%'; }; }
+  if (kind === 'sci') return function (v) { return v === 0 ? '0' : v.toExponential(0).replace('e-', 'e−'); };
+  if (kind === 'int') return function (v) { return Math.abs(v) >= 10000 ? (v / 1000).toFixed(0) + 'K' : Math.round(v).toLocaleString('en-US'); };
+  var d = step >= 1 ? 0 : Math.min(6, Math.ceil(-Math.log10(step) - 1e-9));
+  return function (v) { return v.toFixed(d); };
+}
+function pathOf(pts) { return pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' '); }
+
+function icon(name) {
+  var p = {
+    run: '<circle cx="6" cy="6" r="4.2" fill="currentColor"/>',
+    pause: '<rect x="2.2" y="1.6" width="2.8" height="8.8" rx=".6" fill="currentColor"/><rect x="7" y="1.6" width="2.8" height="8.8" rx=".6" fill="currentColor"/>',
+    fail: '<path d="M2.2 2.2l7.6 7.6M9.8 2.2l-7.6 7.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+    stop: '<rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1" fill="currentColor"/>',
+    done: '<path d="M2 6.4l2.6 2.6L10 3.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+    idle: '<circle cx="6" cy="6" r="3.8" stroke="currentColor" stroke-width="1.8" fill="none"/>',
+    warn: '<path d="M6 1.4L11 10.4H1z" fill="currentColor"/><rect x="5.3" y="4.4" width="1.4" height="3" fill="var(--surface)"/><rect x="5.3" y="8" width="1.4" height="1.2" fill="var(--surface)"/>',
+    ok: '<path d="M2 6.4l2.6 2.6L10 3.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+  }[name] || '';
+  return '<svg viewBox="0 0 12 12" aria-hidden="true">' + p + '</svg>';
+}
+function iconEl(name) { var t = document.createElement('span'); t.innerHTML = icon(name); return t.firstChild; }
+function chip(cls, ic, text, extra) {
+  var c = h('span', { class: 'chip ' + cls + (extra ? ' ' + extra : '') });
+  c.innerHTML = icon(ic);
+  c.append(document.createTextNode(text));
+  return c;
+}
+var STATUS = {
+  'running': ['ok', 'run', 'Running', 'live'], 'paused': ['warn', 'pause', 'Paused'], 'failed': ['bad', 'fail', 'Failed'],
+  'stopped': ['neutral', 'stop', 'Stopped'], 'done': ['ok', 'done', 'Done'], 'not started': ['neutral', 'idle', 'Not started']
+};
+
+/* ------------------------------------------------------------------ data layer */
+function derive(docs) {
+  var state = docs.state || null, map = {};
+  Object.keys(docs).forEach(function (id) {
+    if (!/^steps-\d+$/.test(id)) return;
+    var arr = docs[id] && docs[id].steps;
+    if (Array.isArray(arr)) arr.forEach(function (r) { if (r && isNum(r.step)) map[r.step] = r; });
+  });
+  var rows = Object.keys(map).map(Number).sort(function (a, b) { return a - b; }).map(function (k) { return map[k]; });
+  return { state: state, rows: rows, loaded: true };
+}
+function baseMean(key) {
+  if (D.rows.length <= BASE_STEPS) return null;
+  var v = D.rows.slice(0, BASE_STEPS).map(function (r) { return r[key]; }).filter(isNum);
+  return v.length ? avg(v) : null;
+}
+function totalSteps() {
+  var s = D.state, n = (s && s.steps_total) || 0, last = D.rows.length ? D.rows[D.rows.length - 1].step : 0;
+  return Math.max(n, last, 2);
+}
+function stepNow() { return D.state && isNum(D.state.step_now) ? D.state.step_now : (D.rows.length ? D.rows[D.rows.length - 1].step : 0); }
+function stepDomain() {
+  var n = totalSteps(), now = Math.max(stepNow(), 1);
+  if (view.range === 'all') return [1, n];
+  var w = Number(view.range), lo = Math.max(1, now - w + 1), hi = Math.max(now, lo + 1);
+  return [lo, hi];
+}
+function seriesOf(key, o) {
+  o = o || {};
+  var raw = [], roll = o.roll ? [] : null, win = [];
+  D.rows.forEach(function (r) {
+    var v = r[key];
+    if (isNum(v)) raw.push({ x: r.step, y: v });
+    if (roll) {
+      win.push(isNum(v) ? v : null); if (win.length > ROLL) win.shift();
+      var vs = win.filter(isNum);
+      if (isNum(v) && vs.length) roll.push({ x: r.step, y: avg(vs) });
+    }
+  });
+  return { label: o.label || key, short: o.short || o.label || key, color: o.color || 'var(--s1)', data: raw, roll: roll, fmt: o.fmt, dash: o.dash };
+}
+function blk(x, scope) { return !x ? null : scope === 'overall' ? x.overall : (x.by_set || {})[scope] || null; }
+function pass8(b) { return b && Array.isArray(b.pass_at_k) && b.pass_at_k.length ? b.pass_at_k[b.pass_at_k.length - 1] : null; }
+function lastPt(a) { return a && a.length ? a[a.length - 1] : null; }
+
+/* ------------------------------------------------------------------ chart: line / dots */
+function legendEl(items) {
+  return h('div', { class: 'legend' }, items.map(function (it) {
+    var sw = h('i', { class: 'sw ' + (it.kind || 'line') });
+    sw.style.setProperty('--c', it.color || 'var(--s1)');
+    return h('span', { class: 'lg' }, sw, it.label);
+  }));
+}
+function keyEl(color, kind) { var i = h('i', { class: 'sw ' + (kind || 'line') }); i.style.setProperty('--c', color); return i; }
+
+function placeTip(tip, host, px, W) {
+  var tw = tip.offsetWidth, left = px + 14;
+  if (left + tw > W - 2) left = px - 14 - tw;
+  tip.style.left = Math.max(2, left) + 'px';
+}
+
+function renderLine(host, spec, card) {
+  var W = Math.max(200, Math.floor(host.clientWidth) || 300), H = spec.h || 172;
+  var m = { l: spec.ml || 44, r: 14, t: 12, b: 24 }, pw = W - m.l - m.r, ph = H - m.t - m.b, PAD = 8;
+  var x0 = spec.x[0], x1 = spec.x[1];
+  function px(x) { return m.l + PAD + (x1 === x0 ? (pw - 2 * PAD) / 2 : (x - x0) / (x1 - x0) * (pw - 2 * PAD)); }
+  function vis(arr) { return (arr || []).filter(function (p) { return p.x >= x0 && p.x <= x1; }); }
+
+  var ys = [];
+  spec.series.forEach(function (s) { vis(s.data).forEach(function (p) { ys.push(p.y); }); vis(s.roll).forEach(function (p) { ys.push(p.y); }); });
+  (spec.hlines || []).forEach(function (l) { if (isNum(l.y) && !l.noscale) ys.push(l.y); });
+  var lo = ys.length ? Math.min.apply(null, ys) : 0, hi = ys.length ? Math.max.apply(null, ys) : 1;
+  if (spec.zero !== false) lo = Math.min(lo, 0);
+  if (!(hi > lo)) hi = lo + (Math.abs(lo) || 1) * 0.2;
+  var padY = (hi - lo) * 0.06;
+  if (spec.zero === false) lo -= padY; hi += padY;
+  if (spec.ymax != null) hi = Math.max(hi, spec.ymax);
+  var sc = niceScale(lo, hi, 4), ylo = sc.lo, yhi = sc.hi;
+  function py(y) { return m.t + ph - (y - ylo) / (yhi - ylo) * ph; }
+  var yf = axisFmt(spec.axis || 'num', sc.step);
+
+  var g = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">';
+  (spec.bands || []).forEach(function (b) {
+    var a = Math.max(b.x0, x0), z = Math.min(b.x1, x1);
+    if (z < a) return;
+    var xa = px(a) - 4, xz = px(z) + 4;
+    g += '<rect class="band" x="' + xa.toFixed(1) + '" y="' + m.t + '" width="' + (xz - xa).toFixed(1) + '" height="' + ph + '"/>';
+    g += '<text class="tk" x="' + (xa + 3).toFixed(1) + '" y="' + (m.t + 10) + '">' + esc(b.label) + '</text>';
+  });
+  sc.ticks.forEach(function (t) {
+    var y = py(t);
+    g += '<line class="' + (t === ylo ? 'ax' : 'gl') + '" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>';
+    g += '<text class="tk" x="' + (m.l - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end">' + esc(yf(t)) + '</text>';
+  });
+  xTicks(x0, x1, Math.max(2, Math.floor(pw / 58))).forEach(function (t) {
+    g += '<text class="tk" x="' + px(t).toFixed(1) + '" y="' + (H - 7) + '" text-anchor="middle">' + esc((spec.xTick || String)(t)) + '</text>';
+  });
+  (spec.hlines || []).forEach(function (l) {
+    if (!isNum(l.y) || l.y < ylo || l.y > yhi) return;
+    var y = py(l.y);
+    var st = l.kind === 'bound' ? 'stroke:var(--bound);stroke-width:1.25;stroke-dasharray:5 3' : 'stroke:var(--muted);stroke-width:1.25;stroke-dasharray:1.5 3';
+    g += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" style="' + st + '"/>';
+    var ty = (y - 4 < m.t + 6) ? y + 12 : y - 4;
+    if (l.below) ty = y + 12;
+    g += '<text class="hl" x="' + (W - m.r - 3) + '" y="' + ty.toFixed(1) + '" text-anchor="end">' + esc(l.label) + '</text>';
+  });
+
+  var all = {};
+  spec.series.forEach(function (s, si) {
+    var col = s.color, dx = s.dx || 0, dash = s.dash ? ' stroke-dasharray="' + s.dash + '"' : '';
+    var d = vis(s.data), r = vis(s.roll);
+    d.forEach(function (p) { all[p.x] = 1; });
+    if (s.roll) {
+      r.forEach(function (p) { all[p.x] = 1; });
+      d.forEach(function (p) { g += '<circle cx="' + (px(p.x) + dx).toFixed(1) + '" cy="' + py(p.y).toFixed(1) + '" r="2.6" fill="' + col + '" opacity=".42"/>'; });
+      if (r.length > 1) g += '<path d="' + pathOf(r.map(function (p) { return [px(p.x) + dx, py(p.y)]; })) + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"' + dash + '/>';
+      var e = lastPt(r);
+      if (e) g += '<circle cx="' + (px(e.x) + dx).toFixed(1) + '" cy="' + py(e.y).toFixed(1) + '" r="4" fill="' + col + '" stroke="var(--surface)" stroke-width="2"/>';
+    } else if (s.mark === 'pts') {
+      if (s.join && d.length > 1) g += '<path d="' + pathOf(d.map(function (p) { return [px(p.x) + dx, py(p.y)]; })) + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"' + dash + '/>';
+      d.forEach(function (p) {
+        var cx = (px(p.x) + dx).toFixed(1), cy = py(p.y).toFixed(1);
+        g += s.hollow ? '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="var(--surface)" stroke="' + col + '" stroke-width="2"/>'
+                      : '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="' + col + '" stroke="var(--surface)" stroke-width="2"/>';
+      });
+    } else {
+      if (d.length > 1) g += '<path d="' + pathOf(d.map(function (p) { return [px(p.x) + dx, py(p.y)]; })) + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"' + dash + '/>';
+      var e2 = lastPt(d);
+      if (e2) g += '<circle cx="' + (px(e2.x) + dx).toFixed(1) + '" cy="' + py(e2.y).toFixed(1) + '" r="4" fill="' + col + '" stroke="var(--surface)" stroke-width="2"/>';
+    }
+  });
+  g += '<line class="xl" y1="' + m.t + '" y2="' + (m.t + ph) + '" style="display:none"/>';
+  spec.series.forEach(function (s, i) { g += '<circle class="hm" data-i="' + i + '" r="5" fill="' + s.color + '" style="display:none"/>'; });
+  g += '<rect class="ov" x="' + m.l + '" y="' + m.t + '" width="' + pw + '" height="' + ph + '" fill="transparent"/></svg>';
+  host.innerHTML = g;
+  host.style.minHeight = H + 'px';
+
+  var xs = Object.keys(all).map(Number).sort(function (a, b) { return a - b; });
+  if (!xs.length) return;
+  var maps = spec.series.map(function (s) {
+    var mm = {}; (s.data || []).forEach(function (p) { mm[p.x] = { y: p.y }; });
+    (s.roll || []).forEach(function (p) { if (!mm[p.x]) mm[p.x] = {}; mm[p.x].r = p.y; });
+    return mm;
+  });
+  var xl = $('line.xl', host), dots = host.querySelectorAll('.hm'), ov = $('rect.ov', host), tip = null, cur = -1;
+  function hide() { xl.style.display = 'none'; dots.forEach(function (d) { d.style.display = 'none'; }); if (tip) { tip.remove(); tip = null; } cur = -1; }
+  function show(i) {
+    i = Math.max(0, Math.min(xs.length - 1, i)); cur = i;
+    var x = xs[i], X = px(x);
+    xl.setAttribute('x1', X); xl.setAttribute('x2', X); xl.style.display = '';
+    if (tip) tip.remove();
+    tip = h('div', { class: 'tip', role: 'status' }, h('div', { class: 'tt', text: (spec.xLabel || function (v) { return 'step ' + v; })(x) }));
+    spec.series.forEach(function (s, si) {
+      var p = maps[si][x], dot = dots[si];
+      if (!p) { dot.style.display = 'none'; return; }
+      var main = isNum(p.r) ? p.r : p.y;
+      dot.setAttribute('cx', X + (s.dx || 0)); dot.setAttribute('cy', py(main)); dot.style.display = '';
+      if (s.tip === false) return;
+      var f = s.fmt || spec.fmt || F.sig, txt = isNum(p.y) ? f(p.y) : '';
+      if (isNum(p.r)) txt = (isNum(p.y) ? f(p.y) : '') + '  ·  avg5 ' + f(p.r);
+      tip.append(h('div', { class: 'tr' }, h('span', { class: 'k' }, keyEl(s.color, s.hollow ? 'ring' : 'line'), s.label), h('b', { text: txt })));
+    });
+    host.append(tip);
+    placeTip(tip, host, X, W);
+  }
+  function nearest(clientX) {
+    var rect = host.getBoundingClientRect(), x = clientX - rect.left, best = 0, bd = 1e9;
+    for (var i = 0; i < xs.length; i++) { var dd = Math.abs(px(xs[i]) - x); if (dd < bd) { bd = dd; best = i; } }
+    return best;
+  }
+  ov.addEventListener('pointermove', function (e) { show(nearest(e.clientX)); });
+  ov.addEventListener('pointerdown', function (e) { show(nearest(e.clientX)); });
+  ov.addEventListener('pointerleave', hide);
+  host.onkeydown = function (e) {
+    if (e.key === 'ArrowLeft') { show(cur < 0 ? xs.length - 1 : cur - 1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { show(cur < 0 ? xs.length - 1 : cur + 1); e.preventDefault(); }
+    else if (e.key === 'Home') { show(0); e.preventDefault(); }
+    else if (e.key === 'End') { show(xs.length - 1); e.preventDefault(); }
+    else if (e.key === 'Escape') hide();
+  };
+  host.onblur = hide;
+}
+
+/* ------------------------------------------------------------------ chart: stacked columns */
+function renderStack(host, spec) {
+  var W = Math.max(200, Math.floor(host.clientWidth) || 300), H = spec.h || 190;
+  var m = { l: 44, r: 14, t: 12, b: 24 }, pw = W - m.l - m.r, ph = H - m.t - m.b, PAD = 8;
+  var x0 = spec.x[0], x1 = spec.x[1], n = x1 - x0 + 1, slot = (pw - 2 * PAD) / n;
+  var cols = spec.cols.filter(function (c) { return c.x >= x0 && c.x <= x1; });
+  var mx = 0; cols.forEach(function (c) { mx = Math.max(mx, c.total); });
+  var sc = niceScale(0, mx * 1.05 || 1, 4), yhi = sc.hi, yf = axisFmt('int', sc.step);
+  function py(y) { return m.t + ph - y / yhi * ph; }
+  function cx(x) { return m.l + PAD + (x - x0 + 0.5) * slot; }
+  var gap = slot >= 7 ? 2 : 1, bw = Math.max(1.5, Math.min(24, slot - gap));
+  var g = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">';
+  sc.ticks.forEach(function (t) {
+    var y = py(t);
+    g += '<line class="' + (t === 0 ? 'ax' : 'gl') + '" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>';
+    g += '<text class="tk" x="' + (m.l - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end">' + esc(yf(t)) + '</text>';
+  });
+  xTicks(x0, x1, Math.max(2, Math.floor(pw / 58))).forEach(function (t) {
+    g += '<text class="tk" x="' + cx(t).toFixed(1) + '" y="' + (H - 7) + '" text-anchor="middle">' + t + '</text>';
+  });
+  g += '<rect class="hot" y="' + m.t + '" height="' + ph + '" width="' + Math.max(slot, 2).toFixed(1) + '" style="display:none"/>';
+  cols.forEach(function (c) {
+    var acc = 0, left = cx(c.x) - bw / 2;
+    c.segs.forEach(function (v, i) {
+      if (!(v > 0)) return;
+      var y1 = py(acc + v), y0 = py(acc), hh = y0 - y1;
+      var dh = hh > 3 ? 1 : 0;
+      g += '<rect x="' + left.toFixed(1) + '" y="' + (y1 + dh / 2).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(0.5, hh - dh).toFixed(1) + '" fill="' + spec.segs[i].color + '"' + (bw >= 5 ? ' rx="1.2"' : '') + '/>';
+      acc += v;
+    });
+  });
+  if (spec.hlines) spec.hlines.forEach(function (l) {
+    if (l.y > yhi) return; var y = py(l.y);
+    g += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" style="stroke:var(--muted);stroke-width:1.25;stroke-dasharray:1.5 3"/>';
+    g += '<text class="hl" x="' + (W - m.r - 3) + '" y="' + (y - 4).toFixed(1) + '" text-anchor="end">' + esc(l.label) + '</text>';
+  });
+  g += '<rect class="ov" x="' + m.l + '" y="' + m.t + '" width="' + pw + '" height="' + ph + '" fill="transparent"/></svg>';
+  host.innerHTML = g;
+  host.style.minHeight = H + 'px';
+  if (!cols.length) return;
+  var hot = $('rect.hot', host), ov = $('rect.ov', host), tip = null, cur = -1;
+  function hide() { hot.style.display = 'none'; if (tip) { tip.remove(); tip = null; } cur = -1; }
+  function show(i) {
+    i = Math.max(0, Math.min(cols.length - 1, i)); cur = i;
+    var c = cols[i], X = cx(c.x);
+    hot.setAttribute('x', (X - Math.max(slot, 2) / 2).toFixed(1)); hot.style.display = '';
+    if (tip) tip.remove();
+    tip = h('div', { class: 'tip', role: 'status' }, h('div', { class: 'tt', text: 'step ' + c.x }));
+    for (var k = c.segs.length - 1; k >= 0; k--) {
+      tip.append(h('div', { class: 'tr' }, h('span', { class: 'k' }, keyEl(spec.segs[k].color, 'box'), spec.segs[k].label), h('b', { text: F.sec(c.segs[k]) })));
+    }
+    tip.append(h('div', { class: 'tr' }, h('span', { class: 'k' }, 'step total'), h('b', { text: F.sec(c.total) })));
+    host.append(tip); placeTip(tip, host, X, W);
+  }
+  function nearest(clientX) {
+    var rect = host.getBoundingClientRect(), x = clientX - rect.left, best = 0, bd = 1e9;
+    for (var i = 0; i < cols.length; i++) { var dd = Math.abs(cx(cols[i].x) - x); if (dd < bd) { bd = dd; best = i; } }
+    return best;
+  }
+  ov.addEventListener('pointermove', function (e) { show(nearest(e.clientX)); });
+  ov.addEventListener('pointerdown', function (e) { show(nearest(e.clientX)); });
+  ov.addEventListener('pointerleave', hide);
+  host.onkeydown = function (e) {
+    if (e.key === 'ArrowLeft') { show(cur < 0 ? cols.length - 1 : cur - 1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { show(cur < 0 ? cols.length - 1 : cur + 1); e.preventDefault(); }
+    else if (e.key === 'Escape') hide();
+  };
+  host.onblur = hide;
+}
+
+/* ------------------------------------------------------------------ table twin */
+function renderTable(host, spec) {
+  host.style.minHeight = '';
+  var cols = [], rowsByX = {}, xsAll = {}, order;
+  if (spec.type === 'stack') {
+    cols = spec.segs.map(function (s) { return s.label; }).concat(['total']);
+    spec.cols.forEach(function (c) { xsAll[c.x] = c.segs.map(F.sec).concat([F.sec(c.total)]); });
+  } else {
+    spec.series.forEach(function (s) {
+      var f = s.fmt || spec.fmt || F.sig;
+      if (s.tip === false) return;
+      cols.push(s.label);
+      (s.data || []).forEach(function (p) { (xsAll[p.x] = xsAll[p.x] || {})[s.label] = f(p.y); });
+      if (s.roll) {
+        cols.push(s.label + ' · avg5');
+        (s.roll || []).forEach(function (p) { (xsAll[p.x] = xsAll[p.x] || {})[s.label + ' · avg5'] = f(p.y); });
+      }
+    });
+  }
+  var xs = Object.keys(xsAll).map(Number).sort(function (a, b) { return b - a; });
+  var head = h('tr', null, h('th', { class: 'n' }, (spec.xName || 'step')));
+  cols.forEach(function (c) { head.append(h('th', { class: 'n', text: c })); });
+  var tb = h('tbody');
+  xs.forEach(function (x) {
+    var row = h('tr', null, h('td', { class: 'n', text: (spec.xLabelShort || String)(x) }));
+    cols.forEach(function (c, i) {
+      var v = spec.type === 'stack' ? xsAll[x][i] : xsAll[x][c];
+      row.append(h('td', { class: 'n', text: v == null ? '–' : v }));
+    });
+    tb.append(row);
+  });
+  var bl = (spec.hlines || []).map(function (l) { return l.label; });
+  host.append(h('table', null, h('thead', null, head), tb));
+  if (bl.length) host.append(h('div', { class: 'note', text: 'Drawn on the chart: ' + bl.join(' · ') }));
+}
+
+/* ------------------------------------------------------------------ cards */
+function makeCard(o) {
+  var root = h('section', { class: 'card' });
+  var lat = h('span', { class: 'lat' });
+  var btn = h('button', { class: 'tb', type: 'button', 'aria-pressed': 'false' }, 'Table');
+  var chart = h('div', { class: 'chart', tabindex: '0', role: 'group' });
+  var foot = h('div', { class: 'foot' });
+  root.append(h('header', { class: 'ch' }, h('h3', { text: o.title }), lat, btn));
+  if (o.sub) root.append(h('p', { class: 'sub', text: o.sub }));
+  if (o.legend) root.append(legendEl(o.legend));
+  root.append(chart, foot);
+  var card = { o: o, root: root, chart: chart, lat: lat, btn: btn, foot: foot, flip: false };
+  btn.addEventListener('click', function () { card.flip = !card.flip; drawCard(card); });
+  cards.push(card);
+  return root;
+}
+function defaultLatest(spec) {
+  if (spec.type === 'stack') { var c = lastPt(spec.cols.map(function (c) { return { y: c.total }; })); return c ? 'step total ' + F.sec(c.y) : ''; }
+  var parts = [];
+  spec.series.forEach(function (s) {
+    if (s.tip === false || s.noLatest) return;
+    var f = s.fmt || spec.fmt || F.sig, r = lastPt(s.roll), d = lastPt(s.data);
+    if (!d) return;
+    var t = (spec.series.length > 1 ? (s.short || s.label) + ' ' : '') + f(d.y) + (r ? ' (avg5 ' + f(r.y) + ')' : '');
+    parts.push(t);
+  });
+  return parts.join(' · ');
+}
+function drawCard(card) {
+  var spec = D.loaded ? card.o.build() : null, host = card.chart;
+  host.textContent = ''; host.style.minHeight = ''; host.classList.remove('as-table');
+  host.onkeydown = null; host.onblur = null;
+  if (!spec || spec.empty) {
+    card.lat.textContent = ''; card.btn.hidden = true; card.foot.textContent = '';
+    host.append(h('div', { class: 'msg', text: (spec && spec.empty) || 'Waiting for data.' }));
+    host.setAttribute('aria-label', card.o.title + ': no data yet');
+    return;
+  }
+  var asTable = view.tables !== card.flip;
+  card.btn.hidden = false;
+  card.btn.textContent = asTable ? 'Chart' : 'Table';
+  card.btn.setAttribute('aria-pressed', String(asTable));
+  card.btn.setAttribute('aria-label', (asTable ? 'Show chart: ' : 'Show table: ') + card.o.title);
+  var lt = spec.latest != null ? spec.latest : defaultLatest(spec);
+  card.lat.textContent = lt;
+  host.setAttribute('aria-label', card.o.title + '. ' + lt + (asTable ? '. Table view.' : '. Use the left and right arrow keys to read each step.'));
+  if (asTable) { host.classList.add('as-table'); renderTable(host, spec); }
+  else if (spec.type === 'stack') renderStack(host, spec);
+  else renderLine(host, spec, card);
+  card.foot.textContent = '';
+  if (spec.foot) card.foot.append(spec.foot.nodeType ? spec.foot : document.createTextNode(spec.foot));
+}
+function renderCards() { cards.forEach(drawCard); }
+
+/* ------------------------------------------------------------------ chart specs */
+function noRows() { return !D.rows.length ? 'No training step has finished yet.' : null; }
+function lineSpec(o) {
+  var e = noRows(); if (e) return { empty: e };
+  var base = {
+    x: stepDomain(), series: o.series, hlines: o.hlines, axis: o.axis, fmt: o.fmt, zero: o.zero, bands: o.bands, h: o.h, foot: o.foot, latest: o.latest
+  };
+  if (!o.series.some(function (s) { return s.data.length; })) return { empty: 'No values logged for this metric yet.' };
+  return base;
+}
+function relBounds(key, mults, labels) {
+  var b = baseMean(key); if (!isNum(b)) return [];
+  return mults.map(function (m, i) { return { y: b * m, label: labels[i], kind: 'bound' }; });
+}
+function stepCard(id, title, sub, legend, fn) { return makeCard({ id: id, title: title, sub: sub, legend: legend, build: fn }); }
+
+function buildRollouts(panel) {
+  var intro = h('p', { class: 'intro', text: 'What the policy produced this step: 32 questions new every step, eight samples each. Per-step numbers swing with the batch, so dots are the step itself and the line is a 5-step rolling mean.' });
+  var grid1 = h('div', { class: 'grid md' });
+  grid1.append(
+    stepCard('reward', 'Reward and solve rate', 'Both on a 0 to 1 scale; solve rate is the share of rollouts that matched the reference result.',
+      [{ label: 'solve rate', color: 'var(--s1)' }, { label: 'reward', color: 'var(--s2)' }, { label: 'per step', color: 'var(--muted)', kind: 'dot' }],
+      function () {
+        return lineSpec({ fmt: F.d3, series: [seriesOf('solve_rate', { label: 'solve rate', short: 'solve', color: 'var(--s1)', roll: true }), seriesOf('reward_mean', { label: 'reward', short: 'reward', color: 'var(--s2)', roll: true })] });
+      }),
+    stepCard('informative', 'Informative groups', 'Share of question groups with both right and wrong answers: the only ones that teach.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('informative_frac', { label: 'informative share', roll: true })],
+        hlines: [{ y: cfgStop('informative_min', 0.25), label: 'stop below 25% for 5 steps', kind: 'bound' }] });
+    }),
+    stepCard('malformed', 'Malformed and undecided calls', 'Malformed: the call could not be parsed. Undecided: groups that never reached a verdict.',
+      [{ label: 'malformed', color: 'var(--s1)' }, { label: 'undecided', color: 'var(--s2)' }], function () {
+        return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('malformed_frac', { label: 'malformed', color: 'var(--s1)' }), seriesOf('undecided_frac', { label: 'undecided', color: 'var(--s2)' })],
+          hlines: [{ y: cfgStop('malformed_max', 0.05), label: 'stop above 5% for 3 steps', kind: 'bound' }] });
+      })
+  );
+  var multiNote = h('div', { class: 'subhead', text: 'Solve rate per dataset' });
+  var leg = legendEl([{ label: 'training solve rate, 5-step rolling mean', color: 'var(--s1)' }, { label: 'per step', color: 'var(--s1)', kind: 'dot' }, { label: 'SFT model on the evalset, mean@8', color: 'var(--muted)', kind: 'ref' }]);
+  leg.style.marginBottom = '8px';
+  var grid2 = h('div', { class: 'grid sm' });
+  SETS.forEach(function (s) {
+    grid2.append(stepCard('solve-' + s, SET_NAME[s], null, null, function () {
+      var b = D.state && D.state.baseline && blk(D.state.baseline, s);
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('solve_' + s, { label: 'solve rate', roll: true })],
+        hlines: b && isNum(b.mean_at8) ? [{ y: b.mean_at8, label: 'SFT eval ' + F.pct(b.mean_at8), kind: 'ref' }] : [], h: 150 });
+    }));
+  });
+  var grid3 = h('div', { class: 'grid md' });
+  grid3.append(
+    stepCard('len', 'Response length', 'Tokens per rollout, thinking included. The median is what the stop rule watches.',
+      [{ label: 'mean', color: 'var(--s1)' }, { label: 'median', color: 'var(--s2)' }], function () {
+        var b = baseMean('resp_tokens_median');
+        return lineSpec({ axis: 'int', fmt: F.int, series: [seriesOf('resp_tokens', { label: 'mean', color: 'var(--s1)' }), seriesOf('resp_tokens_median', { label: 'median', color: 'var(--s2)' })],
+          hlines: isNum(b) ? [{ y: b * cfgStop('length_ratio', 2), label: 'stop above 2× the start', kind: 'bound' }, { y: b / cfgStop('length_ratio', 2), label: 'stop below ½ the start', kind: 'bound', below: false }] : [] });
+      }),
+    stepCard('forced', 'Forced end of thinking', 'Share of rollouts cut off at the thinking budget and made to answer.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('think_forced_frac', { label: 'forced </think>' })] });
+    }),
+    stepCard('toks', 'Rollout speed', 'Tokens per second across all slots while sampling.', null, function () {
+      return lineSpec({ axis: 'int', fmt: F.d1, series: [seriesOf('rollout_tok_s', { label: 'tokens/s' })] });
+    })
+  );
+  panel.append(intro, grid1, multiNote, leg, grid2, h('div', { class: 'subhead', text: 'Length and speed' }), grid3);
+}
+
+function cfgStop(k, d) { var s = D.state && D.state.config && D.state.config.stop; return s && isNum(s[k]) ? s[k] : d; }
+
+function buildOptimizer(panel) {
+  panel.append(h('p', { class: 'intro', text: 'What the update did. The learning rate ramps over the warm-up steps; the loss is the sign-adjusted policy loss and only its trend and spikes matter.' }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    stepCard('loss', 'Loss', null, null, function () { return lineSpec({ fmt: F.d3, zero: false, series: [seriesOf('loss', { label: 'loss' })] }); }),
+    stepCard('grad', 'Gradient norm', 'Averaged over the step\'s minibatches.', null, function () { return lineSpec({ fmt: F.d3, series: [seriesOf('grad_norm', { label: 'grad norm' })] }); }),
+    stepCard('lr', 'Learning rate', null, null, function () {
+      var wu = D.state && D.state.config && D.state.config.warmup_steps;
+      return lineSpec({ axis: 'sci', fmt: F.sci, series: [seriesOf('lr', { label: 'learning rate' })], bands: isNum(wu) && wu > 0 ? [{ x0: 1, x1: wu, label: 'warm-up' }] : [] });
+    }),
+    stepCard('clip', 'Clip fraction', 'Share of tokens whose update was clipped.', null, function () { return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('clip_frac', { label: 'clipped' })] }); }),
+    stepCard('entropy', 'Entropy', 'Mean token entropy of the policy on its own rollouts.', null, function () {
+      var b = baseMean('entropy');
+      return lineSpec({ fmt: F.d3, series: [seriesOf('entropy', { label: 'entropy' })],
+        hlines: isNum(b) ? [{ y: b * cfgStop('entropy_min_frac', 0.5), label: 'stop below ½ of steps 1-5 (' + F.d3(b * cfgStop('entropy_min_frac', 0.5)) + ')', kind: 'bound' }] : [] });
+    }),
+    stepCard('seqs', 'Sequences trained and distilled', 'Distilled: rollouts that SRPO\'s teacher re-weighted token by token.',
+      [{ label: 'trained', color: 'var(--s1)' }, { label: 'distilled', color: 'var(--s2)' }], function () {
+        return lineSpec({ axis: 'int', fmt: F.int, series: [seriesOf('trained_seqs', { label: 'trained', color: 'var(--s1)' }), seriesOf('sdpo_rollouts', { label: 'distilled', color: 'var(--s2)' })] });
+      }),
+    stepCard('jsd', 'Distillation JSD', 'Gap between the student and its teacher on the distilled rollouts.', null, function () { return lineSpec({ fmt: F.sig, series: [seriesOf('distill_jsd', { label: 'JSD' })] }); }),
+    stepCard('tw', 'Teacher weight', 'Mean weight the teacher gets across distilled tokens.', null, function () { return lineSpec({ fmt: F.d3, series: [seriesOf('teacher_weight_mean', { label: 'teacher weight' })] }); })
+  );
+  panel.append(g);
+}
+
+function buildDrift(panel) {
+  panel.append(h('p', { class: 'intro', text: 'How far the policy has moved from the SFT model it started as, measured on probe tokens in the rollouts.' }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    stepCard('kl', 'KL to the SFT model', null, [{ label: 'from the server (the true one)', color: 'var(--s1)' }, { label: 'from the trainer', color: 'var(--s2)' }], function () {
+      return lineSpec({ fmt: F.sig, series: [seriesOf('kl_sft', { label: 'server KL', short: 'server', color: 'var(--s1)' }), seriesOf('kl_sft_trainer', { label: 'trainer KL', short: 'trainer', color: 'var(--s2)' })],
+        hlines: [{ y: cfgStop('kl_max', 0.05), label: 'stop above 0.05', kind: 'bound' }] });
+    }),
+    stepCard('mismatch', 'Server vs trainer gap', 'Mean difference between the log-probs the rollout server and the trainer give the same tokens.', null, function () {
+      return lineSpec({ fmt: F.sig, series: [seriesOf('mismatch', { label: 'mismatch' })], hlines: [{ y: cfgStop('mismatch_max', 0.1), label: 'stop above 0.10', kind: 'bound' }] });
+    })
+  );
+  panel.append(g, h('p', { class: 'rule-note' }, h('b', { text: 'Read the server\'s KL. ' }), 'The trainer under-reads a small LoRA: each adapted layer is rounded to bf16 after the LoRA\'s small addition, so part of it is rounded away. The rollout server applies all of it.'));
+}
+
+function buildCanaries(panel) {
+  panel.append(h('p', { class: 'intro', text: 'Signs of reward hacking and of the teacher leaking into the student, read from the rollout text. Bounds are the run\'s stop rules; a share with no bound is watched by eye.' }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    stepCard('distinct', 'Queries using DISTINCT', 'A common way to pad an answer into matching.', null, function () {
+      var b = baseMean('distinct_frac');
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('distinct_frac', { label: 'DISTINCT' })],
+        hlines: isNum(b) ? [{ y: b + cfgStop('distinct_up', 0.1), label: 'stop above start + 10 points', kind: 'bound' }] : [] });
+    }),
+    stepCard('star', 'Queries using SELECT *', 'No stop rule.', null, function () { return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('select_star_frac', { label: 'SELECT *' })] }); }),
+    stepCard('multi', 'Replies with several tool calls', 'No stop rule.', null, function () { return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('multi_call_frac', { label: 'several calls' })] }); }),
+    stepCard('leak', 'Thoughts citing a given solution', 'The teacher sees a right sibling under the words "Correct solution". A student that starts writing as if it had one is copying the teacher\'s situation.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('leak_frac', { label: 'cites a solution' })], hlines: [{ y: cfgStop('leak_max', 0.02), label: 'stop above 2%', kind: 'bound' }] });
+    }),
+    stepCard('qchars', 'Median query length', 'Characters in the query the model calls the tool with.', null, function () { return lineSpec({ axis: 'int', fmt: F.int, series: [seriesOf('query_chars_median', { label: 'characters' })] }); })
+  );
+  panel.append(g);
+}
+
+/* ---- evaluations */
+function evalSeries(scope) {
+  var s = D.state; if (!s) return null;
+  var b0 = blk(s.baseline, scope), r0 = blk(s.baseline_run1_path, scope), evs = (s.evals || []).slice().sort(function (a, b) { return a.step - b.step; });
+  var defs = [
+    { key: 'greedy_pass1', label: 'greedy pass@1', color: 'var(--s1)', get: function (b) { return b && b.greedy_pass1; } },
+    { key: 'mean_at8', label: 'mean@8', color: 'var(--s2)', get: function (b) { return b && b.mean_at8; } },
+    { key: 'pass8', label: 'pass@8', color: 'var(--s3)', get: pass8 }
+  ];
+  var out = [];
+  defs.forEach(function (d) {
+    var pts = [];
+    if (b0 && isNum(d.get(b0))) pts.push({ x: 0, y: d.get(b0) });
+    evs.forEach(function (e) { var b = blk(e, scope); if (b && isNum(d.get(b))) pts.push({ x: e.step, y: d.get(b) }); });
+    out.push({ label: d.label, short: d.label, color: d.color, data: pts, mark: 'pts', join: true, fmt: F.pct });
+  });
+  defs.forEach(function (d) {
+    if (r0 && isNum(d.get(r0))) out.push({ label: d.label + ', SFT re-measured', short: d.label, color: d.color, data: [{ x: 0, y: d.get(r0) }], mark: 'pts', hollow: true, dx: 7, fmt: F.pct, noLatest: true });
+  });
+  return out;
+}
+function evalCard(scope) {
+  var title = scope === 'overall' ? 'All four datasets' : SET_NAME[scope];
+  return makeCard({ id: 'eval-' + scope, title: title, build: function () {
+    var s = D.state; if (!s || !s.baseline) return { empty: 'The SFT baseline has not been pushed yet.' };
+    var series = evalSeries(scope);
+    var n = blk(s.baseline, scope); n = n && n.questions;
+    var nev = (s.evals || []).length;
+    return { x: [0, totalSteps()], series: series, axis: 'pct', fmt: F.pct, zero: false, h: 190,
+      xLabel: function (x) { return x === 0 ? 'SFT model (step 0)' : 'after step ' + x; },
+      xLabelShort: function (x) { return x === 0 ? 'SFT' : String(x); }, xName: 'checkpoint',
+      latest: nev ? 'after step ' + s.evals[s.evals.length - 1].step : 'SFT only',
+      foot: (n ? n + ' questions. ' : '') + (nev ? '' : 'First evaluation after step ' + firstEvalStep() + '.') };
+  } });
+}
+function firstEvalStep() {
+  var es = D.state && D.state.config && D.state.config.eval_steps;
+  if (Array.isArray(es) && es.length) { var now = stepNow(), nx = es.filter(function (e) { return e > now; }); return nx.length ? nx[0] : es[0]; }
+  return 25;
+}
+
+function buildEvals(panel) {
+  panel.append(h('p', { class: 'intro', text: 'The 200-question evalset, scored the same way as the SFT baseline: one greedy answer and eight samples a question. Hollow rings are the SFT model measured again through run 1\'s own evaluation path, which shows the yardstick\'s own repeat noise.' }));
+  var leg = legendEl([{ label: 'greedy pass@1', color: 'var(--s1)' }, { label: 'mean@8', color: 'var(--s2)' }, { label: 'pass@8', color: 'var(--s3)' }, { label: 'SFT, re-measured', color: 'var(--muted)', kind: 'ring' }]);
+  leg.style.marginBottom = '10px';
+  var g = h('div', { class: 'grid md' });
+  ['overall'].concat(SETS).forEach(function (sc) { g.append(evalCard(sc)); });
+  var holder = h('div', { id: 'evaltables' });
+  panel.append(leg, g, h('div', { class: 'subhead', text: 'Checkpoints and the never / sometimes / always split' }), holder);
+}
+
+function deltaTxt(v, base) { if (!isNum(v) || !isNum(base)) return null; return h('span', { class: 'd', text: F.signed((v - base) * 100, 1) }); }
+function splitBar(b) {
+  var n = b && b.questions; if (!n) return h('span', { text: '–' });
+  var bar = h('span', { class: 'splitbar', role: 'img', 'aria-label': 'never ' + b.never + ', sometimes ' + b.sometimes + ', always ' + b.always });
+  [b.never, b.sometimes, b.always].forEach(function (v) { var i = h('i'); i.style.flex = (v || 0) + ' 1 0'; if (!v) i.style.display = 'none'; bar.append(i); });
+  return bar;
+}
+function renderEvalTables() {
+  var holder = document.getElementById('evaltables'); if (!holder) return;
+  holder.textContent = '';
+  var s = D.state; if (!s || !s.baseline) { holder.append(h('p', { class: 'note', text: 'The SFT baseline and the evaluations appear here once the feed carries them.' })); return; }
+  var scope = view.evalScope;
+  var seg = h('span', { class: 'seg', role: 'group', 'aria-label': 'Scope of the table' });
+  ['overall'].concat(SETS).forEach(function (sc) {
+    seg.append(h('button', { type: 'button', 'aria-pressed': String(sc === scope), onclick: function () { view.evalScope = sc; renderEvalTables(); } }, sc === 'overall' ? 'Overall' : SET_NAME[sc]));
+  });
+  var evs = (s.evals || []).slice().sort(function (a, b) { return a.step - b.step; });
+  holder.append(h('div', { class: 'evtools' }, h('span', { class: 'sr', text: 'Scope' }), seg,
+    h('span', { class: 'mono', style: 'color:var(--ink-2);font-size:12px', text: 'differences in points against the SFT baseline' })));
+
+  var b0 = blk(s.baseline, scope);
+  var rows = [{ name: 'SFT baseline', b: b0 }];
+  if (s.baseline_run1_path) rows.push({ name: 'SFT, re-measured', b: blk(s.baseline_run1_path, scope) });
+  evs.forEach(function (e) { rows.push({ name: 'After step ' + e.step, b: blk(e, scope), e: e }); });
+  var thead = h('tr', null, h('th', { text: 'Checkpoint' }), h('th', { class: 'n', text: 'greedy pass@1' }), h('th', { class: 'n', text: 'mean@8' }), h('th', { class: 'n', text: 'pass@8' }),
+    h('th', { class: 'n', text: 'never' }), h('th', { class: 'n', text: 'sometimes' }), h('th', { class: 'n', text: 'always' }), h('th', { text: 'split' }));
+  var tbody = h('tbody');
+  rows.forEach(function (r) {
+    var b = r.b, tr = h('tr');
+    tr.append(h('td', { text: r.name }));
+    if (!b) { tr.append(h('td', { class: 'n', colspan: '7', text: 'no data for this scope' })); tbody.append(tr); return; }
+    var vals = [b.greedy_pass1, b.mean_at8, pass8(b)], bs = b0 ? [b0.greedy_pass1, b0.mean_at8, pass8(b0)] : [];
+    vals.forEach(function (v, i) { tr.append(h('td', { class: 'n' }, F.pct(v), r === rows[0] ? null : deltaTxt(v, bs[i]))); });
+    tr.append(h('td', { class: 'n', text: b.never == null ? '–' : b.never }), h('td', { class: 'n', text: b.sometimes == null ? '–' : b.sometimes }), h('td', { class: 'n', text: b.always == null ? '–' : b.always }), h('td', null, splitBar(b)));
+    tbody.append(tr);
+  });
+  if (!evs.length) {
+    var tr0 = h('tr'); tr0.append(h('td', { colspan: '8', style: 'color:var(--ink-2)', text: 'First evaluation after step ' + firstEvalStep() + '. Until then the SFT baseline is the only row that can be compared.' }));
+    tbody.append(tr0);
+  }
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, thead), tbody)));
+  var lg = h('div', { class: 'legend', style: 'margin-top:6px' });
+  [['never', 'var(--ord1)'], ['sometimes', 'var(--ord2)'], ['always', 'var(--ord3)']].forEach(function (p) { lg.append(h('span', { class: 'lg' }, keyEl(p[1], 'box'), p[0] + ' right (of 8 samples)')); });
+  holder.append(lg);
+
+  // sign tests
+  holder.append(h('div', { class: 'subhead', text: 'Sign tests against the SFT baseline, question by question' }));
+  var gateP = s.config && isNum(s.config.gate_p) ? s.config.gate_p : 0.05;
+  var th2 = h('tr', null, h('th', { text: 'Evaluation' }), h('th', { text: 'greedy pass@1' }), h('th', { text: 'sampled (mean@8)' }), h('th', { class: 'gatecol', text: 'pass@8, the gate' }), h('th', { text: 'Gate' }));
+  var tb2 = h('tbody');
+  function testCell(t, gate) {
+    var td = h('td', { class: gate ? 'gatecol' : '' });
+    if (!t) { td.append('–'); return td; }
+    td.append(h('span', { class: 'mono', text: t.better + ' better · ' + t.worse + ' worse · p ' + F.d3(t.p) }));
+    return td;
+  }
+  evs.forEach(function (e) {
+    var v = e.vs_baseline, tr = h('tr'), failed = v && v.pass8 && v.pass8.worse > v.pass8.better && v.pass8.p < gateP;
+    tr.append(h('td', { text: 'After step ' + e.step }), testCell(v && v.greedy), testCell(v && v.sampled), testCell(v && v.pass8, true));
+    tr.append(h('td', null, !v || !v.pass8 ? '–' : failed ? chip('bad', 'fail', 'Gate failed') : chip('ok', 'ok', 'Gate passed')));
+    tb2.append(tr);
+  });
+  if (!evs.length) { var t1 = h('tr'); t1.append(h('td', { colspan: '5', style: 'color:var(--ink-2)', text: 'No evaluation yet. The first one runs after step ' + firstEvalStep() + '.' })); tb2.append(t1); }
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, th2), tb2)));
+  holder.append(h('p', { class: 'note', text: 'The gate pauses the run when pass@8 is worse on more questions than it is better and p is below ' + gateP + '. One question is 0.5 points: read the counts and p, not the points. The SFT model measured twice differs by about 1 to 3 points on this evalset, so a gap of that size is what no change looks like.' }));
+}
+
+/* ---- generalising */
+function trainGain(set) {
+  var vals = D.rows.map(function (r) { return r['solve_' + set]; }).filter(isNum);
+  if (vals.length < 2 * ROLL) return null;
+  return avg(vals.slice(-ROLL)) - avg(vals.slice(0, ROLL));
+}
+function genReading(set) {
+  var s = D.state, tg = trainGain(set);
+  var evs = ((s && s.evals) || []).slice().sort(function (a, b) { return a.step - b.step; });
+  var b0 = blk(s && s.baseline, set), last = evs.length ? blk(evs[evs.length - 1], set) : null;
+  var eg = last && b0 && isNum(last.mean_at8) && isNum(b0.mean_at8) ? last.mean_at8 - b0.mean_at8 : null;
+  var node = h('span');
+  if (tg == null) { node.append('Training curve needs at least 10 steps. '); }
+  else node.append('Training ' + F.signed(tg * 100) + ' points since steps 1-5. ');
+  if (eg == null) { node.append('Evalset: first evaluation after step ' + firstEvalStep() + '.'); return node; }
+  node.append('Evalset ' + F.signed(eg * 100) + ' points vs SFT. ');
+  if (tg != null) {
+    var t = tg * 100, e = eg * 100, w;
+    if (t >= 1 && e <= -1) w = h('span', { class: 'warn', text: 'Training up, evalset down: overfitting signal.' });
+    else if (t >= 1 && e < 1) w = h('span', { class: 'warn', text: 'Training up, evalset flat: watch it.' });
+    else if (t >= 1 && e >= 1) w = 'Both up.';
+    else w = 'No clear training gain yet.';
+    node.append(w);
+  }
+  return node;
+}
+function genCard(set) {
+  return makeCard({ id: 'gen-' + set, title: SET_NAME[set], build: function () {
+    var s = D.state;
+    var train = seriesOf('solve_' + set, { label: 'training solve rate', short: 'train', color: 'var(--s1)', roll: true, fmt: F.pct });
+    var b0 = s && blk(s.baseline, set), r0 = s && blk(s.baseline_run1_path, set);
+    var evs = ((s && s.evals) || []).slice().sort(function (a, b) { return a.step - b.step; });
+    var pts = []; if (b0 && isNum(b0.mean_at8)) pts.push({ x: 0, y: b0.mean_at8 });
+    evs.forEach(function (e) { var b = blk(e, set); if (b && isNum(b.mean_at8)) pts.push({ x: e.step, y: b.mean_at8 }); });
+    var ev = { label: 'evalset mean@8', short: 'eval', color: 'var(--s2)', data: pts, mark: 'pts', join: true, fmt: F.pct };
+    var series = [train, ev];
+    if (r0 && isNum(r0.mean_at8)) series.push({ label: 'evalset, SFT re-measured', short: 'SFT again', color: 'var(--s2)', data: [{ x: 0, y: r0.mean_at8 }], mark: 'pts', hollow: true, dx: 7, fmt: F.pct, noLatest: true });
+    if (!D.rows.length && !pts.length) return { empty: 'No training step and no evaluation yet.' };
+    var note = h('span');
+    note.append(genReading(set));
+    return { x: [0, totalSteps()], series: series, axis: 'pct', fmt: F.pct, zero: false, h: 176, foot: note,
+      xLabel: function (x) { return x === 0 ? 'SFT model (step 0)' : 'step ' + x; },
+      xLabelShort: function (x) { return x === 0 ? 'SFT' : String(x); },
+      latest: (lastPt(train.roll) ? 'train ' + F.pct(lastPt(train.roll).y) : '') + (pts.length ? ' · eval ' + F.pct(lastPt(pts).y) : '') };
+  } });
+}
+function buildGeneral(panel) {
+  panel.append(h('p', { class: 'intro', text: 'Each dataset: how well the policy does on the training questions it is seeing (new ones every step) against the 200-question evalset (questions it has never seen; for CypherBench, graphs it has never seen either).' }));
+  panel.append(h('p', { class: 'rule-note' }, h('b', { text: 'Reading rule. ' }), 'Training solve rate going up while the evalset\'s mean@8 stays flat or falls is overfitting: the policy is learning the training questions, not the task. Evalset points move by about a point from noise alone.'));
+  var leg = legendEl([{ label: 'training solve rate, 5-step rolling mean', color: 'var(--s1)' }, { label: 'evalset mean@8, SFT at step 0', color: 'var(--s2)' }, { label: 'SFT, re-measured', color: 'var(--s2)', kind: 'ring' }]);
+  leg.style.margin = '12px 0 8px';
+  var g = h('div', { class: 'grid sm' });
+  SETS.forEach(function (sc) { g.append(genCard(sc)); });
+  panel.append(leg, g);
+}
+
+/* ---- timing */
+var SEG = [
+  { label: 'rollouts', color: 'var(--s1)' }, { label: 'scoring + load', color: 'var(--s2)' }, { label: 'update', color: 'var(--s3)' },
+  { label: 'merge', color: 'var(--s4)' }, { label: 'other', color: 'var(--s-other)' }
+];
+function timingCols() {
+  return D.rows.filter(function (r) { return isNum(r.step_s) || isNum(r.rollout_s); }).map(function (r) {
+    var a = (r.rollout_s || 0) + (r.serve_s || 0), b = Math.max(r.load_s || 0, r.score_s || 0), c = r.train_s || 0, d = r.merge_s || 0;
+    var tot = isNum(r.step_s) ? r.step_s : a + b + c + d, o = Math.max(0, tot - a - b - c - d);
+    return { x: r.step, segs: [a, b, c, d, o], total: tot };
+  });
+}
+function buildTiming(panel) {
+  panel.append(h('p', { class: 'intro', text: 'Where a step\'s time goes. Scoring runs on the CPU while the model loads, so "scoring + load" counts the longer of the two; "other" is the rest of the step (server start, saving).' }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    makeCard({ id: 'timing', title: 'Seconds per step', legend: SEG.map(function (s) { return { label: s.label, color: s.color, kind: 'box' }; }), build: function () {
+      var e = noRows(); if (e) return { empty: e };
+      var cols = timingCols();
+      if (!cols.length) return { empty: 'No timings logged yet.' };
+      var d = stepDomain(), lc = lastPt(cols);
+      var m = D.state && D.state.timing && D.state.timing.mean_step_s;
+      return { type: 'stack', x: d, cols: cols, segs: SEG, h: 200, latest: 'latest ' + F.sec(lc.total) + (isNum(m) ? ' · mean of last 10: ' + F.sec(m) : '') };
+    } }),
+    makeCard({ id: 'gb', title: 'Peak GPU memory', sub: 'Highest allocation inside the trainer during the step.', build: function () {
+      return lineSpec({ fmt: F.gb, axis: 'num', series: [seriesOf('peak_gb', { label: 'peak GB' })], hlines: [{ y: CARD_GB, label: 'the card: 16 GB', kind: 'ref' }], h: 200 });
+    } })
+  );
+  panel.append(g);
+}
+
+/* ------------------------------------------------------------------ header, tiles, banners, events */
+function ago(ms) {
+  var s = Math.max(0, Math.round(ms / 1000));
+  if (s < 90) return s + ' s';
+  var m = Math.round(s / 60); if (m < 90) return m + ' min';
+  var hh = s / 3600; if (hh < 48) return hh.toFixed(1) + ' h';
+  return Math.round(hh / 24) + ' days';
+}
+function parseT(t) { var d = Date.parse(t); return isNaN(d) ? null : d; }
+function localTime(t) {
+  var d = new Date(Date.parse(t)); if (isNaN(d)) return '';
+  var now = new Date(), same = d.toDateString() === now.toDateString();
+  var tm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return same ? tm : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + tm;
+}
+function tickAgo() {
+  var s = D.state, el = document.getElementById('bar-upd'); if (!el) return;
+  if (!s || !s.updated_at) { el.textContent = ''; return; }
+  var t = parseT(s.updated_at); if (t == null) { el.textContent = ''; return; }
+  var age = Date.now() - t, stale = s.status === 'running' && age > 45 * 60 * 1000;
+  el.textContent = 'updated ' + ago(age) + ' ago' + (stale ? ' · feed may be stale' : '');
+  el.className = 'upd' + (stale ? ' stale' : '');
+}
+function renderStatusBar() {
+  var s = D.state, st = $('#bar-status'); st.textContent = '';
+  var n = stepNow(), N = s && s.steps_total;
+  if (s) {
+    var d = STATUS[s.status] || ['neutral', 'idle', String(s.status || 'unknown')];
+    st.append(chip(d[0], d[1], d[2], d[3]));
+  } else if (D.rows.length) st.append(chip('neutral', 'idle', 'No state yet'));
+  setText('bar-step', s || D.rows.length ? 'Step ' + n + (N ? ' of ' + N : '') : 'no data yet');
+  var pct = N ? Math.min(100, Math.round(n / N * 100)) : 0;
+  $('#bar-fill').style.width = pct + '%';
+  $('#bar-meter').setAttribute('aria-valuenow', String(pct));
+  tickAgo();
+}
+var PHASE = { rollouts: 'Sampling rollouts', training: 'Training update', evaluating: 'Evaluating on the evalset', running: 'Between steps', paused: 'Paused', failed: 'Failed', done: 'Done' };
+function renderHeader() {
+  var s = D.state, grid = $('#hgrid'), ban = $('#banners'); grid.textContent = ''; ban.textContent = '';
+  var fn = $('#feedname');
+  if (s && s.run) { fn.hidden = false; fn.textContent = 'feed: ' + s.run; } else fn.hidden = true;
+  if (!s) return;
+  // banners
+  if ((s.status === 'paused' || s.status === 'failed')) {
+    var why = (s.why || []).filter(Boolean);
+    var b = h('div', { class: 'banner ' + (s.status === 'failed' ? 'bad' : 'warn'), role: 'alert' });
+    b.append(iconEl(s.status === 'failed' ? 'fail' : 'pause'), h('div', null, h('b', { text: s.status === 'failed' ? 'The run failed.' : 'The run is paused and waiting for a decision.' }),
+      why.length ? h('ul', null, why.map(function (w) { return h('li', { text: w }); })) : null));
+    ban.append(b);
+  } else if (s.status === 'stopped') {
+    var b2 = h('div', { class: 'banner warn' });
+    b2.append(iconEl('stop'), h('div', null, h('b', { text: 'The run stopped after a step.' }), (s.why || []).length ? h('ul', null, s.why.map(function (w) { return h('li', { text: w }); })) : null));
+    ban.append(b2);
+  }
+  var shown = (s.status === 'paused' || s.status === 'failed' || s.status === 'stopped') ? (s.why || []) : [];
+  var rules = (s.stop_rules_now || []).filter(function (r) { return r && shown.indexOf(r) < 0; });
+  if (rules.length) {
+    var b3 = h('div', { class: 'banner bad', role: 'alert' });
+    b3.append(iconEl('warn'), h('div', null, h('b', { text: 'Stop rules firing on the latest step' }), h('ul', null, rules.map(function (w) { return h('li', { text: w }); }))));
+    ban.append(b3);
+  }
+  // header cells
+  var ph = s.phase, ip = s.in_progress, n = stepNow();
+  var c1 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: 'Phase' }), h('div', { class: 'v', text: PHASE[ph] || (ph ? String(ph) : '–') }),
+    h('div', { class: 's', text: (s.phase_text || '') + (s.phase_at && parseT(s.phase_at) ? ' · ' + ago(Date.now() - parseT(s.phase_at)) + ' ago' : '') }));
+  var c2 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: ip && s.status !== 'done' ? 'Step ' + ip.step + ' in progress' : 'Steps' }));
+  if (ip && ip.rollouts_total && s.status !== 'done') {
+    var pc = Math.min(100, Math.round(ip.rollouts_done / ip.rollouts_total * 100));
+    var mt = h('div', { class: 'meter', role: 'progressbar', 'aria-label': 'Rollouts written for the step in progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pc) }); var fi = h('i'); fi.style.width = pc + '%'; mt.append(fi);
+    c2.append(h('div', { class: 'v', text: ip.rollouts_done + ' of ' + ip.rollouts_total + ' rollouts' }), mt);
+  } else c2.append(h('div', { class: 'v', text: s.status === 'done' ? 'All steps trained' : 'Step ' + n + ' trained' }));
+  var t = s.timing || {}, left = t.hours_left;
+  var c3 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: 'Time left' }),
+    h('div', { class: 'v', text: s.status === 'done' ? 'Finished' : isNum(left) ? (left < 1 ? '≈ ' + Math.round(left * 60) + ' min' : '≈ ' + left.toFixed(1) + ' h') : '–' }),
+    h('div', { class: 's', text: isNum(t.mean_step_s) ? (t.mean_step_s / 60).toFixed(1) + ' min a step (mean of the last 10)' : 'needs a finished step' }));
+  var started = s.started_at && parseT(s.started_at);
+  var c4 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: 'Run' }), h('div', { class: 'v', text: String(s.run || '–') }),
+    h('div', { class: 's', text: (started ? 'started ' + localTime(s.started_at) : '') + (s.launched_by ? ' · launched by ' + s.launched_by : '') }));
+  grid.append(c1, c2, c3, c4);
+  // settings
+  var cf = s.config, cfg = $('#cfg'), body = $('#cfgbody'); body.textContent = '';
+  if (cf) {
+    cfg.hidden = false;
+    var kv = [];
+    function add(k, v) { if (v != null && v !== '') kv.push([k, String(v)]); }
+    add('Method', cf.method && String(cf.method).toUpperCase());
+    add('Questions a step', cf.mix ? Object.keys(cf.mix).map(function (k) { return (SET_NAME[k] || k) + ' ' + cf.mix[k]; }).join(' · ') + (isNum(cf.questions_per_step) ? ' = ' + cf.questions_per_step : '') : cf.questions_per_step);
+    add('Samples per question', cf.group_size);
+    add('Learning rate', isNum(cf.lr) ? cf.lr.toExponential(1) + (cf.warmup_steps ? ', ' + cf.warmup_steps + ' warm-up steps' : '') : null);
+    add('Minibatches', cf.minibatches); add('Temperature', cf.temperature);
+    add('Thinking budget', cf.think_budget && cf.think_budget + ' tokens'); add('Max tokens', cf.max_tokens);
+    add('Evaluation after steps', Array.isArray(cf.eval_steps) ? cf.eval_steps.join(', ') : null);
+    add('Gate p', cf.gate_p); add('Rollout model', cf.rollout_model); add('Slots', cf.slots); add('Question pool', cf.pool);
+    add('LoRA', cf.lora_r ? 'rank ' + cf.lora_r + ', alpha ' + cf.lora_alpha : null); add('Advantage std floor', cf.adv_std_floor);
+    kv.forEach(function (p) { body.append(h('div', null, h('dt', { text: p[0] }), h('dd', { text: p[1] }))); });
+  } else $('#cfg').hidden = true;
+}
+
+function tile(label, value, sub, state) {
+  var t = h('div', { class: 'tile' }, h('div', { class: 'k', text: label }), h('div', { class: 'v', text: value }), h('div', { class: 's', text: sub || '' }));
+  if (state === 'ok') t.append(chip('ok', 'ok', 'Inside the bound'));
+  else if (state === 'over') t.append(chip('bad', 'warn', 'Outside the bound'));
+  return t;
+}
+function renderTiles() {
+  var box = $('#tiles'); box.textContent = '';
+  if (!D.rows.length && !(D.state && D.state.baseline)) return;
+  var last = D.rows[D.rows.length - 1], s = D.state;
+  function rollNow(key) { var sr = seriesOf(key, { roll: true }); var r = lastPt(sr.roll), d = lastPt(sr.data); return { roll: r && r.y, raw: d && d.y, x: d && d.x }; }
+  if (D.rows.length) {
+    var so = rollNow('solve_rate'), rw = rollNow('reward_mean'), inf = rollNow('informative_frac');
+    box.append(tile('Solve rate', F.pct(so.roll), 'step ' + so.x + ': ' + F.pct(so.raw) + ' · avg of last 5'));
+    box.append(tile('Reward', F.d3(rw.roll), 'step ' + rw.x + ': ' + F.d3(rw.raw) + ' · avg of last 5'));
+    var infMin = cfgStop('informative_min', 0.25);
+    box.append(tile('Informative groups', F.pct(last.informative_frac), 'bound: at least ' + F.pct(infMin), isNum(last.informative_frac) ? (last.informative_frac >= infMin ? 'ok' : 'over') : null));
+    var klMax = cfgStop('kl_max', 0.05);
+    box.append(tile('KL to SFT (server)', F.sig(last.kl_sft), 'bound: at most ' + klMax, isNum(last.kl_sft) ? (last.kl_sft <= klMax ? 'ok' : 'over') : null));
+    var e0 = baseMean('entropy'), emin = isNum(e0) ? e0 * cfgStop('entropy_min_frac', 0.5) : null;
+    box.append(tile('Entropy', F.d3(last.entropy), isNum(emin) ? 'bound: at least ' + F.d3(emin) : 'bound starts after step 5', isNum(emin) && isNum(last.entropy) ? (last.entropy >= emin ? 'ok' : 'over') : null));
+  }
+  if (s && s.baseline) {
+    var b = s.baseline.overall, evs = s.evals || [], le = evs.length ? evs[evs.length - 1] : null;
+    if (le) {
+      var p = pass8(le.overall), pb = pass8(b);
+      box.append(tile('pass@8, latest evaluation', F.pct(p), 'after step ' + le.step + ' · SFT ' + F.pct(pb) + ' (' + F.signed((p - pb) * 100) + ' points)'));
+    } else box.append(tile('pass@8 of the SFT model', F.pct(pass8(b)), 'first evaluation after step ' + firstEvalStep()));
+  }
+}
+
+function renderEvents() {
+  var box = $('#events'); if (!box) return;
+  var keep = box.scrollTop; box.textContent = '';
+  var ev = (D.state && D.state.events) || [];
+  if (!ev.length) { box.append(h('div', { class: 'ev' }, h('span'), h('span'), h('span', { class: 'x', text: 'No events yet.' }))); return; }
+  ev.slice().reverse().forEach(function (e) {
+    var k = e.kind === 'error' ? 'error' : e.kind === 'warn' ? 'warn' : 'info';
+    box.append(h('div', { class: 'ev ' + k }, h('span', { class: 't', text: localTime(e.at) }), h('span', { class: 'kd', text: k === 'info' ? '' : k === 'warn' ? 'Warning' : 'Error' }),
+      h('span', { class: 'x' }, String(e.text == null ? '' : e.text), isNum(e.step) ? h('small', { text: 'step ' + e.step }) : null)));
+  });
+  box.scrollTop = keep;
+}
+
+/* ------------------------------------------------------------------ build the page */
+function buildPage() {
+  buildRollouts($('#p-rollouts'));
+  buildOptimizer($('#p-optimizer'));
+  buildDrift($('#p-drift'));
+  buildCanaries($('#p-canaries'));
+  buildEvals($('#p-evals'));
+  buildGeneral($('#p-general'));
+  buildTiming($('#p-timing'));
+  var ev = $('#p-events');
+  ev.append(h('p', { class: 'intro', text: 'The last 40 events from the run\'s driver, newest first. Warnings and errors are marked in words as well as colour.' }), h('div', { class: 'events', id: 'events', role: 'log' }));
+}
+
+function renderAll() {
+  var has = !!(D.state || D.rows.length);
+  $('#empty').hidden = has;
+  $('#content').hidden = !has;
+  $('#hgrid').hidden = !has;
+  renderStatusBar(); renderHeader(); renderTiles();
+  if (has) { renderCards(); renderEvalTables(); renderEvents(); }
+  var missing = D.state && isNum(D.state.step_now) && D.rows.length < D.state.step_now;
+  var nn = $('#netnote');
+  if (missing) { nn.hidden = false; nn.className = 'note warn'; nn.textContent = 'Showing ' + D.rows.length + ' of ' + D.state.step_now + ' trained steps: the rest have not been pushed to this page yet.'; }
+  else if (!nn.dataset.net) { nn.hidden = true; nn.textContent = ''; }
+}
+
+/* ------------------------------------------------------------------ controls */
+function wireControls() {
+  function seg(id, fn) {
+    var box = document.getElementById(id);
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      box.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      fn(b.getAttribute('data-v'));
+    });
+  }
+  seg('seg-range', function (v) { view.range = v; renderCards(); });
+  seg('seg-view', function (v) { view.tables = v === 'tables'; renderCards(); });
+  var raf = 0, lastW = 0, main = $('.wrap');
+  function resize() {
+    var w = Math.round(main.getBoundingClientRect().width);
+    if (w === lastW) return; lastW = w;
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(function () { if (D.loaded) renderCards(); });
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(main); else window.addEventListener('resize', resize);
+  setInterval(tickAgo, 20000);
+}
+
+/* ------------------------------------------------------------------ the live store */
+function netNote(text, warn) {
+  var nn = $('#netnote'); nn.dataset.net = text ? '1' : ''; nn.hidden = !text; nn.className = 'note' + (warn ? ' warn' : ''); nn.textContent = text || '';
+}
+function start() {
+  buildPage(); wireControls(); renderAll();
+  var tries = 0;
+  (function waitForApi() {
+    var api = window.claude;
+    if (api && typeof api.use === 'function') return connect(api);
+    if (++tries < 40) return setTimeout(waitForApi, 100);
+    netNote('The live store is not available in this view, so there is nothing to show.', true);
+  })();
+}
+function connect(api) {
+  var timer = setTimeout(function () { netNote('Cannot reach the live store yet. The page keeps trying and will fill in when it answers.', true); }, 10000);
+  api.use('db').then(function (db) {
+    if (!db) { clearTimeout(timer); netNote('The live store is not available here. Open the page while signed in to claude.ai to see the run.', true); return; }
+    db.collection('run1').onSnapshot(function (snap) {
+      var docs = {};
+      snap.docs.forEach(function (d) { if (d.exists) docs[d.id] = d.data(); });
+      D = derive(docs);
+      if (!snap.metadata.fromCache) { clearTimeout(timer); netNote(''); }
+      else if (!D.state && !D.rows.length) netNote('Waiting for the store to answer.', false);
+      renderAll();
+    }, function (err) {
+      clearTimeout(timer);
+      var code = err && err.code;
+      netNote(code === 'revoked' ? 'Access to the live store was withdrawn. The last data stays on screen.' : 'The live store reported an error (' + (code || 'unknown') + '). The last data stays on screen.', true);
+    });
+  }, function () { clearTimeout(timer); netNote('The live store could not be opened.', true); });
+}
+start();
+})();
+</script>
