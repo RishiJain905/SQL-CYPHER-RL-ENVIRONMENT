@@ -165,13 +165,25 @@ def evaluate(cfg: dict[str, Any], run_dir: Path, k: int, launched_by: str) -> di
                  reasoning_budget=EVAL_BUDGET)  # fmt: skip
     try:
         url = f"http://127.0.0.1:{server.PORT}"
-        g = llamaeval.generate(p.evalset, out / "preds_greedy.jsonl", url)
-        s = sample.sample(out, url)
+        errors = 0
+        for _ in range(3):  # both clients keep what is answered and retry what failed
+            g = llamaeval.generate(p.evalset, out / "preds_greedy.jsonl", url)
+            s = sample.sample(out, url)
+            errors = g["errors"] + s["errors"]
+            if not errors:
+                break
     finally:
         if not server.stop(out):
             raise RuntimeError("the evaluation server did not stop")
-    if g["errors"] or s["errors"]:
-        raise RuntimeError(f"{g['errors']} greedy and {s['errors']} sampled answers failed")
+    # An answer that still fails is one the server's chat parser rejects (HTTP 500: the model
+    # wrote a malformed call). The sampler keeps it as an empty answer, which scores as no
+    # call. A few are the model's doing; many mean the server is unwell.
+    if errors > cfg.get("eval_max_errors", 8):
+        raise RuntimeError(f"{errors} evaluation answers failed after 3 tries")
+    if errors:
+        event(run_dir, "warn", f"evaluation after step {k}: {errors} answers the server could "
+              "not parse, kept as empty answers", step=k)  # fmt: skip
+        (out / "server_errors.json").write_text(json.dumps({"answers": errors}), "utf-8")
     code = wsl("sqlrl.run1.eval_score", f"--run-dir {to_wsl(run_dir)} --step {k} "
                f"--launched-by {launched_by}", out / "score.log")  # fmt: skip
     if code != 0 or not done.exists():

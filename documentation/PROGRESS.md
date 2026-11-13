@@ -6,7 +6,7 @@
 |---|---|---|
 | 1. Sampling baseline | ✅ done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
-| 3+. The real RL run | 🔧 run 1 built and loop-tested, **not started (Rishi starts it)** | stage A single-turn, stage B multi-turn, optional stage C; environments per R5; run 1: `run1/README.md`, `run1/design.md`, `run1/harness.md` (R6-R9). Before the start: Docker / the checker's Neo4j up, then build `pool-v2` |
+| 3+. The real RL run | 🔧 run 1 built and loop-tested, **not started (Rishi starts it)** | stage A single-turn, stage B multi-turn, optional stage C; environments per R5; run 1: `run1/README.md`, `run1/design.md`, `run1/harness.md` (R6-R9). `pool-v2` built, the evaluation path checked; start and watch it with `run1/RUNBOOK.md` |
 
 ## Session log
 
@@ -43,8 +43,13 @@
   `--lora`); a worker per slot; one step's rollouts 292 s against 504-540 s; WSL kept awake
   during a run (the update's model load 17-22 s instead of ~200 s cold). Built
   `src/sqlrl/run1/` (R6), 20 CPU tests, loop-tested (2 steps, SQL questions), pause and resume
-  tested mid-rollout. **Not done:** `pool-v2` and the evaluation path's first full run, both
-  blocked by Docker's engine not starting (the checker's Neo4j).
+  tested mid-rollout. Later the same day, after Rishi had Docker restarted: `pool-v2` built
+  (6,600 questions; a first build was discarded because the checker passes an exact copy of
+  the reference without running it, so the filter had tested nothing); the evaluation path
+  run end to end on the SFT model (greedy 44.5, mean@8 36.4, pass@8 59.9: the baseline within
+  noise); `RUNBOOK.md`, `dashboard-brief.md` and the dashboard's feed written. Rishi chose
+  the recommended mix, learning rate and length, and has the run started and watched from an
+  Opus 5.5 session with a Sonnet agent building the dashboard.
 
 ## Rishi-run steps and waivers
 

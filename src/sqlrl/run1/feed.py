@@ -127,6 +127,8 @@ def build(name: str) -> dict[str, Any]:
         if s:
             evals.append(eval_block(s))
     base = _read_json(p.data / "baseline" / BASELINE / "summary.json")
+    # the same SFT model measured through run 1's own evaluation path (`run.py --evalcheck`)
+    same = _read_json(p.data / "run1" / "evalcheck" / "eval-0000" / "summary.json")
     meta = _read_json(run_dir / "run_meta.json") or {}
     state = {
         "run": name,
@@ -171,6 +173,7 @@ def build(name: str) -> dict[str, Any]:
             )
         },  # fmt: skip
         "baseline": {"name": BASELINE, **eval_block(base)} if base else None,
+        "baseline_run1_path": eval_block(same) if same else None,
         "evals": evals,
         "events": events[-40:],
         "step_files": (len(hist) + CHUNK - 1) // CHUNK,

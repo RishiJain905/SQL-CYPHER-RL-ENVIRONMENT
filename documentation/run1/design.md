@@ -130,6 +130,9 @@ A full step is expected at about **11 minutes** (to be confirmed by the run's fi
 - **The gate:** pass@8 not down. The test is question by question: questions that had a right
   answer among the baseline's 8 and have none now, against the reverse. More lost than gained
   with p < 0.05 pauses the run and keeps the last good adapter.
+- **The yardstick's own noise:** the SFT model measured again through run 1's evaluation path
+  scored greedy 44.5, mean@8 36.4, pass@8 59.9 (baseline 43.2 / 36.9 / 62.6; sampled sign test
+  37 better / 44 worse, pass@8 8 / 14, p = 0.29). Evaluations are read against both.
 - **The test set** is used once, on the adapter we keep.
 
 ## 6. Stop rules (any one pauses the run for a look)

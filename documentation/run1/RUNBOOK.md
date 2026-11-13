@@ -29,7 +29,7 @@ Run from the repo root. Stop and tell Rishi if a line fails and the fix isn't li
 | Docker and the checker's Neo4j | `docker ps --format "{{.Names}} {{.Status}}"` | `asktrainer-neo4j Up ...` (else `docker start asktrainer-neo4j`; if Docker itself is down, start Docker Desktop and wait) |
 | The GPU is free | `tasklist /FI "IMAGENAME eq llama-server.exe" /NH` and, in WSL, `pgrep -af "sqlrl\|train"` | no llama-server, no training process. If something of Rishi's is on the GPU, ask him |
 | The pool | `<data>/run1/pool-v2.stats.json` | at least 1,000 CypherBench, 1,000 gretel, 800 SQaLe and 400 text2cypher questions accepted (100 steps at the mix) |
-| The yardstick dry run | `<data>/run1/evalcheck/eval-0000/summary.json` | exists; the SFT model through run 1's own evaluation path, close to the baseline (greedy 43.2, mean@8 36.9, pass@8 62.6) |
+| The yardstick dry run | `<data>/run1/evalcheck/eval-0000/summary.json` | exists (done 2026-11-12: greedy 44.5, mean@8 36.4, pass@8 59.9; the baseline is 43.2 / 36.9 / 62.6) |
 | No run named `run1` yet | `<data>/run1/run1/` | doesn't exist (if it does, this is a resume: skip to section 2's command and say so) |
 | Tests | in WSL: `PYTHONPATH=src <venv>/bin/python -m pytest -q tests/run1` | all pass |
 
@@ -109,6 +109,11 @@ query shaped to the checker); thoughts must still read like the model's own reas
   (`<data>/run1/run1/eval-00kk/summary.json`, also on the dashboard). Good: mean@8 and greedy
   pass@1 above the baseline (36.9 and 43.2), pass@8 not below 62.6, and the sampled sign test
   leaning "better". One question is 0.5 points; read the sign tests, not the points.
+- **How much is noise:** the SFT model itself, measured again through run 1's evaluation path
+  on 2026-11-12, scored greedy 44.5, mean@8 36.4, pass@8 59.9 (against the baseline: greedy 6
+  better / 4 worse, sampled 37 / 44, pass@8 8 / 14, p = 0.29). So a pass@8 that is 2-3 points
+  off, or a sampled test of 37 / 44, is what no change at all looks like. Compare every
+  evaluation with both: the baseline and this re-measurement (`baseline_run1_path` in the feed).
 - **Overfitting:** training solve rate up while the evalset is flat or down. Watch CypherBench
   most: it trains on 4 graphs and is tested on 7 others, and it slipped in both pilots. A
   CypherBench training rate that climbs while its evalset pass@8 falls is the signal to bring
@@ -140,6 +145,7 @@ Read the event's text, then the step's `train.log` (update) or `server.err.txt` 
 | "the checker's Neo4j doesn't answer" | `docker start asktrainer-neo4j`, wait 30 s, run the start command again |
 | "another llama-server is running" | find whose it is; if it is a leftover of this run (`<data>/run1/run1/step-*/server.pid`), `pause.py` clears it; otherwise ask Rishi |
 | "N rollouts failed; run again to retry them" | run the start command again (finished rollouts are kept) |
+| "N evaluation answers failed after 3 tries" | the server rejected many answers; read `eval-00kk/server.err.txt`. Up to 8 unparseable answers are kept as empty answers and only logged as a warning |
 | "the rollout model for step k could not be written" | read `merge.log`; `python -m sqlrl.run1.tools merge --run-dir <dir> --step <k-1>` in WSL, then start again |
 | A power cut or reboot | start Docker and the Neo4j container, then the start command; at most one update is redone |
 | Out of memory in the update | check nothing else holds the GPU; start again. If it repeats on the same step, stop and tell Rishi (don't change `max_seq` yourself) |

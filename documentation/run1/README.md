@@ -83,8 +83,12 @@ continues past it.
 
 ## Limits
 
-- The evaluation path (greedy + 8 samples on the evalset, scoring, the gate) was not run end to
-  end on 2026-11-12: the checker's Neo4j was down. Its parts are the pilots' (step 1's sampler,
-  the trainer's greedy client and scorer); the first evaluation at step 25 is its first full run.
+- The yardstick has its own noise. The SFT model measured again through run 1's evaluation
+  path (`run.py --evalcheck`, 2026-11-12) scored greedy 44.5, mean@8 36.4, pass@8 59.9, against
+  the baseline's 43.2 / 36.9 / 62.6 (no sign test below p = 0.29). A change of 2-3 points on
+  one evaluation is not a result.
+- The server's chat parser rejects a malformed tool call with an error instead of returning
+  it (1 of 1,600 sampled answers in that check). The evaluation retries, then keeps up to 8
+  such answers as empty ones and logs a warning.
 - A step's questions are fixed by the pool and the mix; changing the mix mid-run would reuse or
   skip questions, so a new mix needs a new run.

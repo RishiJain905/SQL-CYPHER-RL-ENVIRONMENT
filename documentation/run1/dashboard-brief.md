@@ -49,6 +49,7 @@ empty state before the first push and when a `steps-n` document doesn't exist ye
 | `stop_rules_now` | the stop rules that would fire on the latest step (normally empty) |
 | `config` | `method`, `mix` (questions per dataset per step), `lr`, `warmup_steps`, `group_size`, `eval_steps`, `stop` (the bounds, below), `gate_p`, ... |
 | `baseline` | the SFT model on the yardstick: `overall` and `by_set` blocks (below) |
+| `baseline_run1_path` | the same SFT model measured again through run 1's own evaluation path (greedy 44.5, mean@8 36.4, pass@8 59.9 against the baseline's 43.2 / 36.9 / 62.6): the yardstick's own repeat noise. Show it beside the baseline in every evaluation chart, as "SFT, re-measured" |
 | `evals` | list of `{step, overall, by_set, vs_baseline}`, one per finished evaluation |
 | `events` | the last 40 events `{at, kind (info / warn / error), text, phase?, step?}` |
 | `step_files` | how many `steps-n` documents exist |
