@@ -260,3 +260,38 @@ to 53.1 / 42.2 / 78; gretel 64 / 59.5 / 80 to 62 / 64 / 86; text2cypher 15.4 / 1
 48 questions; watched as a possible overfit). pass@8 rose and "never" fell, so the gain is not
 the policy narrowing. The drift that fired the KL rule bought accuracy, so the bound became a
 backstop and the evaluations the main check.
+
+## R12: run 1 stopped after step 28, step 19's adapter kept (2026-11-13)
+
+**What:** run 1 is closed at 28 of its 100 planned steps. Rishi's decision, after the
+evaluations at steps 25 and 28 (step 28 was added to `eval_steps` with his OK when `kl_sft`
+reached 0.29, close to the 0.30 bound; the earlier config is kept as `.before-eval28`). The
+adapter that is kept is step 19's (`step-0019/lora_state.safetensors`). Nothing is deleted:
+every step's rollouts, scores and LoRA stay.
+
+**Why:** every evaluation after step 19 was worse on the held-out questions
+(`results/run1.md`):
+
+| | greedy pass@1 | mean@8 | pass@8 | sampled sign test against the baseline |
+|---|---|---|---|---|
+| SFT, the baseline | 43.2 | 36.9 | 62.6 | |
+| after step 19 | 45.6 | 40.8 | 66.2 | 60 better / 41 worse (p 0.07) |
+| after step 25 | 46.8 | 39.7 | 62.6 | 61 / 52 (p 0.45) |
+| after step 28 | 44.6 | 39.4 | 63.5 | 56 / 60 (p 0.78) |
+
+Step 28 against step 19: 42 better / 63 worse (p 0.05). The training solve rate fell back too
+(0.53 over steps 11-19, 0.45 after), SQaLe ended 13 points under the SFT model on pass@8, and
+`kl_sft` went from 0.115 to 0.294 over those nine steps. Nothing in the settings changes after
+step 28 (a constant learning rate, `kl_beta` 0), so 72 more steps would be 12 hours of the same
+drift. R11's reading ("the drift bought accuracy") held up to step 19 and not beyond it.
+
+**What it means for the next run:** the settings overshoot, which is a different finding from
+"single-turn RL is done". A next run needs something that holds the model near the SFT model
+(a KL penalty or a lower, decaying learning rate), evaluations from step 5-10 on with the best
+step kept, and a fix for a blind spot the run exposed in the reward: the model's use of
+`DISTINCT` fell from 22% to 9% of its held-out answers while the checker's score on the
+questions whose reference uses `DISTINCT` went up, because the checker's data rarely contains
+the duplicates that would show the difference (`results/run1.md`). Step 19's adapter carries
+part of that habit.
+
+**Not decided:** the test set on step 19's adapter, a release export, and what runs next.

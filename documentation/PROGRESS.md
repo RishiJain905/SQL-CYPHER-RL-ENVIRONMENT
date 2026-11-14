@@ -6,7 +6,8 @@
 |---|---|---|
 | 1. Sampling baseline | ✅ done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
-| 3+. The real RL run | ▶️ run 1 **running** (started 2026-11-13, 100 steps, ~18 h) | stage A single-turn, stage B multi-turn, optional stage C; environments per R5; run 1: `run1/README.md`, `run1/design.md`, `run1/harness.md` (R6-R9). `pool-v2` built, the evaluation path checked; start and watch it with `run1/RUNBOOK.md` |
+| 3. Run 1 (stage A, single turn) | ⏹️ stopped after step 28 of 100 (2026-11-13); **step 19's adapter kept** (R12) | SRPO, 32 questions x 8 a step. After step 19: greedy 45.6, mean@8 40.8, pass@8 66.2 (baseline 43.2 / 36.9 / 62.6; sampled sign test 60 / 41, p 0.07). Worse at steps 25 and 28 (step 28 against 19: 42 / 63, p 0.05): the settings overshoot. `results/run1.md`; R10-R12. Not done: the test set on step 19, a release export |
+| 4. What runs next | ✋ Rishi's choice | run 2 (stage B, multi-turn, R5) hasn't been designed. Before any next run: hold the model near SFT (KL penalty or lower learning rate), evaluate from step 5-10 and keep the best step, fix the reward's `DISTINCT` blind spot (`results/run1.md`) |
 
 ## Session log
 
@@ -50,6 +51,12 @@
   noise); `RUNBOOK.md`, `dashboard-brief.md` and the dashboard's feed written. Rishi chose
   the recommended mix, learning rate and length, and has the run started and watched from an
   Opus 5.5 session with a Sonnet agent building the dashboard.
+- **2026-11-13:** run 1 started and watched from that session, the dashboard built by the
+  sonnet-xhigh subagent and fed after every step. The KL bound was raised twice with Rishi's OK
+  (R10, R11); evaluations after steps 19, 25 and 28. Step 19 beat the SFT model, 25 and 28 gave
+  the gain back, and Rishi stopped the run with step 19's adapter kept (R12). Results and the
+  reading in `results/run1.md`, with one finding for the environment: the model learned to drop
+  `DISTINCT` and the checker's data can't show the difference. Next is Rishi's choice (row 4).
 
 ## Rishi-run steps and waivers
 
@@ -58,4 +65,4 @@
 - **2026-11-01:** Rishi told the agent to begin step 2's pilots (run with `--launched-by agent`).
 - **2026-11-12:** Rishi told the agent to begin run 1 with the recommended choices (run with
   `--launched-by agent`); started 2026-11-13 18:14 UTC from an Opus 5.5 session following
-  `run1/RUNBOOK.md`. After step 10 the KL stop bound was raised to 0.10 with his OK (R10). It paused after step 19 (KL 0.115); evaluated there it beat the SFT model (greedy 45.6, mean@8 40.8, pass@8 66.2 against 43.2 / 36.9 / 62.6) and resumed with the bound at 0.30 and evaluations after steps 35 and 75 added (R11).
+  `run1/RUNBOOK.md`. After step 10 the KL stop bound was raised to 0.10 with his OK (R10). It paused after step 19 (KL 0.115); evaluated there it beat the SFT model (greedy 45.6, mean@8 40.8, pass@8 66.2 against 43.2 / 36.9 / 62.6) and resumed with the bound at 0.30 and evaluations after steps 35 and 75 added (R11). At step 28 (`kl_sft` 0.29) Rishi OK'd an extra evaluation there; after it he stopped the run for good and kept step 19's adapter (R12).

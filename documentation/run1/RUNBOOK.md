@@ -1,5 +1,9 @@
 # Run 1 runbook: start it, show it, watch it
 
+> **Run 1 is closed (2026-11-13).** It was stopped after step 28 of 100 and step 19's adapter is
+> kept (decisions R12, `results/run1.md`). Don't start or resume it. This file stays as the
+> record of how the run was started and watched, and as the template for the next run's runbook.
+
 For the agent that starts and watches run 1 (Rishi's plan, 2026-11-12: this session runs on
 Opus 5.5; a Sonnet agent builds the dashboard). Read this file top to bottom before doing
 anything. It assumes nothing from an earlier conversation.
