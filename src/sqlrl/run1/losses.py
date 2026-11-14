@@ -120,6 +120,40 @@ def topk_jsd(
     return torch.cat(out)
 
 
+def _kl_chunk(hs: torch.Tensor, hr: torch.Tensor, w: torch.Tensor, k: int) -> torch.Tensor:
+    """Per-token KL(student || reference) over the student's top-k tokens plus one bucket for
+    the rest of the vocabulary (a lower bound of the full KL; exact when k is the vocabulary)."""
+    ls = torch.log_softmax(torch.nn.functional.linear(hs, w).float(), dim=-1)
+    with torch.no_grad():
+        lr = torch.log_softmax(torch.nn.functional.linear(hr, w).float(), dim=-1)
+        idx = ls.detach().topk(k, dim=-1).indices
+    ps = ls.gather(-1, idx).exp()
+    pr = lr.gather(-1, idx).exp()
+    ps = torch.cat([ps, (1 - ps.sum(-1, keepdim=True)).clamp(min=1e-12)], dim=-1)
+    pr = torch.cat([pr, (1 - pr.sum(-1, keepdim=True)).clamp(min=1e-12)], dim=-1)
+    return (ps * (ps.clamp(min=1e-12).log() - pr.clamp(min=1e-12).log())).sum(-1)
+
+
+def topk_kl(
+    student_h: torch.Tensor, ref_h: torch.Tensor, head: torch.Tensor, k: int = 100
+) -> torch.Tensor:
+    """The KL penalty's term per answer token (run 1b, decisions R13): KL(policy || SFT model)
+    between the two next-token distributions on the same token prefix. `ref_h` is the SFT
+    model's states (adapter off, no grad). Unlike the k3 estimate in `token_objective`, which
+    reads one sampled token, this compares the whole distributions, so it has no sampling noise
+    and its gradient always points back toward the SFT model. Chunked like `topk_jsd`."""
+    from torch.utils.checkpoint import checkpoint
+
+    out = []
+    for s in range(0, student_h.shape[0], 256):
+        hs, hr = student_h[s : s + 256], ref_h[s : s + 256]
+        if torch.is_grad_enabled():
+            out.append(checkpoint(_kl_chunk, hs, hr, head, k, use_reentrant=False))
+        else:
+            out.append(_kl_chunk(hs, hr, head, k))
+    return torch.cat(out)
+
+
 def route(rollouts: list[dict[str, Any]]) -> None:
     """SRPO's routing (Sample-Routed Policy Optimization, arXiv 2604.02288), in place: a wrong
     rollout (reward < 0.5, decided) with at least one right sibling in its group goes to the

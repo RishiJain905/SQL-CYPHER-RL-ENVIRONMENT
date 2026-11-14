@@ -7,7 +7,8 @@
 | 1. Sampling baseline | ✅ done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
 | 3. Run 1 (stage A, single turn) | ⏹️ stopped after step 28 of 100 (2026-11-13); **step 19's adapter kept** (R12) | SRPO, 32 questions x 8 a step. After step 19: greedy 45.6, mean@8 40.8, pass@8 66.2 (baseline 43.2 / 36.9 / 62.6; sampled sign test 60 / 41, p 0.07). Worse at steps 25 and 28 (step 28 against 19: 42 / 63, p 0.05): the settings overshoot. `results/run1.md`; R10-R12. Not done: the test set on step 19, a release export |
-| 4. What runs next | ✋ Rishi's choice | run 2 (stage B, multi-turn, R5) hasn't been designed. Before any next run: hold the model near SFT (KL penalty or lower learning rate), evaluate from step 5-10 and keep the best step, fix the reward's `DISTINCT` blind spot (`results/run1.md`) |
+| 4. Run 1b (the trainer, fixed) | 🧑 built and loop-tested (2026-11-14); **Rishi starts it** | run 1 again for 40 steps, held near the SFT model: a KL penalty whose weight follows the measured drift (target 0.03), learning rate 5e-6, evaluations after 10 / 20 / 30 / 40 with the best step kept, no reward for CypherBench answers that repeat rows where the reference doesn't. About 10.5 h. `run1b/design.md`, `run1b/RUNBOOK.md`, R13 |
+| 5. Run 2 (stage B, multi-turn) | not designed | after run 1b: its settings if the trainer holds (R5 for the environment) |
 
 ## Session log
 
@@ -57,6 +58,15 @@
   the gain back, and Rishi stopped the run with step 19's adapter kept (R12). Results and the
   reading in `results/run1.md`, with one finding for the environment: the model learned to drop
   `DISTINCT` and the checker's data can't show the difference. Next is Rishi's choice (row 4).
+- **2026-11-14:** Rishi chose to fix the trainer and the `DISTINCT` gap first, then a short run
+  1b. Built (R13): the KL penalty and its weight rule, the duplicate probe for CypherBench
+  (tested on run 1's 1,045 passed answers), evaluations compared with the best earlier one,
+  `BEST.json`, the turn rule, the `run1b` preset, run 1 drawn behind run 1b in the dashboard's
+  feed. The `DISTINCT` finding was measured properly and corrected: the gap is CypherBench's
+  sparse graphs (82% of references), and the model dropped `DISTINCT` even where the checker
+  punished it. 27 run-1 tests (49 in all), ruff clean, a 2-step loop test on the GPU
+  (`smoke-1b`). `run1b/design.md`, `RUNBOOK.md`, `dashboard-brief.md` written. The PC crashed
+  mid-session (nothing lost; the checker's Neo4j was started again).
 
 ## Rishi-run steps and waivers
 

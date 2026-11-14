@@ -22,11 +22,13 @@ rollout loop works and what it measured: [`harness.md`](harness.md).
 |---|---|
 | Start, or resume | `C:\Python314\python.exe -I scripts\run1\run.py --run run1` |
 | A new run with other choices | add `--mix even`, `--lr 2e-5`, `--steps 200` (only when the run is created) |
+| **Run 1b** (run 1 held near the SFT model: `../run1b/design.md`) | `C:\Python314\python.exe -I scripts\run1\run.py --run run1b --preset run1b` (the preset is read when the run is created; resume with the same command) |
 | **Free the GPU now** | `C:\Python314\python.exe -I scripts\run1\pause.py --run run1` |
 | Stop after the current step | `C:\Python314\python.exe -I scripts\run1\pause.py --run run1 --after-step` |
 | The yardstick on the SFT model through run 1's evaluation path (no training, ~35 min) | `C:\Python314\python.exe -I scripts\run1\run.py --evalcheck` |
 | One tick of the dashboard's data | `C:\Python314\python.exe -I scripts\run1\feed.py --run run1` (writes `<run>/feed/*.json`; `dashboard-brief.md` describes the fields) |
 | A loop test (2 steps, 8 SQL questions, ~10 min) | `C:\Python314\python.exe -I scripts\run1\run.py --run smoke-<n> --smoke --pool pool-test` |
+| A loop test of a preset (2 steps: 4 CypherBench, 2 gretel, 2 SQaLe questions; needs Neo4j) | `C:\Python314\python.exe -I scripts\run1\run.py --run smoke-<n> --preset run1b --smoke` |
 
 Start it detached, for example from PowerShell:
 `Start-Process C:\Python314\python.exe -ArgumentList '-I','scripts\run1\run.py','--run','run1' -WindowStyle Hidden`.
@@ -47,10 +49,11 @@ steps); `pause.py` and the run's end stop it.
 | `events.jsonl` | one line per phase change (rollouts, update, evaluation, pause, failure) |
 | `train_log.jsonl` | one line of metrics per step (also `step-000k/metrics.json`) |
 | `step-000k/rollouts.jsonl` | the step's 256 rollouts: token ids, text, the server's log-probs where asked |
-| `step-000k/scored.jsonl` | the checker's verdicts |
+| `step-000k/scored.jsonl` | the checker's verdicts (with a preset that has `dup_probe`: also `dup`, the duplicate probe's `same` / `differ` / `unknown` for the passed CypherBench answers) |
 | `step-000k/lora_state.safetensors` | the LoRA after the step (every step) |
 | `step-000k/adapter/`, `adapter.gguf` | the adapter as a PEFT folder and a GGUF (evaluation steps and the last step) |
-| `eval-000k/summary.json` | the yardstick after step k and its sign tests against the baseline |
+| `eval-000k/summary.json` | the yardstick after step k and its sign tests against the baseline (`vs_baseline`) and against the run's best earlier evaluation (`vs_best`) |
+| `BEST.json` | the evaluated step with the highest mean@8 so far, and its LoRA file |
 | `PAUSED`, `STOPPED`, `FAILED`, `DONE` | how the run last ended (`PAUSED` holds the reason) |
 
 The rollout model is next to the released GGUF: `<models>/run1/<run>/rollout-model.gguf` and its
@@ -67,6 +70,8 @@ W&B: project `sql-cypher-rl`, group `run1`, one run per run name. The x-axis is 
 | `sdpo_rollouts` | wrong answers that learned from a right sibling | 30-80 |
 | `entropy` | mean token entropy of the trained answers | near the start's |
 | `kl_sft` | drift from the SFT model, from the server's log-probs | rises slowly; pause at 0.05 |
+| `kl_beta`, `kl_pen` (run 1b) | the KL penalty's weight this step, and the KL the penalty saw (the trainer's view) | the weight at 0.05 until `kl_sft` passes 0.045, then doubling until it levels off |
+| `dup_differ_frac` (run 1b) | of the passed CypherBench answers, the share that repeat rows where the reference doesn't (no reward) | 0.4-0.55 at the start, flat or falling |
 | `mismatch` | server against trainer log-probs | 0.015 at step 1, rising with the LoRA |
 | `distinct_frac`, `select_star_frac`, `multi_call_frac`, `leak_frac` | the reward-hacking and teacher-leak canaries | flat; `leak_frac` 0 |
 | `rollout_s`, `update_s`, `step_s` | seconds | expected ~290, ~370, ~660 for a full step |

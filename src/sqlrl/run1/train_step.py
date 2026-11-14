@@ -73,7 +73,10 @@ def score(sdir: Path, rollouts: list[dict], rows: list[dict], cfg: dict[str, Any
                 got[(v["qid"], v["g"])] = v
         if all((r["qid"], r["g"]) in got for r in rollouts):
             for r in rollouts:
-                r.update({k: got[(r["qid"], r["g"])][k] for k in ("json_ok", "exec_ok", "reason")})
+                v = got[(r["qid"], r["g"])]
+                r.update({k: v[k] for k in ("json_ok", "exec_ok", "reason")})
+                if v.get("dup"):
+                    r["dup"] = v["dup"]
             return 0.0
     from asktrainer import publiceval
     from asktrainer.data.schema import Example
@@ -93,11 +96,17 @@ def score(sdir: Path, rollouts: list[dict], rows: list[dict], cfg: dict[str, Any
         r = rollouts[i]
         item = publiceval.score(exs[r["qid"]], r["text"], data, checker=cfg["checker"])
         r.update(json_ok=bool(item["json_ok"]), exec_ok=item["exec_ok"], reason=item["reason"])
+    if cfg.get("dup_probe"):  # run 1b: the passed CypherBench answers on the doubled graph
+        from sqlrl.run1 import dupprobe
+
+        print(f"duplicate probe: {dupprobe.mark(rollouts, exs)}", flush=True)
     tmp = cache.with_suffix(".tmp")
     with tmp.open("w", encoding="utf-8", newline="\n") as f:
         for r in rollouts:
-            f.write(json.dumps({k: r[k] for k in ("qid", "g", "json_ok", "exec_ok", "reason")})
-                    + "\n")  # fmt: skip
+            v = {k: r[k] for k in ("qid", "g", "json_ok", "exec_ok", "reason")}
+            if r.get("dup"):
+                v["dup"] = r["dup"]
+            f.write(json.dumps(v) + "\n")
     tmp.replace(cache)
     return time.time() - t
 
@@ -189,7 +198,7 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
 
     from sqlrl.run1 import gguf_merge, srpo
     from sqlrl.run1.logprobs import _chunk_entropy, answer_logprobs
-    from sqlrl.run1.losses import norm_for, route, sequence_loss, topk_jsd
+    from sqlrl.run1.losses import norm_for, route, sequence_loss, topk_jsd, topk_kl
 
     for r in rollouts:
         r["reward"] = rewards.reward(r, cfg)
@@ -301,6 +310,19 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
                     "template_match": srpo.student_prompt_matches(
                         tok, rows_by_id[first["qid"]], first["prompt_ids"])}  # fmt: skip
 
+    # the KL penalty (run 1b, decisions R13): its weight from the drift just measured, and the
+    # SFT model's view (adapter off) of every sequence that will be trained
+    kcfg = mcfg.get("kl") or {}
+    prev_m = prev / "metrics.json"
+    prev_beta = json.loads(prev_m.read_text(encoding="utf-8")).get("kl_beta") if (
+        k > 1 and prev_m.exists()) else None  # fmt: skip
+    kl_beta = rcfg.kl_beta_next(kcfg, prev_beta, acc["kl_srv"] / acc["n"] if acc["n"] else None)
+    if kl_beta > 0:
+        with torch.no_grad(), model.disable_adapter():
+            for batch in pack(trainable, n_tokens, budget):
+                for r, h in zip(batch, hidden(batch), strict=True):
+                    r["_ref_h"] = h[len(r["prompt_ids"]) - 1 : n_tokens(r) - 1].cpu()
+
     # 4. the update
     batches = minibatches(trainable, cfg["minibatches"], cfg["seed"] * 100_000 + k)
     with torch.no_grad():  # "old" for the later minibatches: the policy before any update
@@ -310,7 +332,7 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
                 r["_old"] = lps_of(r, h)[0]
     model.train()
     tot = {"loss": 0.0, "tokens": 0.0, "clipped": 0.0, "ent_sum": 0.0, "ent_n": 0.0,
-           "jsd_sum": 0.0, "jsd_n": 0.0}  # fmt: skip
+           "jsd_sum": 0.0, "jsd_n": 0.0, "kl_sum": 0.0, "kl_n": 0.0}  # fmt: skip
     grad_norms = []
     for mb in batches:
         opt.zero_grad(set_to_none=True)
@@ -335,6 +357,13 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
                         tot[key] += st[key]
                     tot["ent_sum"] += float((ent * mask.float()).sum())
                     tot["ent_n"] += float(mask.sum())
+                if kl_beta > 0:  # hold every trained position near the SFT model's distribution
+                    hs = h[start - 1 : end - 1]
+                    kl = topk_kl(hs, r.pop("_ref_h").to(dev, hs.dtype), head,
+                                 kcfg.get("top_k", 100))  # fmt: skip
+                    loss = loss + kl_beta * (kl * mask.float()).sum() / norm
+                    tot["kl_sum"] += float((kl.detach() * mask.float()).sum())
+                    tot["kl_n"] += float(mask.sum())
                 tot["loss"] += float(loss.detach())
                 loss_b = loss if loss_b is None else loss_b + loss
             loss_b.backward()
@@ -394,6 +423,9 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
         "mismatch": acc["mis"] / n_probe if acc["n"] else None,
         "kl_sft": acc["kl_srv"] / n_probe if acc["n"] else None,
         "kl_sft_trainer": acc["kl_tr"] / n_probe if acc["n"] else None,
+        # the penalty: its weight this step, and the KL it saw (the trainer's view, top-k)
+        "kl_beta": kl_beta if kcfg else None,
+        "kl_pen": tot["kl_sum"] / tot["kl_n"] if tot["kl_n"] else None,
         "probe_tokens": acc["n"],
         **canaries.text_canaries(rollouts),
         **merge,

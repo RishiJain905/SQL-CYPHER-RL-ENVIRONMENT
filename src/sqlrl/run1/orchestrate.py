@@ -201,13 +201,26 @@ def gate_failed(summary: dict[str, Any], cfg: dict[str, Any]) -> str | None:
     return None
 
 
-def run(name: str, launched_by: str = "agent", new: dict[str, Any] | None = None) -> int:
+def turned(summary: dict[str, Any], cfg: dict[str, Any]) -> str | None:
+    """Why the run should pause after this evaluation (None: go on): it is worse than the run's
+    best earlier evaluation, question by question on the sampled answers, by more than
+    `turn_p` allows. Run 1 would have paused at step 28 (42 better, 63 worse than step 19)."""
+    t = (summary.get("vs_best") or {}).get("sampled")
+    if cfg.get("turn_p") and t and t["worse"] > t["better"] and t["p"] < cfg["turn_p"]:
+        return (f"worse than the evaluation after step {summary['vs_best']['step']}: "
+                f"{t['worse']} questions down against {t['better']} up on the sampled answers "
+                f"(p = {t['p']:.3f})")  # fmt: skip
+    return None
+
+
+def run(name: str, launched_by: str = "agent", new: dict[str, Any] | None = None,
+        preset: str | None = None) -> int:  # fmt: skip
     run_dir = run_dir_of(name)
     run_dir.mkdir(parents=True, exist_ok=True)
     log = (run_dir / "driver.log").open("a", encoding="utf-8", buffering=1)
     sys.stdout = sys.stderr = log
     if not (run_dir / "config.json").exists():
-        rcfg.save(rcfg.new_config({**(new or {}), "run": name}), run_dir)
+        rcfg.save(rcfg.new_config({**(new or {}), "run": name}, preset), run_dir)
     cfg = rcfg.load(run_dir)
     resumed = any((run_dir / m).exists() for m in ("PAUSED", "STOPPED", "FAILED"))
     for marker in ("FAILED", "STOPPED", "PAUSED", "STOP"):
@@ -258,6 +271,14 @@ def run(name: str, launched_by: str = "agent", new: dict[str, Any] | None = None
                     event(run_dir, "warn", f"stopped by the gate after step {k}: {why_gate}",
                           phase="paused", step=k)  # fmt: skip
                     (run_dir / "PAUSED").write_text(json.dumps({"step": k, "why": [why_gate]}),
+                                                    "utf-8")  # fmt: skip
+                    return 0
+                why_turn = turned(summary, cfg)
+                if why_turn and not (run_dir / f"eval-{k:04d}" / "TURN_SEEN").exists():
+                    (run_dir / f"eval-{k:04d}" / "TURN_SEEN").write_text("", encoding="utf-8")
+                    event(run_dir, "warn", f"paused after step {k} for a look: {why_turn}",
+                          phase="paused", step=k)  # fmt: skip
+                    (run_dir / "PAUSED").write_text(json.dumps({"step": k, "why": [why_turn]}),
                                                     "utf-8")  # fmt: skip
                     return 0
         event(run_dir, "info", "run finished", phase="done")
@@ -311,6 +332,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="only run the yardstick on the SFT model (no training)")  # fmt: skip
     ap.add_argument("--launched-by", default="agent")
     new = ap.add_argument_group("a new run's settings (ignored when the run exists)")
+    new.add_argument("--preset", choices=sorted(rcfg.PRESETS), default=None,
+                     help="named settings on top of run 1's (run1b: decisions R13)")  # fmt: skip
     new.add_argument("--mix", choices=sorted(rcfg.MIXES), default=None)
     new.add_argument("--lr", type=float, default=None)
     new.add_argument("--steps", type=int, default=None)
@@ -324,9 +347,10 @@ def main(argv: list[str] | None = None) -> int:
     if a.mix:
         over["mix"] = rcfg.MIXES[a.mix]
     if a.smoke:
-        over.update(smoke=True, steps=a.steps or 2, eval_steps=[],
-                    mix={"gretel": 4, "sqale": 4})  # fmt: skip
-    return run(a.run, a.launched_by, over)
+        # with a preset the loop test also needs CypherBench (the duplicate probe) and Neo4j
+        mix = {"cypherbench": 4, "gretel": 2, "sqale": 2} if a.preset else {"gretel": 4, "sqale": 4}
+        over.update(smoke=True, steps=a.steps or 2, eval_steps=[], mix=mix)
+    return run(a.run, a.launched_by, over, a.preset)
 
 
 if __name__ == "__main__":

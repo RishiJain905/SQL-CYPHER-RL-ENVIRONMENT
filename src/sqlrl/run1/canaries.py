@@ -104,4 +104,14 @@ def stop_reasons(history: list[dict[str, Any]], rules: dict[str, Any]) -> list[s
     d, d0 = val("distinct_frac"), base_mean("distinct_frac")
     if d is not None and d0 is not None and d > d0 + rules["distinct_up"]:
         out.append(f"DISTINCT in {d:.0%} of queries against {d0:.0%} at the start")
+    # run 1b: the share of passed CypherBench answers that repeat rows where the reference
+    # doesn't (`dupprobe`). Rising means the habit run 1 lost is being lost again
+    p0 = base_mean("dup_differ_frac")
+    if rules.get("dup_up") and p0 is not None and _last_all(
+        history[BASE_STEPS:], "dup_differ_frac", rules.get("dup_steps", 3),
+        lambda v: v > p0 + rules["dup_up"],
+    ):  # fmt: skip
+        out.append(f"answers that repeat rows above {p0 + rules['dup_up']:.0%} of the passed "
+                   f"CypherBench answers for {rules.get('dup_steps', 3)} steps ({p0:.0%} at "
+                   "the start)")  # fmt: skip
     return out

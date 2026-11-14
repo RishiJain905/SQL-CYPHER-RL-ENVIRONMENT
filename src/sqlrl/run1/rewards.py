@@ -22,6 +22,10 @@ def reward(item: dict[str, Any], cfg: dict[str, Any]) -> float | None:
     ok = item.get("exec_ok")
     if ok is None:
         return None
+    if ok and item.get("dup") == "differ":
+        # run 1b (`dupprobe`): the reference's rows on the checker's graph, other rows on the
+        # copy where two paths lead wherever one did. Unproven: no reward, and no penalty
+        return None
     return cfg["reward_right"] if ok else cfg["reward_wrong"]
 
 
@@ -64,17 +68,22 @@ def group_stats(rollouts: list[dict[str, Any]]) -> dict[str, Any]:
     for r in rollouts:
         groups[r["qid"]].append(r)
     decided = [r for r in rollouts if r["reward"] is not None]
+    # the solve rate is the checker's own verdict, so it means the same with and without the
+    # duplicate probe (a `dup` "differ" answer has no reward but the checker did pass it)
+    checked = [r for r in rollouts if r["reward"] is not None or r.get("dup") == "differ"]
     informative = [rs for rs in groups.values()
                    if len({r["reward"] for r in rs if r["reward"] is not None}) > 1]  # fmt: skip
     by_set: dict[str, list[float]] = defaultdict(list)
     right_by_set: dict[str, list[bool]] = defaultdict(list)
     for r in decided:
         by_set[r["origin"]].append(r["reward"])
+    for r in checked:
         right_by_set[r["origin"]].append(r.get("exec_ok") is True)
-    return {
+    probed = [r for r in rollouts if r.get("dup") in ("same", "differ")]
+    out = {
         "reward_mean": mean(r["reward"] for r in decided) if decided else None,
         "reward_by_set": {s: mean(v) for s, v in sorted(by_set.items())},
-        "solve_rate": mean(r.get("exec_ok") is True for r in decided) if decided else None,
+        "solve_rate": mean(r.get("exec_ok") is True for r in checked) if checked else None,
         "solve_by_set": {s: mean(v) for s, v in sorted(right_by_set.items())},
         "informative_frac": len(informative) / len(groups) if groups else None,
         "undecided_frac": 1 - len(decided) / len(rollouts) if rollouts else None,
@@ -82,3 +91,7 @@ def group_stats(rollouts: list[dict[str, Any]]) -> dict[str, Any]:
         "groups": len(groups),
         "rollouts": len(rollouts),
     }
+    if probed:  # of the passed CypherBench answers the probe judged, the share it withheld
+        out["dup_differ_frac"] = mean(r["dup"] == "differ" for r in probed)
+        out["dup_probed"] = len(probed)
+    return out

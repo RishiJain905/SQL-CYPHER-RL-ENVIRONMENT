@@ -27,8 +27,12 @@ holds the RL environments, the training loop and the measurements.
 ([`documentation/results/step1-baseline.md`](documentation/results/step1-baseline.md)).
 **Step 2 is done** (2026-11-02): two pilots of 10 RL steps, GRPO and SRPO, neither outside noise,
 SRPO ahead on every sampled measure ([`documentation/pilots/TRACKER.md`](documentation/pilots/TRACKER.md)).
-**Run 1 (stage A) is built and loop-tested, not started**
-([`documentation/run1/`](documentation/run1/README.md)). Progress:
+**Run 1 (stage A, single turn) ran 28 of 100 steps** (2026-11-13) and was stopped: the model
+was better after step 19 (sampled mean 40.8%, pass@8 66.2%) and drifted after it, so step 19's
+adapter is kept ([`documentation/results/run1.md`](documentation/results/run1.md)).
+**Run 1b**, the same run held near the SFT model (a KL penalty, half the learning rate, earlier
+evaluations, a stricter CypherBench reward), is built and loop-tested, not started
+([`documentation/run1b/`](documentation/run1b/design.md)). Progress:
 [`documentation/PROGRESS.md`](documentation/PROGRESS.md).
 
 ## Running it
@@ -48,7 +52,8 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 | `C:\Python314\python.exe -I scripts\step2_pilots\feed.py --pilot <id>` | one tick for the pilots' live page |
 | `PYTHONPATH=src <venv>/bin/python -m sqlrl.run1.pool` (WSL) | run 1's question pool (`pool-v2`; CPU, ~30 min, resumable) |
 | `C:\Python314\python.exe -I scripts\run1\run.py --run run1` | run 1: start or resume (start it hidden and detached); `--mix`, `--lr`, `--steps` for a new run |
-| `C:\Python314\python.exe -I scripts\run1\pause.py --run run1 [--after-step]` | free the GPU now (or after the current step) |
+| `C:\Python314\python.exe -I scripts\run1\run.py --run run1b --preset run1b` | run 1b: start or resume (the preset is read when the run is created) |
+| `C:\Python314\python.exe -I scripts\run1\pause.py --run <run> [--after-step]` | free the GPU now (or after the current step) |
 | `C:\Python314\python.exe -I scripts\run1\run.py --run smoke-1 --smoke --pool pool-test` | a loop test of run 1 (2 steps, 8 SQL questions) |
 | `C:\Python314\python.exe -I scripts\run1\bench_decode.py` / `bench_rollouts.py` | the rollout server's speed (`documentation/run1/harness.md`) |
 | `PYTHONPATH=src <venv>/bin/python -m pytest -q` / `ruff check .` (WSL) | the tests (CPU) and lint |
@@ -58,6 +63,7 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 - [`documentation/rl.md`](documentation/rl.md): the plan
 - [`documentation/rl-runs.md`](documentation/rl-runs.md): the two RL runs, the methods, the RL facts that matter here, the open questions
 - [`documentation/run1/`](documentation/run1/README.md): run 1: operating it (`README.md`), its design and the review behind it (`design.md`), the rollout loop on 16 GB and its measurements (`harness.md`)
+- [`documentation/run1b/`](documentation/run1b/design.md): run 1b: what it changes and why (`design.md`), starting and watching it (`RUNBOOK.md`), its dashboard's brief
 - [`documentation/pilots/`](documentation/pilots/): step 2's tracker and live page
 - [`documentation/guides/sampling-baseline.md`](documentation/guides/sampling-baseline.md): pass@k, how the baseline works, how to run it
 - [`documentation/results/`](documentation/results/): each step's numbers

@@ -295,3 +295,57 @@ the duplicates that would show the difference (`results/run1.md`). Step 19's ada
 part of that habit.
 
 **Not decided:** the test set on step 19's adapter, a release export, and what runs next.
+
+## R13: run 1b, run 1's trainer with the model held near SFT (2026-11-14)
+
+Rishi, after run 1: "let's fix the trainer and the blind spot, along with a KL penalty etc
+first. Then let's run a short 1B". Built and loop-tested; Rishi starts it
+(`run1b/RUNBOOK.md`). The design, with the reasons in full: `run1b/design.md`.
+
+**What run 1b is:** run 1 again (SRPO, the same pool, mix and questions in the same order, a
+new LoRA on the SFT model) for 40 steps, with:
+
+| Change | Setting | Why |
+|---|---|---|
+| A KL penalty | KL(policy \|\| SFT) a token on every trained position (the policy's top 100 tokens plus the rest, `losses.topk_kl`), times a weight, added to the loss of both SRPO branches | Run 1 had nothing pulling back toward the SFT model (`kl_beta` 0): `kl_sft` 0.115 at step 19, 0.294 at step 28 |
+| The weight follows the drift | starts at 0.05; doubles while the measured `kl_sft` is above 0.045, halves (not below 0.05) while under 0.02; at most 6.4. Target 0.03 | A fixed weight would be a guess. This is PPO's adaptive penalty, driven by the server-side measurement, which is exact (R7) |
+| Learning rate | 5e-6 (was 1e-5) | Half the distance a step |
+| Stop bound | `kl_max` 0.10 | Run 1's level at its last good evaluation |
+| The duplicate probe | every passed CypherBench answer is run again, with the reference, on the graph with every relationship twice; when they disagree there the answer gets no reward (undecided, not wrong) | Below |
+| Evaluations | after steps 10, 20, 30, 40 | Run 1's turn fell between two evaluations |
+| The best step | `BEST.json`: the evaluated step with the highest mean@8 | The last step was not the best in run 1 |
+| The turn rule | pause when an evaluation is worse than the best earlier one on the sampled sign test with p < 0.10 | Run 1 would have paused at step 28 |
+
+**Not changed:** SRPO's parts, two optimizer steps a step, the batch (32 x 8), the mix, the
+warm-up, the LoRA, the rollout model, the other stop rules, the gate, the yardstick. A larger
+batch was the other way to a less noisy step; halving the learning rate does about the same
+for no extra rollouts. A decaying learning rate was left out: it would make "the run levelled
+off" unreadable in a 40-step test.
+
+**The `DISTINCT` finding, corrected.** R12 said the checker's data rarely contains the
+duplicates that would show a missing `DISTINCT`. Measured on run 1's rollouts, that is true of
+CypherBench's sampled graphs only: for 82% of the training references that use `DISTINCT` (271
+of 280 do) the graph returns the same rows without it. SQaLe's and text2cypher's random data
+does punish it. And on the 18% of CypherBench questions where the graph shows the difference,
+the model dropped `DISTINCT` anyway (81% of answers used it in steps 1-9, 31% in steps 20-28,
+and without it they were right 7 times in 99): the habit eroded where nothing objected and
+took the needed cases with it. `results/run1.md` is corrected.
+
+**Why "no reward" and not "wrong":** the doubled graph is artificial. Tested on run 1's 1,045
+passed CypherBench answers it withholds 523 (522 of them answers without `DISTINCT` to a
+reference with it), keeps 485 (146 of those avoid repeats without the keyword), and stays
+silent on 37 where the doubled graph changes what the reference itself returns. A cheaper
+probe (every row twice on the unchanged graph) also withheld 104 answers that are fine, and
+was rejected. The rule "rewards come from execution only" holds: this is one more database the
+answer must agree on to be paid.
+
+**Where the code is:** run 1's (`src/sqlrl/run1/`), with the new parts switched on by
+`config.PRESETS["run1b"]` (`run.py --preset run1b`). Without the preset every new setting is
+off and the code does what run 1 did; `tests/run1` checks that (27 tests). R6 kept run 1 apart
+from the pilots so a change couldn't alter what the pilots' record says they ran; run 1 is
+closed and its `config.json` and results are kept, so its record doesn't depend on the code
+staying frozen. A second copy of the whole harness for a 40-step test would be the worse trade.
+
+**What it will show:** `run1b/design.md` section 4. In short: if `kl_sft` levels off near the
+target and the evaluations hold at or above run 1's step 19, the trainer is fixed and these
+settings go into run 2.

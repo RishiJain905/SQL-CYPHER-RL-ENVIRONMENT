@@ -88,7 +88,31 @@ def eval_block(summary: dict[str, Any]) -> dict[str, Any]:
 
     return {"step": summary.get("step"), "overall": block(summary["overall"]),
             "by_set": {s: block(b) for s, b in (summary.get("by_set") or {}).items()},
-            "vs_baseline": summary.get("vs_baseline")}  # fmt: skip
+            "vs_baseline": summary.get("vs_baseline"),
+            "vs_best": summary.get("vs_best")}  # fmt: skip
+
+
+COMPARE_KEYS = ("step", "solve_rate", "reward_mean", "kl_sft", "entropy", "informative_frac",
+                "resp_tokens_median", "distinct_frac", "lr")  # fmt: skip
+
+
+def compare_block(name: str) -> dict[str, Any] | None:
+    """An earlier run to draw behind this one (run 1b against run 1: the same questions at
+    every step, so the solve rates pair up): its evaluations and a few numbers per step."""
+    run_dir = get_paths().data / "run1" / name
+    hist = history(run_dir)
+    if not hist:
+        return None
+    evals = []
+    for d in sorted(run_dir.glob("eval-*")):
+        s = _read_json(d / "summary.json")
+        if s:
+            evals.append(eval_block(s))
+    steps = [{k: _num(h.get(k)) for k in COMPARE_KEYS} for h in hist]
+    for row, h in zip(steps, hist, strict=True):
+        for s, v in (h.get("solve_by_set") or {}).items():
+            row[f"solve_{s}"] = _num(v)
+    return {"run": name, "evals": evals, "steps": steps}
 
 
 def status_of(run_dir: Path, events: list[dict[str, Any]]) -> tuple[str, list[str]]:
@@ -170,8 +194,15 @@ def build(name: str) -> dict[str, Any]:
                 "gate_p",
                 "lora_r",
                 "lora_alpha",
+                "preset",
+                "method_cfg",
+                "dup_probe",
+                "turn_p",
+                "compare_run",
+                "steps",
             )
         },  # fmt: skip
+        "best": _read_json(run_dir / "BEST.json"),  # the evaluated step to keep (run 1b)
         "baseline": {"name": BASELINE, **eval_block(base)} if base else None,
         "baseline_run1_path": eval_block(same) if same else None,
         "evals": evals,
@@ -179,7 +210,8 @@ def build(name: str) -> dict[str, Any]:
         "step_files": (len(hist) + CHUNK - 1) // CHUNK,
     }
     rows = [step_row(h) for h in hist]
-    return {"state": state, "steps": rows}
+    compare = compare_block(cfg["compare_run"]) if cfg.get("compare_run") else None
+    return {"state": state, "steps": rows, "compare": compare}
 
 
 def write(name: str) -> dict[str, Any]:
@@ -195,6 +227,9 @@ def write(name: str) -> dict[str, Any]:
         (out / f).write_text(json.dumps({"from": chunk[0]["step"], "to": chunk[-1]["step"],
                                          "steps": chunk}), encoding="utf-8")  # fmt: skip
         files.append(f)
+    if data["compare"]:  # the earlier run doesn't change: push this document once
+        (out / "compare.json").write_text(json.dumps(data["compare"]), encoding="utf-8")
+        files.append("compare.json")
     s = data["state"]
     return {"feed": str(out), "files": files, "status": s["status"], "step_now": s["step_now"],
             "phase": s["phase"], "stop_rules_now": s["stop_rules_now"]}  # fmt: skip

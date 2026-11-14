@@ -84,11 +84,42 @@ DEFAULTS: dict[str, Any] = {
 }
 
 
-def new_config(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+PRESETS: dict[str, dict[str, Any]] = {
+    # Run 1b (decisions R13, documentation/run1b/design.md): run 1 with the model held near the
+    # SFT model. Run 1 drifted: `kl_sft` 0.115 at step 19, 0.294 at step 28, and every
+    # evaluation after step 19 was worse (results/run1.md).
+    "run1b": {
+        "steps": 40,
+        "eval_steps": [10, 20, 30, 40],  # the first one 15 steps earlier than run 1's plan
+        "lr": 5e-6,  # half of run 1's: half the distance a step
+        "method_cfg": {
+            # KL(policy || SFT) a token added to the loss, times `beta`. `beta` doubles while
+            # the measured `kl_sft` is above 1.5 x `target` and halves (never below its start)
+            # while it is under `target` / 1.5: PPO's adaptive penalty (Schulman et al., 2017)
+            "kl": {"beta": 0.05, "target": 0.03, "beta_max": 6.4, "top_k": 100},
+        },
+        "dup_probe": True,  # CypherBench: no reward when the copy with repeated paths disagrees
+        "turn_p": 0.10,  # pause when an evaluation is worse than the best earlier one (sampled)
+        "compare_run": "run1",  # the dashboard draws run 1 behind it (the same questions)
+        "stop": {"kl_max": 0.10, "dup_up": 0.15, "dup_steps": 3},
+    },
+}
+MERGED = ("method_cfg", "stop")  # a preset or an override changes keys in these, not the whole
+
+
+def new_config(overrides: dict[str, Any] | None = None, preset: str | None = None) -> dict:
     cfg = copy.deepcopy(DEFAULTS)
-    for k, v in (overrides or {}).items():
-        if v is not None:
-            cfg[k] = v
+    layers = [copy.deepcopy(PRESETS[preset])] if preset else []
+    for layer in [*layers, overrides or {}]:
+        for k, v in layer.items():
+            if v is None:
+                continue
+            if k in MERGED and isinstance(v, dict):
+                cfg[k].update(v)
+            else:
+                cfg[k] = v
+    if preset:
+        cfg["preset"] = preset
     cfg["questions_per_step"] = sum(cfg["mix"].values())
     cfg["eval_steps"] = sorted({s for s in cfg["eval_steps"] if s <= cfg["steps"]}
                                | {cfg["steps"]})  # fmt: skip
@@ -122,6 +153,23 @@ def lr_at(cfg: dict[str, Any], step: int) -> float:
     """The learning rate of RL step `step` (1-based): a linear warm-up, then constant."""
     w = int(cfg.get("warmup_steps") or 0)
     return cfg["lr"] * min(1.0, step / w) if w > 0 else cfg["lr"]
+
+
+def kl_beta_next(kl: dict[str, Any] | None, prev: float | None, kl_sft: float | None) -> float:
+    """The KL penalty's weight for this step (0.0: no penalty). `prev` is the step before's
+    weight (None at step 1), `kl_sft` the drift measured on this step's rollouts, before the
+    update. Above 1.5 x the target the weight doubles, below the target / 1.5 it halves, and it
+    stays between its starting value and `beta_max`."""
+    if not kl or not kl.get("beta"):
+        return 0.0
+    beta = prev if prev else kl["beta"]
+    target = kl.get("target")
+    if target and kl_sft is not None:
+        if kl_sft > 1.5 * target:
+            beta *= 2
+        elif kl_sft < target / 1.5:
+            beta /= 2
+    return min(max(beta, kl["beta"]), kl.get("beta_max", max(beta, kl["beta"])))
 
 
 def step_dir(run_dir: Path, k: int) -> Path:

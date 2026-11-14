@@ -83,7 +83,7 @@ unseen training-split questions, not a memory test. One step swings by 0.1-0.2 w
 - No stop rule other than KL fired. Malformed calls stayed at 0-2%, `leak_frac` at 0-1%,
   `SELECT *` at 0, `mismatch` at 0.01-0.06 (bound 0.10).
 
-## The model learned to drop DISTINCT, and the checker can't see it
+## The model learned to drop DISTINCT, and CypherBench's graphs mostly can't show it
 
 The same 200 held-out questions, all 8 sampled answers:
 
@@ -95,18 +95,31 @@ The same 200 held-out questions, all 8 sampled answers:
 
 On the 56 Cypher questions whose reference query uses `DISTINCT`, the model's answers used it
 52% of the time before the run and 22% after step 28, and the checker's right-rate on those
-questions went *up* (36.6% to 40.6%). So on the checker's graphs the rows come out the same with
-or without it, and the reward can't tell the two apart.
+questions went *up* (36.6% to 40.6%).
 
-Why the reward pushes this way: rows are compared as multisets, so an unneeded `DISTINCT` is
-marked wrong whenever the reference returns duplicates, while a missing `DISTINCT` is marked
-wrong only when the test data happens to contain duplicates. Small sampled graphs and random
-fills rarely do. The safe habit under this checker is to leave `DISTINCT` out.
+**Where the gap is** (measured 2026-11-14 on run 1's training rollouts; the first version of
+this section blamed all of the checker's data, which was wrong):
 
-This is a gap in the environment, not a proven fault in the answers: an answer that returns the
-right rows on the checker's data may return duplicates on real data. Step 19's adapter already
-carries part of the habit (36% against 53% on CypherBench). It has to be fixed in the checker's
-data (duplicates where the reference uses `DISTINCT`) before another run trusts the reward.
+- **It is CypherBench's sampled graphs.** 271 of run 1's 280 CypherBench training references
+  use `DISTINCT`. For 82% of them the reference returns the same rows on the checker's graph
+  without it: the graph is too sparse for two paths to reach the same node. An answer that
+  drops `DISTINCT` is passed there (in steps 1-9, right 55% of the time without it and 46%
+  with it).
+- **On the other 18% the checker does punish it, and the model dropped it anyway.** On those
+  questions its answers used `DISTINCT` 81% of the time in steps 1-9, 68% in steps 10-19 and
+  31% in steps 20-28; without it they were right 7 times in 99. So this was not the model
+  learning where `DISTINCT` is needed. The habit eroded where nothing objected and took the
+  needed cases with it: part of what the drift after step 19 cost.
+- **SQaLe and text2cypher don't have the gap.** Their random data is full of repeats: an
+  answer without the reference's `DISTINCT` was right 3-10% of the time on SQaLe, 0 of 12 on
+  text2cypher early in the run. gretel's own tables are small, but only 1 gretel reference in
+  20 uses `DISTINCT`.
+
+An answer that returns the right rows on a sparse graph may repeat rows on a denser one. Step
+19's adapter already carries part of the habit (36% against 53% on CypherBench's held-out
+questions). Run 1b's fix is a second look at every passed CypherBench answer on the same graph
+with every relationship twice, with no reward when the answer and the reference disagree there
+(`run1b/design.md` section 2, decisions R13).
 
 ## The reading
 
@@ -134,10 +147,13 @@ data (duplicates where the reference uses `DISTINCT`) before another run trusts 
    planned for step 25, six steps after the best one that was measured. A 100-question quick
    evaluation every 5-10 steps would have shown the turn.
 3. **A less noisy step:** more questions a step, or two steps' rollouts per update.
-4. **Fix the reward's blind spot for `DISTINCT`** (above) and look for others of its kind.
+4. **Close the reward's gap on `DISTINCT`** (above) and look for others of its kind.
 5. **Look at SQaLe before training on it again:** its databases are random fills, it is the one
    dataset that ended clearly below the SFT model, and 24-28 of its 384 sampled answers can't
    be decided at all.
+
+Items 1, 2 and 4 are built for run 1b (decisions R13, `run1b/design.md`); 3 is answered there
+with a halved learning rate instead of a larger batch; 5 is left as it was.
 
 ## Not done
 

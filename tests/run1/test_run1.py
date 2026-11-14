@@ -277,6 +277,117 @@ def test_reference_call_writes_the_tool_call_text():
                     "<arg_value>select 1</arg_value></tool_call>")  # fmt: skip
 
 
+# ---- run 1b: the KL penalty, the duplicate probe, the best evaluation -------------------------
+def test_run1_settings_are_unchanged_and_the_preset_only_adds():
+    base = rcfg.new_config()
+    assert "kl" not in base["method_cfg"] and not base.get("dup_probe") and base["lr"] == 1e-5
+    assert base["stop"]["kl_max"] == 0.05 and base["eval_steps"] == [25, 50, 100]
+    assert rcfg.kl_beta_next(base["method_cfg"].get("kl"), None, 0.2) == 0.0  # run 1: no penalty
+    b = rcfg.new_config({"run": "x"}, "run1b")
+    assert (b["steps"], b["eval_steps"], b["lr"]) == (40, [10, 20, 30, 40], 5e-6)
+    assert b["method_cfg"]["kl"]["target"] == 0.03 and b["dup_probe"] and b["preset"] == "run1b"
+    # merged, not replaced: SRPO's own settings and run 1's other stop rules are still there
+    assert b["method_cfg"]["sdpo"] == base["method_cfg"]["sdpo"]
+    assert b["stop"]["kl_max"] == 0.10 and b["stop"]["leak_max"] == base["stop"]["leak_max"]
+    assert rcfg.DEFAULTS["stop"]["kl_max"] == 0.05  # the preset didn't write into the defaults
+    smoke = rcfg.new_config({"steps": 2, "eval_steps": [], "mix": {"gretel": 4}}, "run1b")
+    assert smoke["steps"] == 2 and smoke["mix"] == {"gretel": 4}  # an override wins, mix whole
+
+
+def test_kl_weight_follows_the_measured_drift():
+    kl = {"beta": 0.05, "target": 0.03, "beta_max": 0.4}
+    f = rcfg.kl_beta_next
+    assert f(kl, None, None) == 0.05 and f(kl, None, 0.001) == 0.05  # never below its start
+    assert f(kl, 0.05, 0.04) == 0.05  # inside the band (0.02 to 0.045): unchanged
+    assert f(kl, 0.05, 0.046) == 0.1 and f(kl, 0.1, 0.06) == 0.2  # above: doubles
+    assert f(kl, 0.4, 0.2) == 0.4  # capped
+    assert f(kl, 0.2, 0.019) == 0.1 and f(kl, 0.2, None) == 0.2  # below: halves; no reading: kept
+    assert f(None, 0.2, 0.1) == 0.0 and f({"beta": 0.0}, None, 0.1) == 0.0
+
+
+def test_topk_kl_is_the_kl_and_pulls_toward_the_reference():
+    torch.manual_seed(2)
+    head = torch.randn(50, 8)
+    hs, hr = torch.randn(7, 8, requires_grad=True), torch.randn(7, 8)
+    ls = torch.log_softmax(hs @ head.T, -1)
+    lr = torch.log_softmax(hr @ head.T, -1)
+    exact = (ls.exp() * (ls - lr)).sum(-1)
+    assert torch.allclose(l1.topk_kl(hs, hr, head, 50), exact, atol=1e-5)  # k = the vocabulary
+    part = l1.topk_kl(hs, hr, head, 10)
+    assert bool((part <= exact + 1e-5).all()) and bool((part >= -1e-6).all())  # a lower bound
+    assert float(l1.topk_kl(hr, hr, head, 10).abs().max()) < 1e-6  # the same model: zero
+    # a gradient step on the penalty moves the student's distribution toward the reference's
+    part.sum().backward()
+    stepped = (hs - 0.05 * hs.grad).detach()
+    ls2 = torch.log_softmax(stepped @ head.T, -1)
+    assert float((ls2.exp() * (ls2 - lr)).sum()) < float(exact.detach().sum())
+
+
+def test_duplicate_probe_withholds_the_reward_and_keeps_the_solve_rate():
+    cfg = rcfg.DEFAULTS
+    ok = {"json_ok": True, "exec_ok": True}
+    assert rewards.reward({**ok, "dup": "same"}, cfg) == 1.0
+    assert rewards.reward({**ok, "dup": "unknown"}, cfg) == 1.0 and rewards.reward(ok, cfg) == 1.0
+    assert rewards.reward({**ok, "dup": "differ"}, cfg) is None  # unproven: nothing either way
+    assert rewards.reward({"json_ok": True, "exec_ok": False, "dup": "differ"}, cfg) == 0.0
+    rs = [{"qid": "q", "g": g, "origin": "cypherbench", **v} for g, v in enumerate([
+        {**ok, "dup": "same"}, {**ok, "dup": "differ"}, {**ok, "dup": "differ"},
+        {"json_ok": True, "exec_ok": False}])]  # fmt: skip
+    for r in rs:
+        r["reward"] = rewards.reward(r, cfg)
+    rewards.advantages(rs, "std", std_floor=0.25)
+    assert [r["adv"] is None for r in rs] == [False, True, True, False]
+    st = rewards.group_stats(rs)
+    assert st["solve_rate"] == 0.75  # the checker's verdict: three of four
+    assert st["reward_mean"] == 0.5 and st["undecided_frac"] == 0.5
+    assert st["dup_differ_frac"] == pytest.approx(2 / 3) and st["dup_probed"] == 3
+    plain = [{"qid": "q", "g": 0, "origin": "gretel", **ok, "reward": 1.0}]
+    assert "dup_differ_frac" not in rewards.group_stats(plain)  # run 1's metrics: no new keys
+
+
+def test_duplicate_probe_picks_and_reads():
+    from sqlrl.run1 import dupprobe
+
+    rs = [{"origin": "cypherbench", "exec_ok": True, "reason": "match"},
+          {"origin": "cypherbench", "exec_ok": True, "reason": "exact"},
+          {"origin": "cypherbench", "exec_ok": False, "reason": "rows_differ"},
+          {"origin": "gretel", "exec_ok": True, "reason": "match"}]  # fmt: skip
+    assert dupprobe.candidates(rs) == rs[:1]
+    nodes, rels, types = dupprobe.doubled(({"A": [{"eid": 1}]}, [("r", "A", 1, "A", 1, {})], {}))
+    assert len(rels) == 2 and rels[0] == rels[1] and nodes == {"A": [{"eid": 1}]}
+    v = dupprobe.verdict
+    assert (v("match"), v("uninformative"), v("differ")) == ("same", "same", "differ")
+    assert v("tie") == v("pred_error:Timeout") == v("reference_changed") == "unknown"
+
+
+def test_dup_stop_rule_needs_a_rise_that_lasts():
+    rules = {**rcfg.DEFAULTS["stop"], "dup_up": 0.15, "dup_steps": 3}
+    ok = {"entropy": 0.45, "informative_frac": 0.5, "malformed_frac": 0.0, "mismatch": 0.03,
+          "kl_sft": 0.004, "leak_frac": 0.0, "resp_tokens_median": 300, "distinct_frac": 0.15,
+          "dup_differ_frac": 0.48}  # fmt: skip
+    hist = [dict(ok) for _ in range(8)]
+    up = [{**ok, "dup_differ_frac": 0.66}]
+    assert canaries.stop_reasons(hist + up * 2, rules) == []  # two steps: not yet
+    assert "repeat rows" in canaries.stop_reasons(hist + up * 3, rules)[0]
+    assert canaries.stop_reasons(hist + up * 3, rcfg.DEFAULTS["stop"]) == []  # run 1: no rule
+    assert canaries.stop_reasons([dict(ok)] * 5 + up * 2, rules) == []
+
+
+def test_best_evaluation_and_the_turn():
+    from sqlrl.run1.orchestrate import turned
+
+    def s(step, m):
+        return {"step": step, "overall": {"mean_at8": m}}
+
+    assert eval_score.best_of([s(10, 0.40), s(20, 0.41), s(30, 0.41)])["step"] == 20
+    assert eval_score.best_of([]) is None
+    worse = {"vs_best": {"step": 19, "sampled": {"better": 42, "worse": 63, "p": 0.05}}}
+    assert "step 19" in turned(worse, {"turn_p": 0.10})
+    assert turned(worse, {"turn_p": 0.01}) is None and turned(worse, {}) is None  # run 1: no rule
+    better = {"vs_best": {"step": 10, "sampled": {"better": 63, "worse": 42, "p": 0.05}}}
+    assert turned(better, {"turn_p": 0.10}) is None and turned({}, {"turn_p": 0.10}) is None
+
+
 def test_probe_query_changes_the_text_not_the_query():
     assert pool.probe_query("MATCH (n) RETURN n") == "match (n) RETURN n"
     assert pool.probe_query("  select a FROM t") == "  SELECT a FROM t"
