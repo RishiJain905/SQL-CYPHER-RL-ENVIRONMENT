@@ -7,7 +7,7 @@
 | 1. Sampling baseline | ✅ done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
 | 3. Run 1 (stage A, single turn) | ⏹️ stopped after step 28 of 100 (2026-11-13); **step 19's adapter kept** (R12) | SRPO, 32 questions x 8 a step. After step 19: greedy 45.6, mean@8 40.8, pass@8 66.2 (baseline 43.2 / 36.9 / 62.6; sampled sign test 60 / 41, p 0.07). Worse at steps 25 and 28 (step 28 against 19: 42 / 63, p 0.05): the settings overshoot. `results/run1.md`; R10-R12. Not done: the test set on step 19, a release export |
-| 4. Run 1b (the trainer, fixed) | ▶️ running: started 2026-11-14 19:59 UTC (Rishi told the agent to begin it) | run 1 again for 40 steps, held near the SFT model: a KL penalty whose weight follows the measured drift (target 0.03), learning rate 5e-6, evaluations after 10 / 20 / 30 / 40 with the best step kept, no reward for CypherBench answers that repeat rows where the reference doesn't. About 10.5 h. `run1b/design.md`, `run1b/RUNBOOK.md`, R13 |
+| 4. Run 1b (the trainer, fixed) | ⏸️ paused before step 13 (the PC restarted mid-step 2026-11-15 03:38 UTC); Rishi resumes it on another day. Evaluation after step 10: greedy 46.7 / mean@8 36.9 / pass@8 58.4 (flat against SFT) | run 1 again for 40 steps, held near the SFT model: a KL penalty whose weight follows the measured drift (target 0.03), learning rate 5e-6, evaluations after 10 / 20 / 30 / 40 with the best step kept, no reward for CypherBench answers that repeat rows where the reference doesn't. About 10.5 h. `run1b/design.md`, `run1b/RUNBOOK.md`, R13 |
 | 5. Run 2 (stage B, multi-turn) | not designed | after run 1b: its settings if the trainer holds (R5 for the environment) |
 
 ## Session log
@@ -76,6 +76,15 @@
   disk mounted clean, the run-1 tests pass. The NFL engine's two Neo4j containers (their data is
   in folders on the drive, not in Docker's disk) are not recreated yet: Rishi's call. Run 1b
   started 19:59 UTC.
+- **2026-11-14 / 15:** paused after step 7 for Rishi's GPU, resumed 01:34 UTC. Steps 8-12 healthy
+  (`kl_sft` about 0.001, a tenth of run 1's at the same steps; `kl_beta` still 0.05). The
+  evaluation after step 10 (greedy 46.7, mean@8 36.9, pass@8 58.4; sign tests 8/4, 38/49, 7/16
+  against the baseline) reads as flat. The PC restarted at 03:38 UTC while step 13 was saving its
+  update (no `TRAINED`, so step 13 is redone from its kept rollouts and scores). The machine's
+  event log shows the same kind of unexplained restart about once or twice a week since August,
+  most of them with no RL job running, so the run's code isn't the cause; heavy load makes them
+  more likely. Rishi resumes the run himself after a restart (no auto-resume) and chose not to
+  change the machine's settings. Marked paused by hand; resume on another day.
 
 ## Rishi-run steps and waivers
 
@@ -87,3 +96,5 @@
   `run1/RUNBOOK.md`. After step 10 the KL stop bound was raised to 0.10 with his OK (R10). It paused after step 19 (KL 0.115); evaluated there it beat the SFT model (greedy 45.6, mean@8 40.8, pass@8 66.2 against 43.2 / 36.9 / 62.6) and resumed with the bound at 0.30 and evaluations after steps 35 and 75 added (R11). At step 28 (`kl_sft` 0.29) Rishi OK'd an extra evaluation there; after it he stopped the run for good and kept step 19's adapter (R12).
 - **2026-11-14:** Rishi told the agent to begin run 1b (his kickoff from `run1b/RUNBOOK.md`, from
   an Opus 5.5 session); run with `--preset run1b --launched-by agent`, started 19:59 UTC.
+  Paused after step 7 for his GPU and resumed when he said to (2026-11-15 01:34 UTC); after the
+  PC restarted during step 13 he asked for it to stay paused until another day.
