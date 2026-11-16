@@ -13,7 +13,9 @@ is free again for the rollout server when it exits):
    from the SFT model measured from the server's side (`kl_sft`, decisions R7).
 4. **The update:** the groups that carry a signal, split into `minibatches`, one optimizer step
    each. Sequences are padded into batches of at most `batch_tokens` tokens (right padding:
-   with causal attention a sequence's own positions never see the padding).
+   with causal attention a sequence's own positions never see the padding). A minibatch whose
+   loss or gradient isn't finite is skipped (`apply_minibatch`); if every one is, or a weight
+   isn't finite after the update (`check_finite`), the step fails before anything is saved.
 5. **Save:** the LoRA, the optimizer state, the EMA teacher; then the LoRA is merged into the
    rollout model's Q8_0 file for step k+1's server (`gguf_merge.py`). At evaluation steps and
    the last step the adapter is also saved as a PEFT folder and a GGUF, for the record.
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import shutil
 import subprocess
@@ -150,6 +153,29 @@ def pack(items: list[Any], length, budget: int) -> list[list[Any]]:
         else:
             out.append([it])
     return out
+
+
+def apply_minibatch(opt: Any, params: list[Any], grad_clip: float, loss: float) -> float | None:
+    """One minibatch's optimizer step with its gradient clipped, and its gradient norm. When the
+    loss or the gradient isn't finite the gradient is dropped and the weights are kept: one NaN
+    let through the optimizer turns every weight into NaN (run 1b step 14). Returns None then."""
+    import torch
+
+    gn = float(torch.nn.utils.clip_grad_norm_(params, grad_clip))
+    if not (math.isfinite(gn) and math.isfinite(loss)):
+        opt.zero_grad(set_to_none=True)
+        return None
+    opt.step()
+    return gn
+
+
+def check_finite(params: list[Any]) -> None:
+    """Refuse to save weights that aren't all finite: the step fails, and is run again."""
+    import torch
+
+    bad = sum(int((~torch.isfinite(q.detach())).sum()) for q in params)
+    if bad:
+        raise RuntimeError(f"{bad} weights aren't finite after the update: nothing was saved")
 
 
 def convert_gguf(adapter_dir: Path, out: Path) -> None:
@@ -333,10 +359,11 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
     model.train()
     tot = {"loss": 0.0, "tokens": 0.0, "clipped": 0.0, "ent_sum": 0.0, "ent_n": 0.0,
            "jsd_sum": 0.0, "jsd_n": 0.0, "kl_sum": 0.0, "kl_n": 0.0}  # fmt: skip
-    grad_norms = []
+    grad_norms, skipped = [], 0
     for mb in batches:
         opt.zero_grad(set_to_none=True)
         norm = norm_for(mcfg["agg"], mb, cfg)
+        part = dict.fromkeys(tot, 0.0)  # this minibatch's sums: kept only if it's applied
         for batch in pack(mb, n_tokens, budget):
             loss_b = None
             for r, h in zip(batch, hidden(batch), strict=True):
@@ -346,30 +373,38 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
                     hs = h[start - 1 : end - 1]
                     jsd = topk_jsd(hs, r.pop("_t_h").to(dev, hs.dtype), head, sd["top_k"])
                     loss = (jsd * r.pop("_t_w").to(dev)).sum() / norm
-                    tot["jsd_sum"] += float((jsd.detach() * mask.float()).sum())
-                    tot["jsd_n"] += float(mask.sum())
+                    part["jsd_sum"] += float((jsd.detach() * mask.float()).sum())
+                    part["jsd_n"] += float(mask.sum())
                 else:
                     lp, ent = lps_of(r, h, entropy=True)
                     old = r.pop("_old", None)
                     old = lp.detach() if old is None else old
                     loss, st = sequence_loss(mcfg, lp, old, mask, r["adv"], norm, None)
                     for key in ("tokens", "clipped"):
-                        tot[key] += st[key]
-                    tot["ent_sum"] += float((ent * mask.float()).sum())
-                    tot["ent_n"] += float(mask.sum())
+                        part[key] += st[key]
+                    part["ent_sum"] += float((ent * mask.float()).sum())
+                    part["ent_n"] += float(mask.sum())
                 if kl_beta > 0:  # hold every trained position near the SFT model's distribution
                     hs = h[start - 1 : end - 1]
                     kl = topk_kl(hs, r.pop("_ref_h").to(dev, hs.dtype), head,
                                  kcfg.get("top_k", 100))  # fmt: skip
                     loss = loss + kl_beta * (kl * mask.float()).sum() / norm
-                    tot["kl_sum"] += float((kl.detach() * mask.float()).sum())
-                    tot["kl_n"] += float(mask.sum())
-                tot["loss"] += float(loss.detach())
+                    part["kl_sum"] += float((kl.detach() * mask.float()).sum())
+                    part["kl_n"] += float(mask.sum())
+                part["loss"] += float(loss.detach())
                 loss_b = loss if loss_b is None else loss_b + loss
             loss_b.backward()
-        grad_norms.append(float(torch.nn.utils.clip_grad_norm_(params, cfg["grad_clip"])))
-        opt.step()
+        gn = apply_minibatch(opt, params, cfg["grad_clip"], part["loss"])
+        if gn is None:
+            skipped += 1
+            continue
+        grad_norms.append(gn)
+        for key, v in part.items():
+            tot[key] += v
     model.eval()
+    if batches and skipped == len(batches):
+        raise RuntimeError(f"all {skipped} minibatches had a non-finite loss or gradient")
+    check_finite(params)
     train_s = time.time() - t_train
 
     # 5. save the LoRA and the next step's rollout model
@@ -417,6 +452,7 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
         **sd_stats,
         "clip_frac": tot["clipped"] / toks,
         "grad_norm": sum(grad_norms) / len(grad_norms) if grad_norms else None,
+        "skipped_minibatches": skipped,  # a non-finite loss or gradient (`apply_minibatch`)
         "lr": lr,
         "resp_tokens": sum(len(r["gen_ids"]) for r in rollouts) / len(rollouts),
         "think_forced_frac": sum(bool(r.get("forced")) for r in rollouts) / len(rollouts),

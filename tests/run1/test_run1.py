@@ -12,7 +12,7 @@ from sqlrl.run1 import canaries, eval_score, gguf_merge, pool, rewards
 from sqlrl.run1 import config as rcfg
 from sqlrl.run1 import losses as l1
 from sqlrl.run1.rollouts import Plan, group_order, seed_for
-from sqlrl.run1.train_step import minibatches, pack
+from sqlrl.run1.train_step import apply_minibatch, check_finite, minibatches, pack
 from sqlrl.step2_pilots import losses as l0
 from sqlrl.step2_pilots import rewards as rewards0
 
@@ -392,3 +392,23 @@ def test_probe_query_changes_the_text_not_the_query():
     assert pool.probe_query("MATCH (n) RETURN n") == "match (n) RETURN n"
     assert pool.probe_query("  select a FROM t") == "  SELECT a FROM t"
     assert pool.probe_query("(SELECT 1)") == "(select 1)"
+
+
+def test_a_non_finite_minibatch_is_skipped_and_the_weights_kept():
+    w = torch.nn.Parameter(torch.ones(4))
+    opt = torch.optim.AdamW([w], lr=0.1)
+    (w * torch.tensor([1.0, float("nan"), 1.0, 1.0])).sum().backward()
+    assert apply_minibatch(opt, [w], 1.0, float("nan")) is None
+    assert torch.equal(w.detach(), torch.ones(4)) and w.grad is None and not opt.state
+    (w * 2).sum().backward()  # a finite minibatch is applied, its gradient clipped to 1
+    assert apply_minibatch(opt, [w], 1.0, 8.0) == pytest.approx(4.0)
+    assert torch.isfinite(w).all() and not torch.equal(w.detach(), torch.ones(4))
+    w.grad = torch.full((4,), float("inf"))  # a finite loss but an infinite gradient
+    before = w.detach().clone()
+    assert apply_minibatch(opt, [w], 1.0, 1.0) is None and torch.equal(w.detach(), before)
+
+
+def test_non_finite_weights_are_refused():
+    check_finite([torch.zeros(3), torch.ones(2)])
+    with pytest.raises(RuntimeError, match="1 weights"):
+        check_finite([torch.zeros(3), torch.tensor([1.0, float("nan")])])
