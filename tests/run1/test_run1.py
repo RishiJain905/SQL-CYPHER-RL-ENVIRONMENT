@@ -8,7 +8,7 @@ import threading
 import pytest
 import torch
 
-from sqlrl.run1 import canaries, eval_score, gguf_merge, pool, rewards
+from sqlrl.run1 import canaries, eval_score, gguf_merge, integrity, pool, rewards
 from sqlrl.run1 import config as rcfg
 from sqlrl.run1 import losses as l1
 from sqlrl.run1.rollouts import Plan, group_order, seed_for
@@ -412,3 +412,30 @@ def test_non_finite_weights_are_refused():
     check_finite([torch.zeros(3), torch.ones(2)])
     with pytest.raises(RuntimeError, match="1 weights"):
         check_finite([torch.zeros(3), torch.tensor([1.0, float("nan")])])
+
+
+def test_save_verified_keeps_the_bytes_and_records_their_hash(tmp_path):
+    import hashlib
+
+    f = tmp_path / "optim.pt"
+    h = integrity.save_verified(b"abc" * 1000, f)
+    assert f.read_bytes() == b"abc" * 1000 and h == hashlib.sha256(b"abc" * 1000).hexdigest()
+    assert (tmp_path / "optim.pt.sha256").read_text() == h
+    assert not (tmp_path / "optim.pt.tmp").exists() and integrity.mismatched(tmp_path) == []
+
+
+def test_save_verified_refuses_a_file_that_reads_back_wrong(tmp_path, monkeypatch):
+    monkeypatch.setattr(integrity, "sha256_file", lambda p: "0" * 64)
+    with pytest.raises(RuntimeError, match="3 tries"):
+        integrity.save_verified(b"x", tmp_path / "optim.pt")
+    assert not any(tmp_path.iterdir())  # nothing kept, not even the temporary file
+
+
+def test_mismatched_names_the_damaged_files_and_trusts_older_ones(tmp_path):
+    integrity.save_verified(b"\x00" * 8192, tmp_path / "optim.pt")
+    integrity.save_verified(b"\x01" * 4096, tmp_path / "lora_state.safetensors")
+    (tmp_path / "ema_state.safetensors").write_bytes(b"written before the hashes existed")
+    raw = bytearray((tmp_path / "optim.pt").read_bytes())
+    raw[4096:4100] = b"\xca\xfe\xc0\xc0"  # a page of someone else's memory, as in run 1b
+    (tmp_path / "optim.pt").write_bytes(bytes(raw))
+    assert integrity.mismatched(tmp_path) == ["optim.pt"]

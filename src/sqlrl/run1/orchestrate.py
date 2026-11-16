@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlrl.paths import REPO, get_paths, to_wsl
-from sqlrl.run1 import canaries, server
+from sqlrl.run1 import canaries, integrity, server
 from sqlrl.run1 import config as rcfg
 from sqlrl.run1.model import merged_step, rollout_model_path
 from sqlrl.run1.pool import load_pool
@@ -123,13 +123,26 @@ def do_rollouts(cfg: dict[str, Any], run_dir: Path, k: int, rows: list[dict]) ->
         raise RuntimeError(f"step {k}: {res['errors']} rollouts failed; run again to retry them")
 
 
-def do_update(run_dir: Path, k: int, launched_by: str) -> dict[str, Any]:
+def do_update(run_dir: Path, k: int, launched_by: str, tries: int = 3) -> dict[str, Any]:
+    """Step k's update in WSL; then its state files are checked as they are on the disk
+    (`integrity.mismatched`). A damaged file means the step is trained again from step k-1
+    (its rollouts and scores are kept; `history` keeps a step's last metrics line)."""
     sdir = rcfg.step_dir(run_dir, k)
-    code = wsl("sqlrl.run1.train_step", f"--run-dir {to_wsl(run_dir)} --step {k} "
-               f"--launched-by {launched_by}", sdir / "train.log")  # fmt: skip
-    if code != 0:
-        raise RuntimeError(f"step {k}: the update failed (exit {code}, see train.log)")
-    return json.loads((sdir / "metrics.json").read_text(encoding="utf-8"))
+    for attempt in range(1, tries + 1):
+        code = wsl("sqlrl.run1.train_step", f"--run-dir {to_wsl(run_dir)} --step {k} "
+                   f"--launched-by {launched_by}", sdir / "train.log")  # fmt: skip
+        if code != 0:
+            raise RuntimeError(f"step {k}: the update failed (exit {code}, see train.log)")
+        bad = integrity.mismatched(sdir)
+        if not bad:
+            return json.loads((sdir / "metrics.json").read_text(encoding="utf-8"))
+        event(run_dir, "warn", f"step {k}: {', '.join(bad)} on the disk differ from what was "
+              f"written (try {attempt} of {tries}); training the step again",
+              phase="training", step=k)  # fmt: skip
+        for name in ("TRAINED", *integrity.STATE_FILES):
+            (sdir / name).unlink(missing_ok=True)
+            (sdir / (name + ".sha256")).unlink(missing_ok=True)
+    raise RuntimeError(f"step {k}: its saved state was damaged on the disk {tries} times")
 
 
 def history(run_dir: Path) -> list[dict[str, Any]]:

@@ -27,6 +27,7 @@ fails, so a re-run starts at the update.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import math
 import random
@@ -40,6 +41,7 @@ from typing import Any
 from sqlrl.paths import get_paths
 from sqlrl.run1 import canaries, rewards
 from sqlrl.run1 import config as rcfg
+from sqlrl.run1.integrity import mismatched, save_verified
 from sqlrl.run1.pool import load_pool
 
 WANDB_PROJECT = "sql-cypher-rl"
@@ -202,6 +204,9 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
     rows = rcfg.step_questions(load_pool(cfg["pool"]), cfg, k)
     rollouts = read_rollouts(sdir / "rollouts.jsonl", cfg, rows)
     prev = rcfg.step_dir(run_dir, k - 1)
+    bad = mismatched(prev) if k > 1 else []
+    if bad:  # never train on from a damaged state: step k-1 has to be trained again first
+        raise RuntimeError(f"step {k - 1}'s {', '.join(bad)} differ from what was written")
     state = prev / "lora_state.safetensors" if k > 1 else None
     # the checker scores in a process of its own (CPU) while this one loads the model
     scorer = subprocess.Popen([sys.executable, "-m", "sqlrl.run1.train_step", "--run-dir",
@@ -220,7 +225,8 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
     import torch
     from asktrainer.checkpoint import load_trainable, trainable_state
     from asktrainer.modelio import save_adapter
-    from safetensors.torch import load_file, save_file
+    from safetensors.torch import load_file
+    from safetensors.torch import save as st_bytes
 
     from sqlrl.run1 import gguf_merge, srpo
     from sqlrl.run1.logprobs import _chunk_entropy, answer_logprobs
@@ -407,13 +413,17 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
     check_finite(params)
     train_s = time.time() - t_train
 
-    # 5. save the LoRA and the next step's rollout model
+    # 5. save the LoRA and the next step's rollout model; each state file is read back and its
+    # hash recorded (`integrity.py`: run 1b found pages of another process inside `optim.pt`)
     sdir.mkdir(parents=True, exist_ok=True)
-    save_file(trainable_state(model), str(sdir / "lora_state.safetensors"))
-    torch.save(opt.state_dict(), sdir / "optim.pt")
+    save_verified(st_bytes(trainable_state(model)), sdir / "lora_state.safetensors")
+    buf = io.BytesIO()
+    torch.save(opt.state_dict(), buf)
+    save_verified(buf.getvalue(), sdir / "optim.pt")
+    del buf
     if sd:  # the teacher follows the student slowly
-        save_file(srpo.ema_update(ema, trainable_state(model), sd["ema"]),
-                  str(sdir / "ema_state.safetensors"))  # fmt: skip
+        save_verified(st_bytes(srpo.ema_update(ema, trainable_state(model), sd["ema"])),
+                      sdir / "ema_state.safetensors")  # fmt: skip
     t_merge = time.time()
     merge: dict[str, Any] = {}
     if cfg.get("rollout_model") == "merged":
