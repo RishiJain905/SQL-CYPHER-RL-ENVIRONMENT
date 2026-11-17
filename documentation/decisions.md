@@ -349,3 +349,30 @@ staying frozen. A second copy of the whole harness for a 40-step test would be t
 **What it will show:** `run1b/design.md` section 4. In short: if `kl_sft` levels off near the
 target and the evaluations hold at or above run 1's step 19, the trainer is fixed and these
 settings go into run 2.
+## R14: run 1b closed, step 30 kept; greedy picks the step (2026-11-17)
+
+Run 1b ran all 40 steps (`results/run1b.md`). Rishi kept **step 30's adapter**: greedy 54.5 /
+mean@8 43.4 / pass@8 67.5, against 44.5 / 36.4 / 59.9 for the SFT model through the same path
+and 48.6 / 39.6 / 66.0 at step 40.
+
+**Greedy pass@1 chooses the step** (Rishi): it is how the deployed model answers, and the person
+asking can't tell a wrong answer from a right one. mean@8 and pass@8 measure headroom (the gap
+between pass@8 and greedy is what is left to learn) and decide whether a run should go on.
+`BEST.json` still picks by mean@8 (step 26 here); read greedy yourself.
+
+**Settings changed during the run, each with Rishi's OK:**
+
+| When | Change | Why |
+|---|---|---|
+| Length pause at step 23 | evaluation after step 26 added | see whether the shorter answers were better or worse |
+| After step 26's evaluation | `length_ratio` 2.0 to 3.0 | step 26 was better than step 20 on every measure (p about 0.01) with answers half as long: the rule read improvement as collapse |
+| Entropy pause at step 31 | `entropy_min_frac` 0.5 to 0.25, `kl_max` 0.10 to 0.15 | run on to step 40 and choose between steps 30 and 40 there |
+
+Also with his OK: resumed once after a GPU freeze at step 35 (not in the RUNBOOK's table), and
+the run's data root moved to the internal drive after two crashes during saves to the USB
+drive (`results/run1b.md`, "What went wrong on the machine").
+
+**For run 2:** the gains lived at `kl_sft` 0.03-0.08 against the SFT model, above the 0.03
+target, and the weight (doubling above 0.045, halving only below 0.02, cap 6.4) spent steps
+34-40 pulling the model back. Run 2 starts from step 30's adapter and measures drift against
+that start, or uses a looser target.

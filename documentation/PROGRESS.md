@@ -7,8 +7,8 @@
 | 1. Sampling baseline | ✅ done (2026-11-01) | `baseline-sft1500-t1.0`: greedy 43.2%, mean@8 36.9%, **pass@8 62.6%**; 94 sometimes / 74 never / 30 always (`results/step1-baseline.md`) |
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
 | 3. Run 1 (stage A, single turn) | ⏹️ stopped after step 28 of 100 (2026-11-13); **step 19's adapter kept** (R12) | SRPO, 32 questions x 8 a step. After step 19: greedy 45.6, mean@8 40.8, pass@8 66.2 (baseline 43.2 / 36.9 / 62.6; sampled sign test 60 / 41, p 0.07). Worse at steps 25 and 28 (step 28 against 19: 42 / 63, p 0.05): the settings overshoot. `results/run1.md`; R10-R12. Not done: the test set on step 19, a release export |
-| 4. Run 1b (the trainer, fixed) | ⏸️ paused before step 13 (the PC restarted mid-step 2026-11-15 03:38 UTC); Rishi resumes it on another day. Evaluation after step 10: greedy 46.7 / mean@8 36.9 / pass@8 58.4 (flat against SFT) | run 1 again for 40 steps, held near the SFT model: a KL penalty whose weight follows the measured drift (target 0.03), learning rate 5e-6, evaluations after 10 / 20 / 30 / 40 with the best step kept, no reward for CypherBench answers that repeat rows where the reference doesn't. About 10.5 h. `run1b/design.md`, `run1b/RUNBOOK.md`, R13 |
-| 5. Run 2 (stage B, multi-turn) | not designed | after run 1b: its settings if the trainer holds (R5 for the environment) |
+| 4. Run 1b (the trainer, fixed; the official stage-A run) | ✅ done, 40 of 40 steps (2026-11-17); **step 30's adapter kept** (R14) | After step 30: greedy **54.5** / mean@8 43.4 / pass@8 67.5 (SFT through the same path 44.5 / 36.4 / 59.9; greedy sign test against the baseline 32 / 14, p 0.01). text2cypher 16 to 62.5 greedy. Step 40: 48.6 / 39.6 / 66.0, after the KL weight hit its cap and pulled `kl_sft` from 0.078 to 0.010. Greedy picks the step (R14). `results/run1b.md`, `run1b/design.md`, R13-R14. Not done: the test set on step 30, a release export |
+| 5. Run 2 (stage B, multi-turn) | being designed (draft page for Rishi) | starts from step 30's adapter; drift measured against that start or a looser target (R14); working data on the internal drive (R14) |
 
 ## Session log
 
@@ -85,6 +85,20 @@
   most of them with no RL job running, so the run's code isn't the cause; heavy load makes them
   more likely. Rishi resumes the run himself after a restart (no auto-resume) and chose not to
   change the machine's settings. Marked paused by hand; resume on another day.
+- **2026-11-15 / 16:** resumed; a NaN update at step 14 (fixed: 3e5d2eb) and pages of another
+  process inside a saved `optim.pt` (fixed: every state file hashed and checked on the disk,
+  6ae275b). A second crash during step 20's save to the USB data drive (bugcheck 0x13C, like the
+  first) damaged Docker's disk and step 19's files; after `chkdsk` (Rishi's OK) Docker's disk was
+  recreated (the checker's Neo4j and the NFL engine's two containers started again) and the run's
+  data root was moved to the internal drive. Resumed from step 18, step 19 redone.
+- **2026-11-16 / 17:** steps 19-40 and the evaluations after 20, 26, 30 and 40. Pauses by the
+  length rule (steps 23 and 26) and the entropy rule (step 31) were read with Rishi, who loosened
+  the rules and chose to run to step 40 (R14). Step 26 beat step 20 on every measure with half
+  the thinking; step 30 had the best greedy (54.5); from step 34 the KL weight sat at its cap and
+  pulled the model back toward SFT. A one-off GPU freeze at step 35 (resumed once with Rishi's
+  OK). Rishi kept step 30 (R14): `results/run1b.md`. Copying the run back to the USB drive as
+  history crashed the PC (bugcheck 0x12C, exFAT), so that drive fails under heavy writes from
+  Windows too.
 
 ## Rishi-run steps and waivers
 
@@ -98,3 +112,6 @@
   an Opus 5.5 session); run with `--preset run1b --launched-by agent`, started 19:59 UTC.
   Paused after step 7 for his GPU and resumed when he said to (2026-11-15 01:34 UTC); after the
   PC restarted during step 13 he asked for it to stay paused until another day.
+- **2026-11-16:** Rishi had the run resumed after each crash ("resume from the last saved step"),
+  OK'd the evaluation after step 26 and the loosened length, entropy and KL rules, said to run on
+  to step 40, OK'd one resume after the GPU freeze at step 35, and kept step 30's adapter (R14).
