@@ -91,7 +91,7 @@ new, so one step's solve rate swings by 0.1-0.2 with its batch.
   0.08) where the run's gain was made.
 - **Then the penalty took it back.** Above 1.5 x the 0.03 target the weight doubles every step;
   from step 28 it went 0.1, 0.2, 0.4, 0.8, 1.6, 3.2 and hit its cap of 6.4 at step 34. The
-  gradient norm went past the 1.0 clip at steps 33-35 (1.75, 3.11, 2.0): most of the update was
+  gradient norm went past the 1.0 clip at steps 33-36 (1.75, 3.11, 2.0, 1.26): most of the update was
   the penalty. `kl_sft` fell from 0.078 to 0.010 by step 40, the answers grew back to 160-280
   tokens and the solve rate fell to 0.42 over steps 36-40. The weight only halves below
   0.03 / 1.5 = 0.02, so it kept pulling for six steps after the drift was already back under
@@ -141,7 +141,8 @@ new, so one step's solve rate swings by 0.1-0.2 with its batch.
   lost most of text2cypher's.
 - **Headroom:** the gap between pass@8 and greedy was 13.0 at step 30, against 15.4 for the SFT
   model and 23.6 at step 26. Step 30 turned much of step 26's sampled ability into its greedy
-  answer; what is left is the kind of miss a second look at the result could fix.
+  answer. Some of what is left is the kind of miss a second look at the result could fix
+  (below).
 
 ## What a next run must take from this
 
@@ -151,10 +152,12 @@ new, so one step's solve rate swings by 0.1-0.2 with its batch.
 3. **The length rule must allow shorter answers** (or measure collapse another way).
 4. **Write the run's data to the internal drive;** move it to the USB drive only as history.
 
-Step 30's greedy misses, sorted by what a multi-turn model would see after its first query
-(98 of 200): 17 an error or no query, 10 an empty result (all text2cypher), about 20 the wrong
-number of columns (counted from the query text), 51 the right columns but wrong rows. The first
-two kinds are what run 2's turns are most likely to fix.
+Step 30's 200 greedy answers: 102 right, 85 wrong, 13 undecided (greedy is 102 / 187). The
+undecided are left out of the score: 10 text2cypher questions whose reference returns no rows on
+the checker's data, 2 answers with no query, 1 other. Of the 85 wrong, 15 hit an error when run
+(8 SQaLe, 6 CypherBench, 1 gretel), the clearest thing a second turn can see; 70 ran and
+returned other rows, about 20 of them with a different number of columns from the reference
+(counted from the query text). Run 2's design page estimates what turns add from this split.
 
 ## Not done
 
