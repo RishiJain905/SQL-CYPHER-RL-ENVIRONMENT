@@ -10,7 +10,7 @@ adapter merged into the SFT model, unless a row says otherwise.
 - **On the evaluation set turns cost 4 points** (52.4% to 48.1%; fixed 4, broke 10). By the
   design page's table (D10) that reads "results derail it: do not start RL". Section 7.
 - The cause is one case: a right query whose result says nothing (`0 rows`, or only NULL or
-  zero). The model breaks 9 of 24 such answers and 1 of 54 others. That case is a third of the
+  zero). The model breaks 9 of 25 such answers and 1 of 53 others. That case is a third of the
   evaluation set's right first answers and is absent from the pool, by the pool's own filter.
   Section 8. What to do about it is Rishi's choice (section 9).
 
@@ -209,27 +209,43 @@ start RL." It does retry after errors (9 of 9), which is the first row's other c
 ## 8. Why: a right query whose result says nothing
 
 Every greedy episode of step 30 whose **first query was right**, split by what that query's
-result showed:
+result showed (`phase0_score firstresult`; "says something" is the checker's rule: a value
+that is not NULL, zero, false or empty):
 
 | The first result | Evaluation set, greedy: broken | Evaluation set, 8 samples: broken | Dev slice, greedy: broken |
 |---|---|---|---|
-| Rows that say something | 1 of 54 (2%) | 5 of 391 (1%) | 0 of 93 |
-| `0 rows`, or only NULL or zero | **9 of 24 (38%)** | **69 of 150 (46%)** | 1 of 1 |
+| Rows that say something | 1 of 53 (2%) | 5 of 388 (1%) | 0 of 93 |
+| `0 rows`, or only NULL, zero or false | **9 of 25 (36%)** | **69 of 153 (45%)** | 1 of 1 |
 
-Step 26 is the same (1 of 54, and 12 of 21); so is step 30 with thoughts stripped.
+Step 26 is the same (1 of 54, and 12 of 21); so is step 30 with thoughts stripped (1 of 55, and
+9 of 25).
 
 - **Shown real values, the model keeps a right answer.** That is the behaviour turns need.
-- **Shown nothing, it breaks about half of them.** And 24 of the evaluation set's 78 right
-  first answers (31%) are shown nothing; on the dev slice 1 of 94 is.
+- **Shown nothing, it breaks a third to a half of them.** And 25 of the evaluation set's 78
+  right first answers (32%) are shown nothing; on the dev slice 1 of 94 is.
 
 **Where the difference comes from: the pool's filter.** `run1/pool.py` keeps a training question
-only when its reference "can earn the reward": the checker must decide it, and for gretel the
-reference's result on the dataset's own rows must say something. It rejected 627 of 2,646
-gretel candidates for that (24%) and 422 of 1,426 text2cypher candidates whose reference
-returned no rows (30%). The dev slice is cut from the pool, so it has the same filter. The
-evaluation set is unfiltered: 13 of its 50 gretel references and 32 of its 50 text2cypher
-references say nothing on the copy the model looks at (section 4). The design page named this
-gap in D9's trade-off; the dev slice could not measure it.
+only when its reference "can earn the reward": the checker must decide it, which needs a result
+that says something, and for gretel the reference's result on the dataset's own rows must say
+something too. The dev slice is cut from the pool, so it has the same filter. The evaluation
+set is unfiltered. The design page named this gap in D9's trade-off; the dev slice could not
+measure it. By dataset:
+
+- **gretel.** The pool rejected 627 of 2,646 candidates because the reference's result said
+  nothing (24%). On the evaluation set 13 of 50 references say nothing on the dataset's own
+  rows, which is what the model looks at (section 4).
+- **text2cypher.** 31 of the evaluation set's 50 prompts describe a graph with **no
+  relationships** (`Relationships: (none)`); 30 of them come from one source of the dataset
+  (`neo4jLabs_functional_cypher`) and most ask about paths ("is there a path between Journal X
+  and Article Y"). The look-around graph follows the schema, so it has no relationships, and
+  the right answer is "no" or 0: 24 of those 31 references say nothing. The dev slice has 14
+  such prompts, and 12 of their references still say something (property lookups). The pool
+  rejected 422 of 1,426 text2cypher candidates whose reference returned no rows on the
+  checker's graphs, which is where a path question over such a schema ends up (the 422 were
+  not sorted by kind here). The evaluation set's
+  text2cypher is 41 of 50 from that source; the dev slice's is 14 of 50. Six more evaluation
+  references (2 on the dev slice) filter on a value the question names but the fill did not
+  plant, such as an unquoted lower-case phrase. That part a better fill could reach.
 
 **How the 9 greedy breaks (and the 69 sampled ones) happened:**
 
@@ -268,9 +284,10 @@ are checked that weakly, in every number so far (the 54.5 included).
 16, 1 of 32. The untrained model fixes little on the evaluation set; that part is what RL is
 for.
 
-**Not explained yet:** why the evaluation set's text2cypher references find so little on the
-random graphs (18 of 50 say something) when the pool's do (45 of 50). About 8 of the 50 are
-undecided for the checker too; the rest need a look at the two splits.
+**How to repeat these counts.** `python -m sqlrl.run2.phase0_score lookcheck --rows evalset`
+(and `--rows dev`) runs the references on the look-around copies; `firstresult --dir <folder>`
+splits a scored evaluation by what the first result showed. Both are CPU only; the first loads
+graphs, so nothing else may use the Neo4j.
 
 ## 9. What follows (Rishi's choice)
 
@@ -288,7 +305,8 @@ What the run would need before it can be read fairly:
   questions whose reference says something on the look-around copy, beside the full score. On
   its own this is not enough: the trained habit would still hurt the other questions.
 - **A decision on text2cypher**, where 32 of 50 evaluation references say nothing on the
-  random graph: one query like SQaLe, or a denser fill (measured first on the pool).
+  look-around graph, 24 of them because the prompt's schema has no relationships. No fill
+  changes that: looking can only mislead there. One query, like SQaLe, is the plain reading.
 - **The success line.** "At least +5 over 54.5" (D11) is +11 from 48.1.
 
 The options, the costs and a recommendation are in the session's report to Rishi; whichever is

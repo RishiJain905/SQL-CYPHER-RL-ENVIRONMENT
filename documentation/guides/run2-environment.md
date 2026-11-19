@@ -199,7 +199,8 @@ runs each dev-slice reference on its look-around copy and counts how often it re
   that is not NULL, zero or empty; for gretel on the dataset's own rows). So in training, and
   on the dev slice, an empty result always means a wrong query. In real use, and on the
   evaluation set, it is often the right answer: 13 of 50 gretel and 32 of 50 text2cypher
-  evaluation references say nothing on the copy the model looks at. The untrained model
+  evaluation references say nothing on the copy the model looks at (for text2cypher mostly
+  because the prompt's schema has no relationships, so a path question's answer is "no"). The untrained model
   rewrites a right answer after such a result about half the time, and loses 4 points on the
   evaluation set with turns (`results/run2-phase0.md`, sections 7 and 8). The 627 gretel
   questions the pool rejected for this are still in the training split (ids in

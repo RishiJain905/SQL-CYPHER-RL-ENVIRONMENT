@@ -489,10 +489,13 @@ to 61.8%; fixed 9, broken 1).
 dev-slice numbers above do not carry over. On the evaluation set the untrained step 30 goes
 from 52.4% on its first query to 48.1% with turns (fixed 4, broke 10; gretel fixed 2 and broke
 8, text2cypher 0 and 2, CypherBench 2 and 0). The cause is a right query whose result says
-nothing (`0 rows`, or only NULL or zero): the model breaks 9 of 24 such answers and 1 of 54
-others. The pool's filter removed exactly those questions from training and from the dev slice
-(627 of 2,646 gretel candidates); the evaluation set keeps them (13 of 50 gretel references,
-32 of 50 text2cypher references say nothing on the look-around copy). By the design page's
+nothing (`0 rows`, or only NULL or zero): the model breaks 9 of 25 such answers and 1 of 53
+others. The pool's filter keeps those questions out of training and out of the dev slice; the
+evaluation set has them. gretel: the pool rejected 627 of 2,646 candidates whose reference's
+result said nothing, and 13 of 50 evaluation references are like that. text2cypher: 31 of 50
+evaluation prompts describe a graph with no relationships (path questions from one source), so
+the right answer is "nothing" for 24 of them; the pool rejected 422 of 1,426 text2cypher
+candidates whose reference returned no rows on the checker's graphs. By the design page's
 table (D10) this reads "do not start RL". So, by the rule Rishi used for SQaLe, two more
 datasets fail on the evaluation set. **Nothing further was changed: what to do is open, and
 Rishi's** (the options are in the phase-0 results, section 9).

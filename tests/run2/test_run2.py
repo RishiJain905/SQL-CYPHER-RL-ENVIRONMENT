@@ -1035,6 +1035,49 @@ def test_single_turn_episodes_count_in_the_score_and_not_in_the_turn_rates():
     assert only["hacking"]["look_leak_frac"] is None
 
 
+def test_what_a_result_shows_and_what_the_turns_did_after_it():
+    """The no-training test's key split: a right first answer by what its result showed."""
+    assert summary.says_something([(None, 0), ("", "x")])
+    assert not summary.says_something([]) and not summary.says_something([(None, 0, 0.0, "")])
+
+    def ran(kind, obs, query="q1"):
+        return {"kind": kind, "obs": obs, "query": query}
+
+    assert summary.shown(ran("error", "Error: no such column")) == "error"
+    assert summary.shown(ran("empty", "0 rows")) == "nothing"
+    assert summary.shown(ran("rows", "n\nNULL")) == "nothing"  # an aggregate over no rows
+    assert summary.shown(ran("rows", "a | n\nNULL | 0\n(1 of 9 rows)")) == "nothing"
+    assert summary.shown(ran("rows", "name | n\nAlice | 0")) == "something"
+    assert summary.shown(ran("rows", '{"n": null}\n{"n": 0}')) == "nothing"
+    assert summary.shown(ran("rows", '{"name": "Alice", "n": null}')) == "something"
+
+    def ep(first, final, first_obs, end="reply", last="q2", **kw):
+        kind = "error" if first_obs.startswith("Error") else (
+            "empty" if first_obs == "0 rows" else "rows")  # fmt: skip
+        qs = [ran(kind, first_obs), ran("rows", "x\n1", last)]
+        return {"first_ok": first, "exec_ok": final, "queries": qs, "end": end, **kw}
+
+    eps = [
+        ep(True, True, "name\nAlice"),
+        ep(True, False, "name\nAlice"),  # broke a right answer that showed values: rewrote
+        ep(True, False, "0 rows", end="limit"),  # explored after nothing came back: ran out
+        ep(True, False, "n\nNULL"),  # rewrote until a number came back
+        ep(True, True, "0 rows"),
+        ep(False, True, "0 rows"),
+        ep(False, False, "Error: no such table"),
+        ep(True, False, "0 rows", one_query=True),  # no turns: not counted
+        ep(None, True, "0 rows"),  # undecided first query: not counted
+    ]
+    s = summary.first_result(eps)
+    assert s["something"]["kept_right"] == 1 and s["something"]["broken"] == 1
+    assert s["something"]["broken_frac"] == 0.5 and s["something"]["rewrote"] == 1
+    n = s["nothing"]
+    assert (n["kept_right"], n["broken"], n["fixed"], n["kept_wrong"]) == (1, 2, 1, 0)
+    assert (n["ran_out"], n["rewrote"]) == (1, 1)
+    assert n["broken_frac"] == pytest.approx(2 / 3) and n["fixed_frac"] == 1.0
+    assert s["error"]["kept_wrong"] == 1 and s["error"]["broken_frac"] is None
+
+
 def test_eval_comparisons():
     assert eval_score.sign_test(0, 0) == 1.0 and eval_score.sign_test(10, 0) < 0.01
     mine = {

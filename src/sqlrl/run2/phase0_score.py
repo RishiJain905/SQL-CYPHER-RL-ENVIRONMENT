@@ -2,6 +2,8 @@
 
     python -m sqlrl.run2.phase0_score anchor --dir <dir> --ref <scores_greedy.json>
     python -m sqlrl.run2.phase0_score episodes --file <episodes.jsonl> --rows evalset|dev
+    python -m sqlrl.run2.phase0_score lookcheck --rows dev|evalset     # no model: references
+    python -m sqlrl.run2.phase0_score firstresult --dir <scored evaluation folder>
 
 `anchor` answers two questions before any number with turns is trusted:
 
@@ -110,18 +112,28 @@ def score_file(path: Path, rows_kind: str, dup_probe: bool = True) -> dict[str, 
     return s
 
 
-def lookcheck(per_set: int = 50) -> dict[str, Any]:
-    """Does a correct query return rows on the look-around copy? The dev slice's reference
-    queries are run on the copies the model would look at. This is a diagnostic that only the
-    scoring side may run: the builder itself never sees a reference. Where the reference comes
-    back empty, a model that wrote the right query would be shown `0 rows` and nudged to change
-    it (the random-fill sets: SQaLe and text2cypher)."""
+def lookcheck(rows_kind: str = "dev", per_set: int = 50) -> dict[str, Any]:
+    """Does a correct query's result say something on the look-around copy? The reference
+    queries of the dev slice (`rows_kind` "dev") or of the evaluation set ("evalset") are run on
+    the copies the model would look at. This is a diagnostic that only the scoring side may
+    run: the builder itself never sees a reference. Where the reference's result says nothing
+    (`0 rows`, or only NULL and zero: `summary.says_something`), a model that wrote the right
+    query is shown nothing and is nudged to change it.
+
+    **Run it on both.** The pool keeps a question only when its reference's result says
+    something to the checker, and the dev slice is cut from the pool, so the dev slice passes
+    almost by construction; the evaluation set has no such filter (results/run2-phase0.md,
+    section 8). Nothing else may use the Neo4j while this runs: it loads graphs."""
     from collections import Counter
 
     from sqlrl.run2 import env, guards
 
-    rows = pool.dev_slice(pool.load_pool("pool-v2"), per_set)
-    scripts = pool.load_scripts("pool-v2")
+    if rows_kind == "evalset":
+        rows = pool.read_jsonl(get_paths().evalset)
+        scripts = pool.load_scripts("evalset")
+    else:
+        rows = pool.dev_slice(pool.load_pool("pool-v2"), per_set)
+        scripts = pool.load_scripts("pool-v2")
     graphs = env.GraphHost()
     out: dict[str, Any] = {}
     detail = []
@@ -137,19 +149,40 @@ def lookcheck(per_set: int = 50) -> dict[str, Any]:
             look.close()
         lits = guards.query_literals(gold, row["dialect"])
         asked = scoring.prompt_text(row).lower()
+        says = summary.says_something(res.rows)
         c = out.setdefault(row["origin"], Counter())
         c[res.kind] += 1
         c["questions"] += 1
+        c["says_something"] += says
         c["ref_literals"] += len(lits)
         c["ref_literals_in_prompt"] += sum(s.lower() in asked for s in lits)
         detail.append({"id": row["id"], "origin": row["origin"], "kind": res.kind,
-                       "rows": res.total, "error": res.error})  # fmt: skip
+                       "rows": res.total, "says_something": says, "error": res.error})  # fmt: skip
     rep = {s: dict(c) for s, c in sorted(out.items())}
     d = pool.data_dir() / "phase0"
     d.mkdir(parents=True, exist_ok=True)
-    (d / "lookcheck.json").write_text(json.dumps({"by_set": rep, "questions": detail},
-                                                 indent=1), encoding="utf-8")  # fmt: skip
+    name = "lookcheck.json" if rows_kind == "dev" else f"lookcheck-{rows_kind}.json"
+    (d / name).write_text(json.dumps({"by_set": rep, "questions": detail}, indent=1),
+                          encoding="utf-8")  # fmt: skip
     return rep
+
+
+def first_result(d: Path) -> dict[str, Any]:
+    """An evaluation folder's episodes split by what the first query's result showed
+    (`summary.first_result`): greedy, the sampled episodes, and greedy per dataset. Needs the
+    folder's `scored.jsonl` (`eval_score`)."""
+    eps = [e for e in scoring.read_episodes(d / "episodes.jsonl") if "error" not in e]
+    if not scoring.load(eps, d / "scored.jsonl"):
+        raise RuntimeError(f"{d.name} isn't scored yet: run eval_score on it first")
+    greedy = [e for e in eps if e["g"] == 0]
+    out = {"greedy": summary.first_result(greedy),
+           "by_set": {s: summary.first_result([e for e in greedy if e["origin"] == s])
+                      for s in sorted({e["origin"] for e in greedy})}}  # fmt: skip
+    sampled = [e for e in eps if e["g"] > 0]
+    if sampled:
+        out["sampled"] = summary.first_result(sampled)
+    (d / "first_result.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    return out
 
 
 def offset(path: Path, init: str, batch: int = 32) -> dict[str, Any]:
@@ -225,7 +258,10 @@ def main(argv: list[str] | None = None) -> int:
     e = sub.add_parser("episodes")
     e.add_argument("--file", required=True)
     e.add_argument("--rows", choices=["evalset", "dev"], required=True)
-    sub.add_parser("lookcheck")
+    lc = sub.add_parser("lookcheck")
+    lc.add_argument("--rows", choices=["evalset", "dev"], default="dev")
+    fr = sub.add_parser("firstresult")
+    fr.add_argument("--dir", required=True)
     x = ap.parse_args(argv)
     if x.cmd == "offset":
         sys.path.insert(0, str(get_paths().trainer_repo / "src"))
@@ -234,7 +270,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(anchor(Path(x.dir), Path(x.ref))))
     elif x.cmd == "lookcheck":
         sys.path.insert(0, str(get_paths().trainer_repo / "src"))
-        print(json.dumps(lookcheck()))
+        print(json.dumps(lookcheck(x.rows)))
+    elif x.cmd == "firstresult":
+        print(json.dumps(first_result(Path(x.dir))))
     else:
         print(json.dumps(summary.headline(score_file(Path(x.file), x.rows))))
     return 0

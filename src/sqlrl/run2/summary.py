@@ -15,6 +15,7 @@ single-turn model would have answered: the forced single-query number, free of c
 
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from statistics import mean
 from typing import Any
@@ -108,6 +109,78 @@ def hacking(eps: list[dict[str, Any]]) -> dict[str, Any]:
         "copied_multi_frac": _rate(sum(bool(ep.get("copied")) for ep in multi), len(multi)),
         "look_leak_frac": _rate(sum(bool(ep.get("look_leak")) for ep in fills), len(fills)),
         "loop_frac": sum(bool(ep.get("loop")) for ep in shown) / ns,
+    }
+
+
+NOTHING = (None, 0, 0.0, "", False, (), [])
+_NOTHING_TEXT = {"NULL", "null", "None", "", "0", "0.0", "False", "false", "[]"}
+
+
+def says_something(rows: Any) -> bool:
+    """Do a result's rows say anything? The checker's rule (`querycheck._informative`): some
+    value that is not NULL, zero or empty. `0 rows` and a lone `COUNT(*) = 0` both say nothing."""
+    return any(v not in NOTHING for r in rows or [] for v in r)
+
+
+def shown(query: dict[str, Any]) -> str:
+    """What the model was shown for a query that ran (an item of an episode's `queries`):
+    "error", "something" (a row with a real value) or "nothing" (`0 rows`, or only NULL, zero
+    and empty values). Read from the result's text, as the model read it."""
+    if query.get("kind") == "error":
+        return "error"
+    if query.get("kind") != "rows":
+        return "nothing"
+    lines = [x for x in (query.get("obs") or "").splitlines()
+             if x.strip() and not x.startswith("(")]  # fmt: skip
+    if lines and lines[0].lstrip().startswith("{"):  # one JSON object a row
+        cells: list[Any] = []
+        for x in lines:
+            try:
+                cells += list(json.loads(x).values())
+            except (json.JSONDecodeError, AttributeError):
+                return "something"  # a row that was cut: it held text
+        return "something" if any(v not in NOTHING for v in cells) else "nothing"
+    texts = [c.strip() for x in lines[1:] for c in x.split(" | ")]  # a table: header first
+    return "something" if any(c not in _NOTHING_TEXT for c in texts) else "nothing"
+
+
+def _same(a: str | None, b: str | None) -> bool:
+    def norm(q: str | None) -> str:
+        return " ".join((q or "").strip().rstrip(";").split()).lower()
+
+    return norm(a) == norm(b)
+
+
+def first_result(eps: list[dict[str, Any]]) -> dict[str, Any]:
+    """What the turns did, split by what the **first** query's result showed (episodes with
+    turns whose first and final query are both decided). The no-training test's key reading: a
+    right first answer is kept when its result shows values and often rewritten when it shows
+    nothing, and the pool holds no question where "nothing" is the right result.
+
+    Per class: `kept_right`, `broken`, `fixed`, `kept_wrong`, and how the broken ones broke:
+    `ran_out` (the episode tried a call too many, so the last query that ran was not meant as
+    the answer) or `rewrote` (it changed the query and stopped)."""
+    out: dict[str, Counter] = defaultdict(Counter)
+    for ep in with_turns(eps):
+        ran = ep.get("queries") or []
+        a, b = ep.get("first_ok"), ep.get("exec_ok")
+        if not ran or a is None or b is None:
+            continue
+        c = out[shown(ran[0])]
+        c[("kept_right", "broken", "fixed", "kept_wrong")[(0 if a else 2) + (0 if b else 1)]] += 1
+        if a and not b:
+            ran_out = ep.get("end") == "limit" and not _same(ran[-1]["query"], ran[0]["query"])
+            c["ran_out" if ran_out else "rewrote"] += 1
+    return {
+        k: {
+            **{
+                f: v[f]
+                for f in ("kept_right", "broken", "fixed", "kept_wrong", "ran_out", "rewrote")
+            },
+            "broken_frac": _rate(v["broken"], v["kept_right"] + v["broken"]),
+            "fixed_frac": _rate(v["fixed"], v["fixed"] + v["kept_wrong"]),
+        }  # fmt: skip
+        for k, v in sorted(out.items())
     }
 
 
