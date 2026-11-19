@@ -349,6 +349,7 @@ staying frozen. A second copy of the whole harness for a 40-step test would be t
 **What it will show:** `run1b/design.md` section 4. In short: if `kl_sft` levels off near the
 target and the evaluations hold at or above run 1's step 19, the trainer is fixed and these
 settings go into run 2.
+
 ## R14: run 1b closed, step 30 kept; greedy picks the step (2026-11-17)
 
 Run 1b ran all 40 steps (`results/run1b.md`). Rishi kept **step 30's adapter**: greedy 54.5 /
@@ -376,3 +377,67 @@ drive (`results/run1b.md`, "What went wrong on the machine").
 target, and the weight (doubling above 0.045, halving only below 0.02, cap 6.4) spent steps
 34-40 pulling the model back. Run 2 starts from step 30's adapter and measures drift against
 that start, or uses a looser target.
+
+## R15: run 2, the multi-turn agent: built, not started (2026-11-18)
+
+Rishi read the run 2 design page (14 open choices, D1 to D14, each with a recommendation) and
+said: "go with the recommendations for all of them", build the environment and the harness,
+harden it against entropy collapse, reward hacking and cheating, and **do not start the run**.
+The design as built, with the reasons in full: `run2/design.md`.
+
+**What run 2 is:** the same task, datasets, checker and evaluation set. The model sees what its
+query returned and may fix it: up to 3 queries, and the last one that ran is its answer. It
+continues run 1b's step-30 adapter.
+
+| | Choice taken | In short |
+|---|---|---|
+| D1 | A look-around copy built without the reference; per dataset after the no-training test | The checker's fills plant the reference's literals. The model looks at a separate copy made from the schema and the question (SQaLe, text2cypher) or at the real rows (gretel, CypherBench). The reward is still decided on the checker's own databases |
+| D2 | The constants rule and a canary | A final query that reads nothing, or returns only literals, earns 0. Literals read off a result are counted |
+| D3 | A plain reply ends the episode; 3 queries | The answer is the last query that ran |
+| D4 | Vary the result's form in training; keep thoughts in history | Row cap 5 / 10 / 20, a table or JSON lines; evaluation fixed at 10 rows as a table |
+| D5 | 0.03 off a right answer per extra call | A wrong answer pays 0 whatever it took |
+| D6 | SRPO; only the first turn is distilled | Later turns of a distilled episode take the reward update |
+| D7 | Continue the adapter; drift against the frozen start adapter; a fixed 0.05 penalty on first-turn tokens; pause at 0.05; learning rate 5e-6 | Nothing pulls the model back by itself |
+| D8 | Cypher questions take turns on the one Neo4j | Loads measured: 0.1 to 5 s a graph |
+| D9 | Skip run 1b's 40 pool steps; a 200-question dev slice; run 1b's mix | The pool file is untouched, so the offset skips the right questions |
+| D10 | The no-training tests first | `results/run2-phase0.md`. Reading them against the design page's table, and what follows, is Rishi's |
+| D11 | Greedy with turns every 5 steps, full at 20 and 40; keep by greedy with turns | Success: at least +5 over 54.5 |
+| D12 | Start from step 30; step 26 measured without training too | |
+| D13 | A new `src/sqlrl/run2/` | Run 1's loss, reward and merge code copied, not shared (R6); `tests/run2` proves the copies equal |
+| D14 | Read-only inputs stay on the data drive | Everything a run writes is on the internal drive |
+
+**A new headline beside the one yardstick.** Every earlier number is one greedy query. Run 2's
+headline is **greedy with turns**: the final query of a greedy episode, counted the same way
+(right / decided). The greedy episode's first query is reported beside it, so the old number
+is still measured at every evaluation. A strict count (undecided and no-query answers as wrong)
+is reported too, because the old count would let a model hide by not answering.
+
+**The yardstick was anchored first.** The start model was rebuilt from the kept adapter and
+measured against the kept step-30 evaluation (102 of 187, 54.5%): through the old path 99 of
+187 (agreeing on 183 of 186 questions), and the new engine's first query 101 of 186 (agreeing
+on 184 of 186).
+
+**Hardening beyond the design page** (found while building; each is tested):
+
+- A result is tokenised as plain text, so it can't carry the template's turn markers.
+- The reference is dropped in one function before a question reaches the rollout side; a test
+  shows the random fill never holds a value only the reference names.
+- Read-only is enforced by the engines (SQLite's authorizer and `query_only`, Neo4j's read
+  transaction), with time limits and size caps, tested against the real engines.
+- Entropy is measured before the update on a fixed sample of episodes, per turn, so the number
+  doesn't follow the routing; a group's count of different final queries is a second collapse
+  signal.
+- The first query's solve rate is a stop rule: outcome-level credit can teach a careless first
+  query whenever a retry fixes it.
+- Loops, calls past the limit and broken answers already occur in the untrained start model, so
+  their rules are measured against the run's own first five steps.
+- A dataset can be put back on run 1's protocol (`single_turn_sets`). Off by default.
+
+**A bug the no-training test caught:** SQLite keeps prepared statements, so a query run a
+second time asked the authorizer nothing and looked like it read no table. The constants rule
+would have paid 0 for a right answer written twice. Fixed (the tables are remembered per query
+text) and tested.
+
+**Not built:** an entropy bonus or any automatic pull-back (method changes, Rishi's to make); a
+held-out second copy for the constants rule (the design's option C, only if the canary rises);
+a live dashboard for run 2.

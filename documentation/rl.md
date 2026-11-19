@@ -123,6 +123,20 @@ A curriculum; each stage starts from the one before and passes the gate before t
   single-turn RL, stage A is skipped.
 - **Stage C (optional): the NFL harness**, the real DuckDB and Neo4j behind Ask the Engine's guard.
 
+### As built
+
+- **Stage A** ran twice. Run 1 (2026-11-13) overshot and was stopped at step 28
+  (`results/run1.md`). Run 1b (2026-11-17), held near the SFT model, ran its 40 steps; its
+  step-30 adapter is kept: greedy 54.5 against the SFT model's 44.5 (`results/run1b.md`).
+- **Stage B is run 2: built 2026-11-18, not started** (decisions R15, `run2/design.md`). What
+  differs from the sketch above: 3 queries; the model looks at real rows where the dataset has
+  them (gretel, CypherBench) and, for SQaLe and text2cypher, at random fills built from the
+  schema and the question only, never at the checker's own fills (those plant the reference's
+  values); a right answer costs 0.03 per extra query, so a first-try answer stays the best
+  outcome; drift is held against the step-30 adapter, not the SFT model; the headline score
+  becomes greedy with turns, with the first query (the old measurement) reported beside it.
+  The no-training tests: `results/run2-phase0.md`.
+
 **How a step runs on 16 GB.** llama-server (~6 GB with 16 slots) and the trainer (~10-12 GB)
 don't fit at once, so each step goes in phases: the server generates and the checker scores; the
 server stops and the trainer moves its weights from RAM to the GPU and trains on the groups that

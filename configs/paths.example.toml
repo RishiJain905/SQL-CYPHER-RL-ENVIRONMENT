@@ -28,3 +28,6 @@ hip_device = '1'
 # Optional: a copy of `model_hf` on WSL's own disk (a WSL path). Used when it is in WSL's file
 # cache (the run keeps it there): the update's model load takes ~20 s instead of ~58 s.
 model_hf_wsl = '~/models/Spark-X2.6-4B-SQL-Cypher-Agent'
+# Run 2: where a run writes its models (the rollout GGUF, 4 GB rewritten every step) and where
+# kept adapters live (`<models>/<name>/lora_state.safetensors`). A fast internal disk.
+models = '<drive>:\<models folder>'

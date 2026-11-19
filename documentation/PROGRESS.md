@@ -8,7 +8,7 @@
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
 | 3. Run 1 (stage A, single turn) | ⏹️ stopped after step 28 of 100 (2026-11-13); **step 19's adapter kept** (R12) | SRPO, 32 questions x 8 a step. After step 19: greedy 45.6, mean@8 40.8, pass@8 66.2 (baseline 43.2 / 36.9 / 62.6; sampled sign test 60 / 41, p 0.07). Worse at steps 25 and 28 (step 28 against 19: 42 / 63, p 0.05): the settings overshoot. `results/run1.md`; R10-R12. Not done: the test set on step 19, a release export |
 | 4. Run 1b (the trainer, fixed; the official stage-A run) | ✅ done, 40 of 40 steps (2026-11-17); **step 30's adapter kept** (R14) | After step 30: greedy **54.5** / mean@8 43.4 / pass@8 67.5 (SFT through the same path 44.5 / 36.4 / 59.9; greedy sign test against the baseline 32 / 14, p 0.01). text2cypher 16 to 62.5 greedy. Step 40: 48.6 / 39.6 / 66.0, after the KL weight hit its cap and pulled `kl_sft` from 0.078 to 0.010. Greedy picks the step (R14). `results/run1b.md`, `run1b/design.md`, R13-R14. Not done: the test set on step 30, a release export |
-| 5. Run 2 (stage B, multi-turn) | being designed (draft page for Rishi) | starts from step 30's adapter; drift measured against that start or a looser target (R14); working data on the internal drive (R14) |
+| 5. Run 2 (stage B, multi-turn) | 🔨 built and loop-tested (2026-11-19), **not started**; the no-training tests are part done | The model sees what its query returned and may fix it, up to 3 queries; continues step 30's adapter (R15, `run2/design.md`, `run2/RUNBOOK.md`, `guides/run2-environment.md`). Done: the template round trip (18 of 18 equal), the anchor (the engine's first query 101 of 186 against the kept 102 of 187), the wording test on the dev slice (first query 58.4%, with turns 59.4%; fixed 9, broken 7, 6 of the broken in SQaLe), the drift offset (0.0099), a 2-step loop test. **Left:** SQaLe to one query (Rishi: fine if it is better; the dev slice says it is), then the evaluation set with turns on the untrained step 30 (with 8 samples), step 26 and SFT; `results/run2-phase0.md`; Rishi's go |
 
 ## Session log
 
@@ -100,6 +100,24 @@
   history crashed the PC (bugcheck 0x12C, exFAT), so that drive fails under heavy writes from
   Windows too.
 
+- **2026-11-17 / 18:** the USB data drive repaired (`chkdsk`, with Rishi's OK; 0 bad sectors),
+  run 1b's folder copied to it as history (throttled; every file's hash checked) and removed
+  from the internal drive; Docker's disk moved to the internal drive. Run 2's design page
+  written for Rishi (14 choices, each with a recommendation).
+- **2026-11-18 / 19:** Rishi took every recommendation and asked for the environment and the
+  harness to be built and hardened, with the run left for him to start (R15). Built
+  `src/sqlrl/run2/` (the environment, the episode engine, the scorer, the turn-aware trainer,
+  the evaluation with turns, the stop rules, the orchestrator, the no-training tests), 81 CPU
+  tests, ruff clean. On the GPU: the round trip, the anchor, the wording test, the drift
+  offset, the update's memory by episode length, and a 2-step loop test (`smoke-3`: both steps
+  trained, saved and merged). Three things the tests caught and fixed before any run: a right
+  answer written twice would have been paid 0 (SQLite keeps prepared statements, so the table
+  tracker saw nothing the second time); the trainer's 6,144-token limit doesn't fit the card
+  (measured: 14.5 GB at 4,096 tokens, 4,608 fails; the limit is now 3,840); and several stop
+  rules would have paused step 1 for what the untrained model already does (now measured
+  against the run's own start). Paused for the day with the held-out evaluations just begun
+  (stopped; the GPU is free).
+
 ## Rishi-run steps and waivers
 
 - **2026-10-31:** Rishi started the baseline by telling the agent to begin it (run with
@@ -115,3 +133,8 @@
 - **2026-11-16:** Rishi had the run resumed after each crash ("resume from the last saved step"),
   OK'd the evaluation after step 26 and the loosened length, entropy and KL rules, said to run on
   to step 40, OK'd one resume after the GPU freeze at step 35, and kept step 30's adapter (R14).
+- **2026-11-18:** Rishi told the agent to build run 2 with every recommendation of the design
+  page (D1-D14) and **not to start the main run**. The no-training tests and the loop test were
+  run with `--launched-by agent` as part of that build (D10's recommendation). 2026-11-19: he
+  said SQaLe may stay single-turn if that is better, and paused the session before the
+  held-out evaluations.

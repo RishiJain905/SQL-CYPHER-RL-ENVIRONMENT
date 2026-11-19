@@ -47,6 +47,10 @@ class Paths:
     model_gguf_bf16: Path | None = None
     # a copy of `model_hf` on WSL's own disk (a WSL path, e.g. ~/models/...): faster to load
     model_hf_wsl: str | None = None
+    # run 2: the folder for the models a run writes (its rollout GGUF, rewritten every step) and
+    # the adapters that are kept. Named on its own so it never follows the released model's
+    # folder onto a drive that shouldn't take writes; without it, the folder of `model_gguf`
+    models: Path | None = None
 
     @property
     def serve_script(self) -> Path:
@@ -79,4 +83,5 @@ def get_paths() -> Paths:
         hip_device=str(raw["hip_device"]) if "hip_device" in raw else None,
         model_gguf_bf16=p("model_gguf_bf16") if "model_gguf_bf16" in raw else None,
         model_hf_wsl=raw.get("model_hf_wsl"),
+        models=p("models") if "models" in raw else None,
     )

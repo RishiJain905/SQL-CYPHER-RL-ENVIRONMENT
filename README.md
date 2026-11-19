@@ -31,8 +31,15 @@ SRPO ahead on every sampled measure ([`documentation/pilots/TRACKER.md`](documen
 was better after step 19 (sampled mean 40.8%, pass@8 66.2%) and drifted after it, so step 19's
 adapter is kept ([`documentation/results/run1.md`](documentation/results/run1.md)).
 **Run 1b**, the same run held near the SFT model (a KL penalty, half the learning rate, earlier
-evaluations, a stricter CypherBench reward), is built and loop-tested, not started
-([`documentation/run1b/`](documentation/run1b/design.md)). Progress:
+evaluations, a stricter CypherBench reward), ran its 40 steps (2026-11-17). Its step-30 adapter
+is kept: **greedy 54.5%** against 44.5% for the SFT model through the same path
+([`documentation/results/run1b.md`](documentation/results/run1b.md)).
+**Run 2 (stage B, the multi-turn agent)** is built and tested, not started: the model runs its
+query, reads the rows or the error, and may fix it, up to 3 queries
+([`documentation/run2/design.md`](documentation/run2/design.md); the environment:
+[`documentation/guides/run2-environment.md`](documentation/guides/run2-environment.md); what
+the untrained model does with turns:
+[`documentation/results/run2-phase0.md`](documentation/results/run2-phase0.md)). Progress:
 [`documentation/PROGRESS.md`](documentation/PROGRESS.md).
 
 ## Running it
@@ -56,6 +63,12 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 | `C:\Python314\python.exe -I scripts\run1\pause.py --run <run> [--after-step]` | free the GPU now (or after the current step) |
 | `C:\Python314\python.exe -I scripts\run1\run.py --run smoke-1 --smoke --pool pool-test` | a loop test of run 1 (2 steps, 8 SQL questions) |
 | `C:\Python314\python.exe -I scripts\run1\bench_decode.py` / `bench_rollouts.py` | the rollout server's speed (`documentation/run1/harness.md`) |
+| `PYTHONPATH=src <venv>/bin/python -m sqlrl.run2.pool build-db [--evalset]` (WSL) | run 2: each SQL question's database script, next to run 1's pool (the pool itself is not rebuilt) |
+| `C:\Python314\python.exe -I scripts\run2\phase0.py timing \| roundtrip \| anchor \| wording \| heldout` | run 2's no-training tests (`documentation/run2/design.md`, section 9); `timing` needs no GPU |
+| `PYTHONPATH=src <venv>/bin/python -m sqlrl.run2.phase0_score lookcheck` (WSL or Windows) | how often a correct query returns rows on the databases the model looks at |
+| `C:\Python314\python.exe -I scripts\run2\run.py --run run2` | run 2: start or resume (start it hidden and detached); `--steps`, `--lr`, `--mix`, `--init-from` for a new run |
+| `C:\Python314\python.exe -I scripts\run2\run.py --run <name> --smoke` | a loop test of run 2 (2 steps, 8 questions from a reserve no run uses) |
+| `C:\Python314\python.exe -I scripts\run2\pause.py --run <run> [--after-step]` | free the GPU now (or after the current step) |
 | `PYTHONPATH=src <venv>/bin/python -m pytest -q` / `ruff check .` (WSL) | the tests (CPU) and lint |
 
 ## Documentation
@@ -64,6 +77,8 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 - [`documentation/rl-runs.md`](documentation/rl-runs.md): the two RL runs, the methods, the RL facts that matter here, the open questions
 - [`documentation/run1/`](documentation/run1/README.md): run 1: operating it (`README.md`), its design and the review behind it (`design.md`), the rollout loop on 16 GB and its measurements (`harness.md`)
 - [`documentation/run1b/`](documentation/run1b/design.md): run 1b: what it changes and why (`design.md`), starting and watching it (`RUNBOOK.md`), its dashboard's brief
+- [`documentation/run2/`](documentation/run2/design.md): run 2, the multi-turn agent: what was built and why (`design.md`), starting and watching it (`RUNBOOK.md`)
+- [`documentation/guides/run2-environment.md`](documentation/guides/run2-environment.md): the multi-turn environment: an episode step by step, the databases the model looks at, what comes back, how to look at it and change it
 - [`documentation/pilots/`](documentation/pilots/): step 2's tracker and live page
 - [`documentation/guides/sampling-baseline.md`](documentation/guides/sampling-baseline.md): pass@k, how the baseline works, how to run it
 - [`documentation/results/`](documentation/results/): each step's numbers
