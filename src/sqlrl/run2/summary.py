@@ -184,6 +184,32 @@ def first_result(eps: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def returned_metrics(eps: list[dict[str, Any]]) -> dict[str, Any]:
+    """The returned gretel questions (the right result says nothing) beside the other gretel
+    questions (a result that says nothing means a wrong query). The two pull opposite ways
+    after an empty result, so a step's numbers are kept apart: the broken rate on the returned
+    ones is what training has to lower without the other's fixed count falling.
+    `returned_weak_only_frac`: of the returned answers the checker passes, the share the
+    filled copies don't confirm ("it showed nothing, so stop" with a wrong query)."""
+    back = [e for e in eps if e.get("kind") == "returned"]
+    other = [e for e in eps if e.get("origin") == "gretel" and e.get("kind") != "returned"]
+    out: dict[str, Any] = {"returned_n": len(back)}
+    for name, sub in (("returned", back), ("gretel_other", other)):
+        b = block(sub)
+        out.update({
+            f"{name}_solve": b["final"]["decided"],
+            f"{name}_first_solve": b["first"]["decided"],
+            f"{name}_fixed": b["changes"]["fixed"],
+            f"{name}_broken": b["changes"]["broken"],
+            f"{name}_broken_frac": b["changes"]["broken_frac"],
+            f"{name}_calls_mean": b["protocol"]["calls_mean"],
+        })  # fmt: skip
+    weak = [e for e in back if e.get("exec_weak") is True]
+    out["returned_weak_only_frac"] = _rate(sum(e.get("exec_ok") is not True for e in weak),
+                                           len(weak))  # fmt: skip
+    return out
+
+
 def block(eps: list[dict[str, Any]]) -> dict[str, Any]:
     """`final` and `first` count every episode; `changes` and `protocol` describe what the turns
     did, so they count the episodes that had turns (`with_turns`)."""

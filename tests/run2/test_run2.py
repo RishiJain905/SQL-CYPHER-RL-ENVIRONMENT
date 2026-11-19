@@ -28,6 +28,7 @@ from sqlrl.run2 import (
 )
 from sqlrl.run2 import config as rcfg
 from sqlrl.run2 import losses as l2
+from sqlrl.run2 import pool as rpool
 from sqlrl.run2.train_step import minibatches, turn_masks
 
 SFT_SYSTEM = (
@@ -218,6 +219,27 @@ def test_public_row_drops_the_reference():
     assert env.public_row(row("text2cypher", "cypher"))["db"] == {"kind": "graph_fill"}
     with pytest.raises(ValueError):
         env.public_row(row("spider"))
+    with pytest.raises(ValueError, match="no database script"):
+        env.public_row(r, None)  # a missing sidecar row is not a silent "not available"
+    # what marks a returned question stays on the scoring side
+    back = {**r, "kind": "returned", "nothing": "no_rows+empty_tables", "set_index": 7}
+    assert pub_of(back) == pub
+    assert "returned" not in json.dumps(pub_of(back)) and "nothing" not in pub_of(back)
+
+
+def test_the_strict_check_tells_a_right_query_from_one_that_is_merely_empty():
+    """On an empty database every query returns nothing, so the checker's own comparison passes
+    them all. The filled copies are what the returned questions' reward stands on."""
+    env.checker()  # puts the trainer's checker on the path
+    script = "CREATE TABLE cars (id INTEGER PRIMARY KEY, make TEXT, year INTEGER, price REAL);"
+    gold = "SELECT make FROM cars WHERE year = 2021 AND price > 30000"
+    assert rpool.strict_check("select make FROM cars WHERE price > 30000 AND year = 2021",
+                              gold, script) == "pass"  # fmt: skip
+    for wrong in ("SELECT make FROM cars WHERE year = 2020 AND price > 30000",
+                  "SELECT make FROM cars WHERE year = 2021",
+                  "SELECT make FROM cars WHERE 1 = 0",
+                  "SELECT id FROM cars WHERE year = 2021 AND price > 30000"):  # fmt: skip
+        assert rpool.strict_check(wrong, gold, script) == "fail", wrong
 
 
 def test_a_repeated_query_still_reports_its_tables():
@@ -269,7 +291,6 @@ def test_a_runaway_query_is_stopped(monkeypatch):
 def test_a_schema_that_does_not_build_fails_every_query_softly():
     look = env.Look(pub_of(row(), "CREATE TABLE ("))
     assert look.error and look.run("SELECT 1").error == env.MSG_NO_DB
-    assert env.Look(pub_of(row(), None)).run("SELECT 1").kind == "error"
 
 
 def test_the_random_fill_uses_the_question_and_never_the_reference():
@@ -509,17 +530,28 @@ def test_a_single_turn_dataset_shows_nothing_and_takes_the_first_call():
     assert run_episode([("", "No.", True)], [])[0]["one_query"] is False
 
 
-def test_sqale_is_single_turn_by_default_and_the_others_have_turns():
-    assert CFG["single_turn_sets"] == ["sqale"]
-    assert prompt.protocol(CFG, "sqale") == ("sft", 1)
-    for origin in ("gretel", "cypherbench", "text2cypher"):
+def test_the_random_fill_datasets_keep_one_query_and_the_real_data_ones_have_turns():
+    assert CFG["single_turn_sets"] == ["sqale", "text2cypher"]
+    for origin in ("sqale", "text2cypher"):
+        assert prompt.protocol(CFG, origin) == ("sft", 1)
+    for origin in ("gretel", "cypherbench"):
         assert prompt.protocol(CFG, origin) == ("turns", 3)
+    # a one-query question gets no look-around database at all
+    with pytest.raises(RuntimeError):
+        env.NoLook().run("SELECT 1")
+
+
+def test_the_keep_wording_adds_one_sentence_to_the_turn_rule():
+    turns = prompt.system_prompt(SFT_SYSTEM, "turns", 3)
+    keep = prompt.system_prompt(SFT_SYSTEM, "keep", 3)
+    assert keep.replace(prompt.KEEP_HINT, "") == turns and prompt.KEEP_HINT in keep
+    assert "no rows can be the correct result" in keep
 
 
 def test_an_evaluation_folder_keeps_one_protocol(tmp_path):
     out = tmp_path / "eval" / "episodes.jsonl"
     proto = episodes.claim(out, CFG)
-    assert proto["single_turn_sets"] == ["sqale"] and proto["history"] == "full"
+    assert proto["single_turn_sets"] == ["sqale", "text2cypher"] and proto["history"] == "full"
     assert episodes.same_protocol(out.parent, CFG)
     every = rcfg.new_config({"single_turn_sets": []})
     assert not episodes.same_protocol(out.parent, every)
@@ -769,8 +801,11 @@ def test_minibatches_keep_groups_whole():
 SETS = ("cypherbench", "gretel", "sqale", "text2cypher")
 
 
-def fake_pool(n=400):
-    return {s: [{"id": f"{s}-{i}", "origin": s, "set_index": i} for i in range(n)] for s in SETS}
+def fake_pool(n=400, back=604):
+    out = {s: [{"id": f"{s}-{i}", "origin": s, "set_index": i} for i in range(n)] for s in SETS}
+    out["gretel_returned"] = [{"id": f"back-{i}", "origin": "gretel", "set_index": i,
+                               "kind": "returned"} for i in range(back)]  # fmt: skip
+    return out
 
 
 def idx(r: dict) -> int:
@@ -782,19 +817,41 @@ def test_step_questions_skip_run_1bs_and_never_reach_the_held_back_ones():
     cfg = rcfg.new_config()
     first = rcfg.step_questions(pool, cfg, 1)
     assert len(first) == 32
-    # run 1b used indices below 40 x mix; run 2 starts right after
-    assert min(idx(r) for r in first if r["origin"] == "gretel") == 400
+    # run 1b used indices below 40 x its mix; run 2 starts right after
+    plain = [r for r in first if r["origin"] == "gretel" and r.get("kind") != "returned"]
+    back = [r for r in first if r.get("kind") == "returned"]
+    assert (len(plain), len(back)) == (7, 3)  # 3 of gretel's 10 are returned questions
+    assert min(idx(r) for r in plain) == 400 and [idx(r) for r in back] == [0, 1, 2]
     assert min(idx(r) for r in first if r["origin"] == "text2cypher") == 160
-    used = {r["id"] for k in range(1, 41) for r in rcfg.step_questions(pool, cfg, k)}
-    assert len(used) == 40 * 32  # every question once
-    dev = {r["id"] for rs in pool.values() for r in rs[-cfg["dev_per_set"] :]}
-    loop = rcfg.new_config({"pool_tail": True, "mix": dict.fromkeys(pool, 2)})
-    tail = {r["id"] for k in (1, 2) for r in rcfg.step_questions(pool, loop, k)}
+    every = [r for k in range(1, 41) for r in rcfg.step_questions(pool, cfg, k)]
+    used = {r["id"] for r in every}
+    assert len(used) == len(every) == 40 * 32  # every question once
+    # taking 7 gretel questions a step must not move the offset: run 1b took 10 a step
+    gretel = sorted(idx(r) for r in every if r["id"].startswith("gretel-"))
+    assert gretel == list(range(400, 400 + 40 * 7))
+    assert sorted(idx(r) for r in every if r.get("kind") == "returned") == list(range(120))
+    dev = {r["id"] for s in SETS for r in pool[s][-cfg["dev_per_set"] :]}
+    dev |= {r["id"] for r in pool["gretel_returned"][-cfg["dev_returned"] :]}
+    loop = rcfg.new_config({"pool_tail": True, "mix": dict.fromkeys(SETS, 2),
+                            "returned_per_step": {"gretel": 1}})  # fmt: skip
+    steps = [rcfg.step_questions(pool, loop, k) for k in (1, 2)]
+    tail = {r["id"] for rows in steps for r in rows}
     assert not used & dev and not used & tail and not tail & dev and len(tail) == 16
+    for rows in steps:  # a loop test holds every kind of question
+        assert sum(r.get("kind") == "returned" for r in rows) == 1
+        assert {r["origin"] for r in rows} == set(SETS)
     with pytest.raises(ValueError):  # the pool must reach the last step
         rcfg.step_questions(fake_pool(900), cfg, 40)
+    with pytest.raises(ValueError):  # ... and so must the returned questions
+        rcfg.step_questions(fake_pool(1000, back=200), cfg, 40)
+    with pytest.raises(ValueError):  # a missing returned file is not a silent 7-question step
+        rcfg.step_questions({s: pool[s] for s in SETS}, cfg, 1)
     with pytest.raises(ValueError):  # a loop test stays inside its reserve
-        rcfg.step_questions(pool, rcfg.new_config({"pool_tail": True}), 8)
+        rcfg.step_questions(pool, rcfg.new_config({"pool_tail": True}), 12)
+    none = rcfg.new_config({"returned_per_step": {}})  # without them: run 1b's arithmetic
+    assert [idx(r) for r in rcfg.step_questions(pool, none, 2) if r["origin"] == "gretel"] == list(
+        range(410, 420)
+    )
 
 
 def test_new_config_merges_nested_overrides():
@@ -949,6 +1006,30 @@ def test_annotate_marks_hardcoded_copied_leaked_and_looped():
     none = {"final_query": None, "queries": []}
     scoring.annotate(none, r)
     assert none["hardcoded"] is None and none["loop"] is False
+    # the answer run again after a look at the data is not a loop (the last query that ran is
+    # the answer, so it has to be run again); the same query twice in a row is
+    look = {"query": "SELECT * FROM t LIMIT 5", "obs": "0 rows", "tables": ["t"]}
+    again = {"final_query": one["query"], "queries": [one, look, dict(one)]}
+    scoring.annotate(again, {**r, "kind": "returned"})
+    assert (again["loop"], again["rerun"], again["kind"]) == (False, True, "returned")
+    assert e["rerun"] is True and clean["rerun"] is False and clean["kind"] is None
+
+
+def test_returned_questions_are_reported_beside_the_other_gretel_questions():
+    back = [
+        sep(True, True, 1, kind="returned", exec_weak=True),
+        sep(True, False, 2, kind="returned", exec_weak=False),  # rewrote a right answer
+        sep(False, False, 1, kind="returned", exec_weak=True),  # empty, but not the question
+        sep(False, None, 1, kind="returned", exec_weak=True),  # no filled copy could tell
+    ]
+    other = [sep(False, True, 2), sep(True, True, 1), sep(False, False, 3)]
+    m = summary.returned_metrics(back + other + [sep(True, True, 1, "cypherbench")])
+    assert m["returned_n"] == 4 and m["returned_solve"] == pytest.approx(1 / 3)
+    assert (m["returned_broken"], m["returned_broken_frac"]) == (1, 0.5)
+    assert (m["gretel_other_fixed"], m["gretel_other_broken"]) == (1, 0)
+    assert m["gretel_other_solve"] == pytest.approx(2 / 3)
+    assert m["returned_weak_only_frac"] == pytest.approx(2 / 3)
+    assert summary.returned_metrics(other)["returned_weak_only_frac"] is None
 
 
 def sep(first, final, calls_n=1, origin="gretel", **kw):

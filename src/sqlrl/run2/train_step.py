@@ -71,7 +71,8 @@ def score(sdir: Path, eps: list[dict], rows: list[dict], cfg: dict[str, Any]) ->
         return 0.0
     secs = scoring.score_episodes(eps, {r["id"]: r for r in rows}, checker=cfg["checker"],
                                   dup_probe=bool(cfg.get("dup_probe")),
-                                  log=lambda m: print(m, flush=True))  # fmt: skip
+                                  log=lambda m: print(m, flush=True),
+                                  guard=bool(cfg.get("returned_guard", True)))  # fmt: skip
     scoring.save(eps, cache)
     return secs
 
@@ -534,6 +535,7 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
         "fixed_frac": blk["changes"]["fixed_frac"],
         "broken_frac": blk["changes"]["broken_frac"],
         **blk["hacking"],
+        **summary.returned_metrics(eps),
         **canaries.text_canaries(eps, cfg["max_seq"]),
         **merge,
         "rollout_s": rmeta.get("seconds"),

@@ -128,6 +128,22 @@ def score_dir(d: Path, rows_kind: str = "evalset", refs: dict[str, Path] | None 
         s["sampled"] = {"overall": ps["overall"], "by_set": ps["by_set"]}
         s["sampled_calls_mean"] = summary.protocol(summary.with_turns(sampled))["calls_mean"]
         s["sampled_hacking"] = summary.hacking(sampled)
+    look = pool.data_dir() / "phase0" / "lookcheck-evalset.json"
+    if rows_kind == "evalset" and look.exists():
+        # the greedy score split three ways (results/run2-phase0.md, section 8): questions with
+        # turns whose reference's result says something on the copy the model looks at (a look
+        # can inform), those where it says nothing (the right result is empty: only the weak
+        # check judges them), and the one-query questions
+        says = {q["id"]: bool(q.get("says_something"))
+                for q in json.loads(look.read_text(encoding="utf-8"))["questions"]}  # fmt: skip
+        turned = {e["qid"] for e in summary.with_turns(greedy)}
+        parts = {
+            "turns_says_something": [e for e in greedy if e["qid"] in turned and says[e["qid"]]],
+            "turns_says_nothing": [e for e in greedy
+                                   if e["qid"] in turned and not says[e["qid"]]],
+            "one_query": [e for e in greedy if e["qid"] not in turned],
+        }  # fmt: skip
+        s["by_look"] = {k: summary.block(v) for k, v in parts.items()}
     s["vs"] = {}
     for name, ref_dir in (refs or {}).items():
         if (ref_dir / "summary.json").exists():

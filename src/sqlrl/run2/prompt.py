@@ -12,6 +12,8 @@ Variants (the wording is chosen on the dev slice of the pool, never on the evalu
 - `sft`: unchanged. The model is told "ONE query" and gets results anyway.
 - `turns`: the first line says "one query at a time", and a rule says what a result is for.
 - `check`: `turns`, plus a hint to compare the result with the question before stopping.
+- `keep`: `turns`, plus: an empty result can be right, and a look at the data must be followed
+  by the answer query.
 
 The scorer never reads this text: it gets the original example (the checker reads the schema
 from the original system message).
@@ -22,7 +24,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-VARIANTS = ("sft", "turns", "check")
+VARIANTS = ("sft", "turns", "check", "keep")
 
 _ONE = re.compile(r"tool with ONE read-only (?P<lang>[^\n]+?) query\.")
 _LAST_RULE = "- If the database can't answer the question, don't call the tool:"
@@ -38,6 +40,15 @@ CHECK_HINT = (
 )
 
 
+# `keep` (tested after the evaluation set showed the untrained model rewriting right answers
+# whose result was empty, and spending its last call on a look at the data; decisions R17)
+KEEP_HINT = (
+    " A result with no rows can be the correct result: if your query says what the question "
+    "asks, keep it. If you look at the data first, run your answer query again as your last "
+    "call."
+)
+
+
 def system_prompt(system: str, variant: str, max_queries: int) -> str:
     """The episode's system message from the SFT one. Raises when the SFT wording isn't found:
     a prompt that silently stays single-turn would train the wrong protocol."""
@@ -48,7 +59,8 @@ def system_prompt(system: str, variant: str, max_queries: int) -> str:
     if len(_ONE.findall(system)) != 1 or system.count(_LAST_RULE) != 1:
         raise ValueError("the system message isn't the SFT tool prompt: no rule to rewrite")
     out = _ONE.sub(lambda m: f"tool with one read-only {m['lang']} query at a time.", system)
-    rule = TURN_RULE.format(n=max_queries) + (CHECK_HINT if variant == "check" else "")
+    hint = {"check": CHECK_HINT, "keep": KEEP_HINT}.get(variant, "")
+    rule = TURN_RULE.format(n=max_queries) + hint
     return out.replace(_LAST_RULE, rule + "\n" + _LAST_RULE)
 
 

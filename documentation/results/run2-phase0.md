@@ -328,6 +328,50 @@ What the run would need before it can be read fairly:
   changes that: looking can only mislead there. One query, like SQaLe, is the plain reading.
 - **The success line.** "At least +5 over 54.5" (D11) is +11 from 48.1.
 
-The options, the costs and a recommendation are in the session's report to Rishi; whichever is
-chosen gets a decisions entry and, if the look-around data changes, a new `LOOK_VERSION` and a
-new start reference.
+**Rishi chose (2026-11-19): "Go with option C"** (decisions R17). Section 10.
+
+## 10. Option C: what was built, and how its tests will be read
+
+Written before any of its GPU tests were run.
+
+**Built** (decisions R17):
+
+- **text2cypher keeps one query**, like SQaLe. Turns are for gretel and CypherBench, the two
+  datasets where the model looks at real data: 20 of a step's 32 questions, 160 of 256 episodes.
+- **The returned questions.** `pool-v2.returned.jsonl`: the 627 gretel questions run 1's pool
+  rejected because the reference's result says nothing, each checked again; 604 kept (for 23
+  no filled copy could judge the reference). Three of a step's ten gretel questions come from
+  it (120 in 40 steps); its last 50 are a second dev slice.
+- **What kind of nothing.** 452 of the 604 have a database with **no rows at all** (the
+  dataset gave tables and no data); 152 have data that the filter doesn't match. The evaluation
+  set's 13 such gretel questions are 10 and 3. The dev slice: 31 and 19.
+- **A stricter reward for them.** The checker compares a gretel answer with the reference on the
+  dataset's own rows, where every query that returns nothing equals a reference that returns
+  nothing: "it showed nothing, stop" would earn the reward whatever the query. A returned
+  question's answer is right only when the checker's full SQL check also passes on filled
+  copies of the schema (`pool.strict_check`). Training and the dev slices only; the evaluation
+  set's yardstick is untouched.
+- **"The same query twice"** now means twice in a row. Running the answer again after a look at
+  the data is what the answer rule asks for, so it is counted apart (`rerun`).
+
+**How the no-training tests will be read.** By the letter of D10's table the evaluation set
+lands in its third row again: with text2cypher on one query, step 30's own numbers above give
+fixed 4, broken 8. That row was written for a case training could not reach. Under option C
+the case is in training, so the reading is:
+
+| Number | Where | Means |
+|---|---|---|
+| Net fixed minus broken, and the broken rate | Evaluation questions with turns whose reference says something (87: CypherBench 50, gretel 37) | D10's first row there (net +2 or more, broken at most 3%): a look helps where it can inform. Below that: not ready, whatever the rest says |
+| The same | The pool's dev slice, its gretel and CypherBench questions | The baseline for "turns help on the pool" (was fixed 7, broken 0) |
+| Broken rate | The returned dev slice | **The number training must lower.** No bar for the untrained model; it is the baseline |
+| Of the returned answers the checker passes, the share the filled copies reject | The returned dev slice | How large the reward hole would be without the stricter reward |
+| The full evaluation score with turns, and the three-way split | Evaluation set | Reported. The replacement for "+5 over 54.5" is Rishi's to set |
+
+**One wording test, on the two dev slices only.** `keep` adds to the turn rule: "A result with
+no rows can be the correct result: if your query says what the question asks, keep it. If you
+look at the data first, run your answer query again as your last call." Adoption rule, fixed
+here: `keep` is recommended only if, against `turns`, it breaks at least 5 fewer right first
+answers on the returned slice, and on the pool's dev slice loses no more than 2 in fixed minus
+broken and no more than 2 fixes after a result that says nothing. With 50 and 100 questions
+only a gap that size counts. The run's prompt stays `turns` unless Rishi takes the
+recommendation.

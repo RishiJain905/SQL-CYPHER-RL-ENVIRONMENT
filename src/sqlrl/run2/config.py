@@ -29,6 +29,18 @@ DEFAULTS: dict[str, Any] = {
     "pool": "pool-v2",
     "pool_offset": 40,
     "dev_per_set": 50,
+    # the returned gretel questions (decisions R17): the ones run 1's pool rejected because the
+    # right result says nothing (`pool.build_returned`). On the pool an empty result always
+    # means a wrong query; on the evaluation set 13 of 50 gretel questions are the other kind.
+    # So this many of a step's gretel questions come from the returned file, in its own order
+    # (a fixed count: the rates the stop rules read must not swing with the mix), and its last
+    # `dev_returned` are held back as a second dev slice
+    "returned_per_step": {"gretel": 3},
+    "dev_returned": 50,
+    # a returned question's answer earns the reward only when the checker's full SQL check also
+    # passes on filled copies of the schema (`pool.strict_check`): on the dataset's own rows
+    # any query that returns nothing equals a reference that returns nothing
+    "returned_guard": True,
     # where it starts (D7, D12): an adapter folder under `paths.models` holding
     # `lora_state.safetensors` (and `ema_state.safetensors`); None: a new LoRA on the SFT model
     "init_from": "run1b-step30",
@@ -37,8 +49,10 @@ DEFAULTS: dict[str, Any] = {
     "prompt_variant": "turns",  # `prompt.py`; chosen on the dev slice
     # datasets kept on run 1's protocol: the original prompt, one query, no result shown.
     # SQaLe (decisions R16): its look-around copy is a random fill that shows `0 rows` for 14
-    # of 50 right queries, and on the dev slice turns fixed 1 SQaLe answer and broke 6
-    "single_turn_sets": ["sqale"],
+    # of 50 right queries, and on the dev slice turns fixed 1 SQaLe answer and broke 6.
+    # text2cypher (R17): 31 of the evaluation set's 50 prompts describe a graph with no
+    # relationships, so the right answer is "nothing" and a look can only mislead
+    "single_turn_sets": ["sqale", "text2cypher"],
     "obs": {
         "rows": [5, 10, 20],  # the row cap, drawn per training episode
         "styles": ["table", "json"],  # the result's form, drawn per training episode
@@ -187,25 +201,38 @@ def load(run_dir: Path) -> dict[str, Any]:
 
 def step_questions(pool: dict[str, list[dict[str, Any]]], cfg: dict[str, Any],
                    step: int) -> list[dict[str, Any]]:  # fmt: skip
-    """Step k's questions (1-based): from each dataset, the next `mix[dataset]` of its pool rows
-    after the offset. Every question is used once, none is one run 1b trained on (the offset),
-    and none is in the dev slice."""
+    """Step k's questions (1-based): from each dataset, the next of its pool rows after the
+    offset. Every question is used once, none is one run 1b trained on, and none is in a dev
+    slice or in the reserve kept for loop tests.
+
+    A dataset with `returned_per_step[name]` = r takes r of its `mix[name]` questions from the
+    returned file (`<name>_returned`, its own order, no offset: no run has used them) and the
+    other `mix[name] - r` from the pool. **The offset is counted in run 1b's questions**: run 1b
+    took `mix[name]` a step for `pool_offset` steps, whatever this run takes."""
     rows: list[dict[str, Any]] = []
     off, dev = int(cfg.get("pool_offset") or 0), int(cfg.get("dev_per_set") or 0)
+    back = cfg.get("returned_per_step") or {}
     for name, n in cfg["mix"].items():
-        have = pool.get(name, [])
-        usable = len(have) - dev
-        if cfg.get("pool_tail"):  # a loop test: the `TAIL` questions before the dev slice,
-            a, b = usable - step * n, usable - (step - 1) * n  # which no real run may reach
-            if a < usable - TAIL:
-                raise ValueError(f"a loop test may use the last {TAIL} {name} questions only")
-        else:
-            a, b = (off + step - 1) * n, (off + step) * n
-            if b > usable - TAIL:
-                raise ValueError(f"the pool has {len(have)} {name} questions ({dev} held back "
-                                 f"as the dev slice, {TAIL} for loop tests): too few for "
-                                 f"step {step}")  # fmt: skip
-        rows.extend(have[a:b])
+        r = int(back.get(name) or 0)
+        if not 0 <= r <= n:
+            raise ValueError(f"{name}: {r} returned questions a step, of {n}")
+        parts = [(name, n - r, off * n, dev)]
+        if r:
+            parts.append((name + "_returned", r, 0, int(cfg.get("dev_returned") or 0)))
+        for key, m, skip, held in parts:
+            have = pool.get(key, [])
+            usable = len(have) - held
+            if cfg.get("pool_tail"):  # a loop test: the `TAIL` questions before the dev slice,
+                a, b = usable - step * m, usable - (step - 1) * m  # which no real run reaches
+                if a < usable - TAIL:
+                    raise ValueError(f"a loop test may use the last {TAIL} {key} questions only")
+            else:
+                a, b = skip + (step - 1) * m, skip + step * m
+                if b > usable - TAIL:
+                    raise ValueError(f"the pool has {len(have)} {key} questions ({held} held "
+                                     f"back as a dev slice, {TAIL} for loop tests): too few "
+                                     f"for step {step}")  # fmt: skip
+            rows.extend(have[a:b])
     return rows
 
 

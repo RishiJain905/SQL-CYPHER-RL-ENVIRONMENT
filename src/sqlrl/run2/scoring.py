@@ -33,7 +33,7 @@ from typing import Any
 from sqlrl.run2 import calls, guards
 
 FIELDS = ("json_ok", "exec_ok", "reason", "first_ok", "first_reason", "dup", "hardcoded",
-          "copied", "look_leak", "loop")  # fmt: skip
+          "copied", "look_leak", "loop", "rerun", "kind", "exec_weak", "first_weak")  # fmt: skip
 FILL_SETS = ("sqale", "text2cypher")
 
 
@@ -64,15 +64,33 @@ def annotate(ep: dict[str, Any], row: dict[str, Any]) -> None:
     ep["look_leak"] = sorted(s for s in reference_literals(row)
                              if s.lower() not in p and s.lower() in shown)  # fmt: skip
     seen = [_norm(x["query"]) for x in ran]
-    ep["loop"] = len(set(seen)) < len(seen)
+    # the same query twice in a row: asking again and hoping. Running the answer again after a
+    # look at the data is not that: the last query that ran is the answer, so an episode that
+    # explored has to (`rerun` counts both kinds)
+    ep["loop"] = any(a == b for a, b in zip(seen, seen[1:], strict=False))
+    ep["rerun"] = len(set(seen)) < len(seen)
+    ep["kind"] = row.get("kind")  # "returned": scoring side only, never on the rollout side
+
+
+STRICT = {"pass": True, "fail": False}
 
 
 def score_episodes(eps: list[dict[str, Any]], rows: dict[str, dict[str, Any]],
-                   checker: int = 4, dup_probe: bool = True, log=print) -> float:  # fmt: skip
-    """Set the verdict fields on every episode in place; returns the seconds spent."""
+                   checker: int = 4, dup_probe: bool = True, log=print,
+                   guard: bool = True) -> float:  # fmt: skip
+    """Set the verdict fields on every episode in place; returns the seconds spent.
+
+    `guard`: a returned question (`kind` "returned": the right result on the dataset's own rows
+    says nothing) passes only when the checker's full SQL check also passes on filled copies of
+    the schema (`pool.strict_check`). The checker alone compares on the dataset's own rows,
+    where every query that returns nothing equals the reference: "it showed nothing, stop"
+    would earn the reward whatever the query was. `exec_weak` / `first_weak` keep the checker's
+    own verdict. The evaluation set has no such rows, so its yardstick is unchanged."""
     from asktrainer import publiceval
     from asktrainer.data.schema import Example
     from asktrainer.settings import get_paths as trainer_paths
+
+    from sqlrl.run2.pool import strict_check
 
     data = publiceval.PublicData(trainer_paths().public)
     exs = {qid: Example.model_validate(row) for qid, row in rows.items()}
@@ -81,6 +99,7 @@ def score_episodes(eps: list[dict[str, Any]], rows: dict[str, dict[str, Any]],
         raise RuntimeError("the checker's Neo4j (asktrainer-neo4j) doesn't answer: start it")
     t0 = time.time()
     memo: dict[tuple[str, str], dict[str, Any]] = {}
+    strict: dict[tuple[str, str], bool | None] = {}
 
     def verdict(ex, text: str) -> dict[str, Any]:
         key = (ex.id, text)
@@ -88,19 +107,34 @@ def score_episodes(eps: list[dict[str, Any]], rows: dict[str, dict[str, Any]],
             memo[key] = publiceval.score(ex, text, data, checker=checker)
         return memo[key]
 
+    def guarded(ex, row: dict[str, Any], ok: bool | None, query: str | None) -> bool | None:
+        """The checker's verdict, and for a passed answer to a returned question the strict
+        check's: True / False, or None when no filled copy could tell."""
+        if not (guard and row.get("kind") == "returned" and ok is True and query):
+            return ok
+        key = (ex.id, query)
+        if key not in strict:
+            v = strict_check(query, row["meta"]["gold"], data.schema_script(ex), checker)
+            strict[key] = STRICT.get(v)
+        return strict[key]
+
     # one graph load per CypherBench graph: score grouped by graph
     order = sorted(range(len(eps)), key=lambda i: (eps[i]["origin"],
                                                    exs[eps[i]["qid"]].meta.get("db_id") or "",
                                                    eps[i]["qid"]))  # fmt: skip
     for i in order:
         ep = eps[i]
-        ex = exs[ep["qid"]]
+        ex, row = exs[ep["qid"]], rows[ep["qid"]]
         item = verdict(ex, ep["text"])
-        ep.update(json_ok=bool(item["json_ok"]), exec_ok=item["exec_ok"], reason=item["reason"])
+        ok = guarded(ex, row, item["exec_ok"], ep.get("final_query"))
+        ep.update(json_ok=bool(item["json_ok"]), exec_ok=ok, exec_weak=item["exec_ok"],
+                  reason=item["reason"] if ok == item["exec_ok"] else "filled_copies_differ"
+                  if ok is False else "filled_copies_undecided")  # fmt: skip
         first = verdict(ex, ep.get("first_text") or ep["text"])
-        ep.update(first_ok=first["exec_ok"] if first["json_ok"] else None,
+        weak = first["exec_ok"] if first["json_ok"] else None
+        ep.update(first_ok=guarded(ex, row, weak, ep.get("first_query")), first_weak=weak,
                   first_reason=first["reason"])  # fmt: skip
-        annotate(ep, rows[ep["qid"]])
+        annotate(ep, row)
     if dup_probe:
         from sqlrl.run2 import dupprobe
 

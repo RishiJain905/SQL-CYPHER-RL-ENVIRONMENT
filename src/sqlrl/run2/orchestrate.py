@@ -368,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
         # 8 probe episodes are too few to check the step-1 drift reading: its rule is for real runs
         over.update(smoke=True, steps=a.steps or 2, eval_steps=[], quick_eval_steps=[],
                     pool_tail=True, mix=dict.fromkeys(rcfg.MIXES["even"], 2),
+                    returned_per_step={"gretel": 1},  # one of each kind of gretel question
                     stop={"kl_step1_max": 1.0})  # fmt: skip
     return run(a.run, a.launched_by, over)
 

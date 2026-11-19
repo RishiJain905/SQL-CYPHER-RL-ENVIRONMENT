@@ -495,7 +495,11 @@ def generate(url: str, pubs: list[dict[str, Any]], cfg: dict[str, Any], out: Pat
     order = group_order(pubs)
     groups = [(q, [g for g in range(n_per_question) if (pubs[q]["id"], g) not in done])
               for q in order]  # fmt: skip
-    key_of = {q: (env.GraphHost.key(pubs[q]) if pubs[q]["dialect"] == "cypher" else None)
+    # a one-query question is shown nothing: it needs no look-around database, and a Cypher
+    # one doesn't wait for the graph lane
+    one = set(cfg.get("single_turn_sets") or [])
+    key_of = {q: (env.GraphHost.key(pubs[q])
+                  if pubs[q]["dialect"] == "cypher" and pubs[q]["origin"] not in one else None)
               for q in range(len(pubs))}  # fmt: skip
     if any(k is not None for q, k in key_of.items() if dict(groups).get(q)):
         if graphs is None or not graphs.ok():
@@ -531,7 +535,8 @@ def generate(url: str, pubs: list[dict[str, Any]], cfg: dict[str, Any], out: Pat
                             look = None
                             if key_of[q] is not None:
                                 graphs.ensure(pub)
-                            look = env.Look(pub, graphs)
+                            look = (env.NoLook() if pub["origin"] in one
+                                    else env.Look(pub, graphs))  # fmt: skip
                         current = q
                         res = episode(server, pub, look, g, sp["seed"], cfg, slot, sp["sampling"],
                                       sp["obs"], sp["logprobs"], history)  # fmt: skip

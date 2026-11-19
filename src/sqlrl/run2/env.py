@@ -106,6 +106,9 @@ def public_row(row: dict[str, Any], script: str | None = None) -> dict[str, Any]
     tool, arg = calls.query_tool(row)
     meta = row.get("meta") or {}
     origin = row["origin"]
+    if origin in ("gretel", "sqale") and not script:
+        # without it every look would answer "not available", silently: a missing sidecar row
+        raise ValueError(f"{row['id']}: no database script (python -m sqlrl.run2.pool build-db)")
     if origin == "gretel":
         db: dict[str, Any] = {"kind": "sqlite_rows", "script": script}
     elif origin == "sqale":
@@ -510,6 +513,18 @@ class GraphHost:
 
 
 # ---- one question's look-around database --------------------------------------------------------
+
+
+class NoLook:
+    """What a one-query question gets: nothing is ever run in front of the model."""
+
+    error = None
+
+    def run(self, query: str) -> Result:
+        raise RuntimeError("a one-query question is never run on a look-around copy")
+
+    def close(self) -> None:
+        pass
 
 
 class Look:

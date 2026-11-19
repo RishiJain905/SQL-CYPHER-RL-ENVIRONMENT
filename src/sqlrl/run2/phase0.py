@@ -70,10 +70,16 @@ def wsl(module: str, args: str, log: Path) -> int:
     return r.returncode
 
 
-def dev_rows(cfg: dict[str, Any]) -> list[dict[str, Any]]:
-    """The dev slice as public rows (the reference dropped)."""
+def dev_rows(cfg: dict[str, Any], which: str = "dev") -> list[dict[str, Any]]:
+    """A dev slice as public rows (the reference dropped): "dev", the pool's (200 questions,
+    where a result that says nothing means a wrong query), or "returned", the second one (50
+    gretel questions whose right result says nothing)."""
     scripts = pool.load_scripts(cfg["pool"])
-    rows = pool.dev_slice(pool.load_pool(cfg["pool"]), cfg["dev_per_set"])
+    questions = pool.load_pool(cfg["pool"])
+    rows = (pool.dev_returned(questions, cfg["dev_returned"]) if which == "returned"
+            else pool.dev_slice(questions, cfg["dev_per_set"]))  # fmt: skip
+    if not rows:
+        raise RuntimeError(f"the {which} slice is empty (python -m sqlrl.run2.pool ...)")
     return [env.public_row(r, scripts.get(r["id"])) for r in rows]
 
 
@@ -327,14 +333,18 @@ def _score(d: Path, rows: str, refs: dict[str, Path]) -> dict[str, Any]:
 
 
 def wording(model: str = "step30", variants: tuple[str, ...] = ("sft", "turns", "check"),
-            single_turn: list[str] | None = None, tag: str = "") -> dict[str, Any]:  # fmt: skip
-    """0c: the dev slice (200 pool questions no run trains on), greedy with turns, once per
-    prompt variant. The evaluation set is not touched. `single_turn`: the datasets kept on run
-    1's protocol (None: the config's); `tag` names the folders of a rerun (`turns-<tag>`)."""
+            single_turn: list[str] | None = None, tag: str = "",
+            rows: str = "dev") -> dict[str, Any]:  # fmt: skip
+    """0c: a dev slice (`rows`: "dev", 200 pool questions no run trains on, or "returned", the
+    50 returned gretel questions), greedy with turns, once per prompt variant. The evaluation
+    set is not touched. `single_turn`: the datasets kept on run 1's protocol (None: the
+    config's); `tag` names the folders of a rerun (`turns-<tag>`)."""
     over: dict[str, Any] = {} if single_turn is None else {"single_turn_sets": single_turn}
     base = rcfg.new_config(over)
     d = out_dir() / f"wording-{model}"
-    pubs = dev_rows(base)
+    pubs = dev_rows(base, rows)
+    if rows != "dev":
+        tag = f"{tag}-{rows}" if tag else rows
     names = {v: f"{v}-{tag}" if tag else v for v in variants}
     cfgs = {v: rcfg.new_config({**over, "prompt_variant": v}) for v in variants}
     for v in variants:
@@ -422,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--single-turn", default=None,
                    help="datasets on run 1's protocol, comma-separated (`none`: none)")  # fmt: skip
     w.add_argument("--tag", default="", help="names a rerun's folders: <variant>-<tag>")
+    w.add_argument("--rows", choices=["dev", "returned"], default="dev")
     h = sub.add_parser("heldout")
     h.add_argument("--model", default="step30")
     h.add_argument("--samples", type=int, default=0)
@@ -445,7 +456,8 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "wording":
         single = (None if a.single_turn is None
                   else [s for s in a.single_turn.split(",") if s and s != "none"])  # fmt: skip
-        print(json.dumps(wording(a.model, tuple(a.variants.split(",")), single, a.tag)))
+        print(json.dumps(wording(a.model, tuple(a.variants.split(",")), single, a.tag,
+                                 a.rows)))  # fmt: skip
     elif a.cmd == "heldout":
         print(json.dumps(heldout(a.model, a.samples, a.history, a.variant)))
     return 0
