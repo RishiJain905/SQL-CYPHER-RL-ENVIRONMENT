@@ -47,6 +47,12 @@ from typing import Any
 
 from sqlrl.run2 import calls
 
+# What the model is shown for a query: which copy it looks at, how the copy is filled (rows,
+# planting, seeds), the limits, and the result's text. Raise it with ANY change to those: an
+# evaluation records it (`episodes.claim`), so an evaluation made on other look-around data is
+# never continued, and never used as a run's start reference.
+LOOK_VERSION = 1
+
 MAX_ROWS = 10_000  # rows fetched to count a result (the checker's cap)
 SQL_TIME_S = 2.0  # the checker's limit
 SQL_MAX_VALUE = 1_000_000  # bytes of one value (randomblob, zeroblob, group_concat bombs)

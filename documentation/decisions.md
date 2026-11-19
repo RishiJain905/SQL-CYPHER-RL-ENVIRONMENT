@@ -478,7 +478,21 @@ to 61.8%; fixed 9, broken 1).
   behaviour (calls, a call too many, loops, broken answers, copied literals, the look-around
   leak) are counted over episodes with turns only, so their bounds mean what they meant.
 - **A protocol record.** An evaluation writes the protocol it was made under next to its
-  episodes. A file is never continued under another protocol, and the run refuses to start when
-  the start adapter's reference was made under another one. (A partial reference made before
-  this decision, with SQaLe on turns, was sitting in the reference's folder; the episode writer
-  resumes whatever a file holds, so it would have been mixed in silently.)
+  episodes: the prompt, the call limit, the one-query datasets, the result format and the
+  version of the look-around data (`env.LOOK_VERSION`). A file is never continued under another
+  protocol, and the run refuses to start when the start adapter's reference was made under
+  another one. (A partial reference made before this decision, with SQaLe on turns, was sitting
+  in the reference's folder; the episode writer resumes whatever a file holds, so it would have
+  been mixed in silently.)
+
+**What the evaluation set then showed (same day; `results/run2-phase0.md` sections 7-9).** The
+dev-slice numbers above do not carry over. On the evaluation set the untrained step 30 goes
+from 52.4% on its first query to 48.1% with turns (fixed 4, broke 10; gretel fixed 2 and broke
+8, text2cypher 0 and 2, CypherBench 2 and 0). The cause is a right query whose result says
+nothing (`0 rows`, or only NULL or zero): the model breaks 9 of 24 such answers and 1 of 54
+others. The pool's filter removed exactly those questions from training and from the dev slice
+(627 of 2,646 gretel candidates); the evaluation set keeps them (13 of 50 gretel references,
+32 of 50 text2cypher references say nothing on the look-around copy). By the design page's
+table (D10) this reads "do not start RL". So, by the rule Rishi used for SQaLe, two more
+datasets fail on the evaluation set. **Nothing further was changed: what to do is open, and
+Rishi's** (the options are in the phase-0 results, section 9).

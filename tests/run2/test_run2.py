@@ -535,6 +535,22 @@ def test_an_evaluation_folder_keeps_one_protocol(tmp_path):
             episodes.claim(out, other)
     with pytest.raises(RuntimeError, match="another protocol"):
         episodes.claim(out, every, "stripped")
+    # other look-around data is another protocol: a reference made before a fill changed
+    assert episodes.same_protocol(out.parent, every)
+    old = env.LOOK_VERSION
+    try:
+        env.LOOK_VERSION = old + 1
+        assert not episodes.same_protocol(out.parent, every)
+        with pytest.raises(RuntimeError, match="another protocol"):
+            episodes.claim(out, every)
+    finally:
+        env.LOOK_VERSION = old
+    # a record written before the version existed is version 1
+    rec = out.parent / "protocol.json"
+    saved = json.loads(rec.read_text(encoding="utf-8"))
+    assert saved.pop("look") == 1
+    rec.write_text(json.dumps(saved), encoding="utf-8")
+    assert episodes.same_protocol(out.parent, every)
     # episodes with no record at all (made before the record existed) are refused too
     (out.parent / "protocol.json").unlink()
     with pytest.raises(RuntimeError, match="none recorded"):

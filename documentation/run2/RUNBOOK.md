@@ -3,8 +3,14 @@
 How to start, watch, pause and close run 2. Read `design.md` first: it says what the run is.
 Run 1b's runbook (`run1b/RUNBOOK.md`) is the model for this one; what differs is marked.
 
-**Run 2 is not started by an agent on its own.** Rishi says when. Everything below `Phase 0` and
-the loop test is already done; their results are in `results/run2-phase0.md`.
+**Run 2 is not started by an agent on its own.** Rishi says when. Phase 0 and the loop test are
+done; their results are in `results/run2-phase0.md`.
+
+**As of 2026-11-19 the run is not ready to start.** On the evaluation set the untrained start
+model loses 4 points with turns (the "do not start RL" row of the design page's table), and
+what changes before a start is Rishi's choice (`results/run2-phase0.md`, section 9). If the
+look-around data or the protocol changes, raise `env.LOOK_VERSION` where it applies and make
+the start reference again; the run refuses a reference made under another protocol.
 
 ## 0. Before starting
 
@@ -62,7 +68,7 @@ A loop test (2 steps of 8 questions from a reserve no real run uses, no evaluati
 | Field | Healthy | Look closer when |
 |---|---|---|
 | `solve_rate`, `first_solve_rate` | near the no-training numbers at first; one step swings by 0.1 | the first query's rate falls while the final rate holds: the model is leaning on retries |
-| `calls_mean`, `calls`, `retry_after` | 1.2 to 1.6 calls; a second call mostly after an error or an empty result | calls after `rows` rise: it is exploring, or second-guessing right answers |
+| `calls_mean`, `calls`, `retry_after` | 1.2 to 1.7 calls; a second call mostly after an error or an empty result | calls after `rows` rise: it is exploring, or second-guessing right answers. In the pool an empty result is always a wrong query; on the evaluation set it is often a right one, so a rising retry rate after `empty` helps training scores and hurts held-out ones |
 | `fixed`, `broken`, `broken_frac` | fixed above broken | broken near fixed: turns aren't paying |
 | `informative_frac`, `distinct_final_mean` | about 0.4 to 0.6; several different final queries a group | both falling: the groups are collapsing onto one answer |
 | `entropy_t1`, `t1_tokens_median` | level | entropy falling for several steps |

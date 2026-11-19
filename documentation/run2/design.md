@@ -6,7 +6,11 @@ the recommendations of the design page Rishi reviewed (D1 to D14), taken as a wh
 R15). What the no-training tests measured is in `results/run2-phase0.md`; how to run it is in
 `RUNBOOK.md`; the environment has its own guide, `guides/run2-environment.md`.
 
-**Status: built and tested, not started.** Rishi starts the run.
+**Status: built and tested, not started, and not ready to start.** The no-training test on the
+evaluation set (2026-11-19) landed in the "do not start RL" row of the design page's table: turns
+cost the untrained start model 4 points there, because a right query whose result says nothing
+gets rewritten, and the training pool holds no such question (`results/run2-phase0.md`,
+sections 7 to 9; section 3 below). What changes before a start is Rishi's choice.
 
 ## 1. What changes from run 1b
 
@@ -86,6 +90,14 @@ each reference on its look-around copy (a check only the scoring side may run):
 | text2cypher | 46 of 50 |
 | SQaLe | 36 of 50 |
 
+**This table is the dev slice, and the dev slice flatters gretel and text2cypher.** The pool
+keeps a question only when its reference's result says something (for gretel on the dataset's
+own rows), so every dev question passes by construction. The evaluation set is unfiltered. On
+it a correct query's result says something (a value that is not NULL, zero or empty) for 37 of
+50 gretel questions and 18 of 50 text2cypher questions (CypherBench 50, SQaLe 39). There the
+untrained model rewrites a right answer after an empty result about half the time
+(`results/run2-phase0.md`, section 8). This is open.
+
 So on SQaLe about a quarter of correct first queries would be shown `0 rows`. The remaining
 cases filter on a key value or on a constant the question doesn't spell out, which a fill built
 without the reference can't know.
@@ -104,7 +116,8 @@ query, three after rows the model second-guessed), while on the other three data
 - The rule goes by dataset, and real use has no dataset label: a deployment picks one prompt.
 
 An evaluation records the protocol it was made under (`protocol.json`: the prompt variant, the
-call limit, the one-query datasets, the result format). Its episode file is never continued
+call limit, the one-query datasets, the result format, and the version of the look-around
+data, `env.LOOK_VERSION`, which must be raised with any change to what the model is shown). Its episode file is never continued
 under another one, and the run refuses to start when the start adapter's reference evaluation
 was made under another one.
 
@@ -265,6 +278,7 @@ CypherBench graphs. A finished run moves there as history; the kept adapter stay
    anchor, the wording test on the dev slice, and the evaluation set with turns on the start
    model, on step 26 and on the SFT model. Results: `results/run2-phase0.md`.
 2. **A loop test** (`run.py --smoke`): 2 steps of 8 questions from a reserve at the pool's tail.
-3. **Rishi reads Phase 0** against the design page's table (D10) and decides: start, or a cold
-   start first. (The third branch, a dataset on one query, is taken for SQaLe: R16.)
-4. **The run**: 40 steps, about 10 hours with evaluations.
+3. **Rishi reads Phase 0** against the design page's table (D10). Done 2026-11-19 for SQaLe
+   (one query: R16). The evaluation set then read "do not start RL" (the status note above);
+   what changes is his choice.
+4. **The run**: 40 steps, about 10 hours with evaluations. Not before step 3 is settled.

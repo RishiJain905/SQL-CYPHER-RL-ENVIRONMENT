@@ -8,7 +8,7 @@
 | 2. Method pilots | ✅ both run (2026-11-02); the choice is Rishi's | two pilots of 10 steps (R4). GRPO: greedy 45.4, mean@8 37.5, pass@8 62.6; SRPO: 45.4 / 39.7 / 64.2 (baseline 43.2 / 36.9 / 62.6); none outside noise; `pilots/TRACKER.md` |
 | 3. Run 1 (stage A, single turn) | ⏹️ stopped after step 28 of 100 (2026-11-13); **step 19's adapter kept** (R12) | SRPO, 32 questions x 8 a step. After step 19: greedy 45.6, mean@8 40.8, pass@8 66.2 (baseline 43.2 / 36.9 / 62.6; sampled sign test 60 / 41, p 0.07). Worse at steps 25 and 28 (step 28 against 19: 42 / 63, p 0.05): the settings overshoot. `results/run1.md`; R10-R12. Not done: the test set on step 19, a release export |
 | 4. Run 1b (the trainer, fixed; the official stage-A run) | ✅ done, 40 of 40 steps (2026-11-17); **step 30's adapter kept** (R14) | After step 30: greedy **54.5** / mean@8 43.4 / pass@8 67.5 (SFT through the same path 44.5 / 36.4 / 59.9; greedy sign test against the baseline 32 / 14, p 0.01). text2cypher 16 to 62.5 greedy. Step 40: 48.6 / 39.6 / 66.0, after the KL weight hit its cap and pulled `kl_sft` from 0.078 to 0.010. Greedy picks the step (R14). `results/run1b.md`, `run1b/design.md`, R13-R14. Not done: the test set on step 30, a release export |
-| 5. Run 2 (stage B, multi-turn) | 🔨 built and loop-tested (2026-11-19), **not started**; the no-training tests are part done | The model sees what its query returned and may fix it, up to 3 queries; continues step 30's adapter (R15, `run2/design.md`, `run2/RUNBOOK.md`, `guides/run2-environment.md`). Done: the template round trip (18 of 18 equal), the anchor (the engine's first query 101 of 186 against the kept 102 of 187), the wording test on the dev slice (first query 58.4%, with turns 59.4%; fixed 9, broken 7, 6 of the broken in SQaLe), the drift offset (0.0099), a 2-step loop test. **Left:** SQaLe to one query (Rishi: fine if it is better; the dev slice says it is), then the evaluation set with turns on the untrained step 30 (with 8 samples), step 26 and SFT; `results/run2-phase0.md`; Rishi's go |
+| 5. Run 2 (stage B, multi-turn) | 🔨 built and loop-tested, **not started**; the no-training tests are done (2026-11-19) and say **not ready** | The model sees what its query returned and may fix it, up to 3 queries (SQaLe keeps one: R16); continues step 30's adapter (R15, `run2/design.md`, `run2/RUNBOOK.md`, `guides/run2-environment.md`). Checks: the template round trip (18 of 18 equal), the anchor (the engine's first query 101 of 186 against the kept 102 of 187), the drift offset (0.0099), two 2-step loop tests. **Dev slice: turns add 4 points** (57.8% to 61.8%; fixed 9, broke 1). **Evaluation set: turns cost 4 points** (step 30: first query 52.4%, with turns 48.1%; fixed 4, broke 10; mean@8 43.9, pass@8 69.2), which is the "do not start RL" row of the design page's table (D10). Cause: a right query whose result says nothing gets rewritten (9 of 24 broken, against 1 of 54 when the result shows values), and the pool's filter removed every such question from training and from the dev slice. `results/run2-phase0.md` sections 7-9. **Open, Rishi's:** what to change before a start |
 
 ## Session log
 
@@ -117,6 +117,18 @@
   rules would have paused step 1 for what the untrained model already does (now measured
   against the run's own start). Paused for the day with the held-out evaluations just begun
   (stopped; the GPU is free).
+- **2026-11-19:** Rishi said to continue. SQaLe put on one query (R16), with what that needed:
+  the turn rates the stop rules read now count only episodes with turns, an evaluation records
+  its protocol and the look-around data's version and is never continued or used as a start
+  reference under another, and the trainer checks its prompt against the server's for every
+  dataset (83 CPU tests). GPU: the dev slice again (57.8% to 61.8%), a second loop test
+  (`smoke-4`), then the evaluation set with turns on step 30 (with 8 samples), step 26, the SFT
+  model and step 30 with thoughts stripped. **The evaluation set disagrees with the dev slice:**
+  turns cost step 30 four points there. Traced to right queries whose result says nothing,
+  which the pool's filter keeps out of training and out of the dev slice
+  (`results/run2-phase0.md`). Nothing was changed after that result; what to do is Rishi's.
+  Also: Docker Desktop had stopped and would not start (a stale socket file it could not
+  rename); with Rishi's OK the folder holding it was renamed and Docker came back.
 
 ## Rishi-run steps and waivers
 
@@ -137,4 +149,6 @@
   page (D1-D14) and **not to start the main run**. The no-training tests and the loop test were
   run with `--launched-by agent` as part of that build (D10's recommendation). 2026-11-19: he
   said SQaLe may stay single-turn if that is better, and paused the session before the
-  held-out evaluations.
+  held-out evaluations. Later that day he said to continue: the rest of the no-training tests
+  (the dev slice again, a loop test, the held-out evaluations) were run with
+  `--launched-by agent`. The main run stays his to start.

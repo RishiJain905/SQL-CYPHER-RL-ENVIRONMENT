@@ -441,15 +441,30 @@ def eval_spec(cfg: dict[str, Any], base: int = 7_000):
     return spec
 
 
+def _protocol(cfg: dict[str, Any], history: str) -> dict[str, Any]:
+    """Everything an evaluation's episodes depend on besides the model: what the model is told
+    (`prompt.recorded_protocol`) and what it is shown (`env.LOOK_VERSION`)."""
+    return {**prompt.recorded_protocol(cfg, history), "look": env.LOOK_VERSION}
+
+
+def _read_protocol(f: Path) -> dict[str, Any] | None:
+    if not f.exists():
+        return None
+    have = json.loads(f.read_text(encoding="utf-8"))
+    have.setdefault("look", 1)  # records written before the look-around data had a version
+    return have
+
+
 def claim(out: Path, cfg: dict[str, Any], history: str = "full") -> dict[str, Any]:
     """Record the protocol an evaluation's episode file `out` is made under
     (`<folder>/protocol.json`), before anything is generated. `generate` keeps what a file
     already holds, so episodes made under another protocol (another prompt, call limit, set of
-    single-turn datasets or result format) would be mixed in silently: that is refused here."""
-    proto = prompt.recorded_protocol(cfg, history)
+    single-turn datasets or result format, or other look-around data) would be mixed in
+    silently: that is refused here."""
+    proto = _protocol(cfg, history)
     f = out.parent / "protocol.json"
     if out.exists() and out.stat().st_size > 0:
-        have = json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+        have = _read_protocol(f)
         if have != proto:
             raise RuntimeError(
                 f"{out.parent.name} holds episodes made under another protocol "
@@ -462,10 +477,8 @@ def claim(out: Path, cfg: dict[str, Any], history: str = "full") -> dict[str, An
 
 def same_protocol(folder: Path, cfg: dict[str, Any], history: str = "full") -> bool:
     """Was the evaluation in `folder` made under `cfg`'s protocol?"""
-    f = folder / "protocol.json"
-    if not f.exists():
-        return False
-    return json.loads(f.read_text(encoding="utf-8")) == prompt.recorded_protocol(cfg, history)
+    have = _read_protocol(folder / "protocol.json")
+    return have is not None and have == _protocol(cfg, history)
 
 
 def generate(url: str, pubs: list[dict[str, Any]], cfg: dict[str, Any], out: Path, spec,
