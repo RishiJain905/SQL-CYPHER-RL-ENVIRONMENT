@@ -35,7 +35,10 @@ DEFAULTS: dict[str, Any] = {
     # the episode (D3, D4)
     "max_queries": 3,
     "prompt_variant": "turns",  # `prompt.py`; chosen on the dev slice
-    "single_turn_sets": [],  # datasets kept on run 1's protocol (D1's fallback; Rishi's call)
+    # datasets kept on run 1's protocol: the original prompt, one query, no result shown.
+    # SQaLe (decisions R16): its look-around copy is a random fill that shows `0 rows` for 14
+    # of 50 right queries, and on the dev slice turns fixed 1 SQaLe answer and broke 6
+    "single_turn_sets": ["sqale"],
     "obs": {
         "rows": [5, 10, 20],  # the row cap, drawn per training episode
         "styles": ["table", "json"],  # the result's form, drawn per training episode

@@ -289,6 +289,7 @@ def episode(server: Server, pub: dict[str, Any], look: env.Look, g: int, seed: i
         "final_query": final_q,
         "n_calls": calls_used,
         "end": end,
+        "one_query": single,  # run 1's protocol: nothing was, or would have been, shown
         "obs": obs,
         "history": history,
         "text": calls.as_call(final_q, pub["tool"], pub["arg"]),
@@ -438,6 +439,33 @@ def eval_spec(cfg: dict[str, Any], base: int = 7_000):
         return {"seed": seed_for(base, q, g), "sampling": sampling, "obs": obs, "logprobs": False}
 
     return spec
+
+
+def claim(out: Path, cfg: dict[str, Any], history: str = "full") -> dict[str, Any]:
+    """Record the protocol an evaluation's episode file `out` is made under
+    (`<folder>/protocol.json`), before anything is generated. `generate` keeps what a file
+    already holds, so episodes made under another protocol (another prompt, call limit, set of
+    single-turn datasets or result format) would be mixed in silently: that is refused here."""
+    proto = prompt.recorded_protocol(cfg, history)
+    f = out.parent / "protocol.json"
+    if out.exists() and out.stat().st_size > 0:
+        have = json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+        if have != proto:
+            raise RuntimeError(
+                f"{out.parent.name} holds episodes made under another protocol "
+                f"({have if have else 'none recorded'}; now {proto}): move the folder aside"
+            )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(proto, indent=1), encoding="utf-8")
+    return proto
+
+
+def same_protocol(folder: Path, cfg: dict[str, Any], history: str = "full") -> bool:
+    """Was the evaluation in `folder` made under `cfg`'s protocol?"""
+    f = folder / "protocol.json"
+    if not f.exists():
+        return False
+    return json.loads(f.read_text(encoding="utf-8")) == prompt.recorded_protocol(cfg, history)
 
 
 def generate(url: str, pubs: list[dict[str, Any]], cfg: dict[str, Any], out: Path, spec,

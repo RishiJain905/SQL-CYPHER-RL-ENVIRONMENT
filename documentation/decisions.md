@@ -431,7 +431,8 @@ on 184 of 186).
   query whenever a retry fixes it.
 - Loops, calls past the limit and broken answers already occur in the untrained start model, so
   their rules are measured against the run's own first five steps.
-- A dataset can be put back on run 1's protocol (`single_turn_sets`). Off by default.
+- A dataset can be put back on run 1's protocol (`single_turn_sets`). Off when built; on for
+  SQaLe since R16.
 
 **A bug the no-training test caught:** SQLite keeps prepared statements, so a query run a
 second time asked the authorizer nothing and looked like it read no table. The constants rule
@@ -441,3 +442,43 @@ text) and tested.
 **Not built:** an entropy bonus or any automatic pull-back (method changes, Rishi's to make); a
 held-out second copy for the constants rule (the design's option C, only if the canary rises);
 a live dashboard for run 2.
+
+## R16: run 2 keeps SQaLe on one query (2026-11-19)
+
+**Rishi's call**, after the no-training test on the dev slice: "If SQaLe is better left as
+single turn that is fine - as we don't want it to regress."
+
+**The evidence** (`results/run2-phase0.md`, step 30's adapter, 200 dev questions, greedy):
+
+| | Turns fixed | Turns broke |
+|---|---|---|
+| CypherBench, gretel, text2cypher | 8 | 1 |
+| SQaLe | 1 | 6 |
+
+SQaLe's look-around copy is a random fill built from the schema and the question (D1: it may
+not see the reference). A correct query returns rows on it for 36 of 50 dev questions; for the
+other 14 it shows `0 rows`, because the query filters on a key or a constant the question
+doesn't spell out. Three of the six broken answers followed such a `0 rows`; the other three
+followed rows the model second-guessed.
+
+**What changes:** `single_turn_sets` is `["sqale"]` by default. A SQaLe question gets the
+original SFT prompt and one query, and nothing is shown: run 1b's episode. With SQaLe on one
+query the same dev slice reads 115 of 199 on the first query and 123 of 199 with turns (57.8%
+to 61.8%; fixed 9, broken 1).
+
+**What follows from it:**
+
+- The headline, greedy with turns, is three datasets with turns plus SQaLe with one query. The
+  start adapter's reference evaluation was made under this protocol.
+- The cause is the environment (a fill made without the reference can't hold what a hidden
+  constant needs), not the model. Run 2 therefore neither teaches nor measures turns on SQaLe's
+  kind of schema. A real copy of data for SQaLe would lift this; none exists.
+- The rule goes by dataset; real use has no dataset label. A deployment picks one prompt.
+- A quarter of a step's episodes have one turn. The rates the stop rules read for turn
+  behaviour (calls, a call too many, loops, broken answers, copied literals, the look-around
+  leak) are counted over episodes with turns only, so their bounds mean what they meant.
+- **A protocol record.** An evaluation writes the protocol it was made under next to its
+  episodes. A file is never continued under another protocol, and the run refuses to start when
+  the start adapter's reference was made under another one. (A partial reference made before
+  this decision, with SQaLe on turns, was sitting in the reference's folder; the episode writer
+  resumes whatever a file holds, so it would have been mixed in silently.)

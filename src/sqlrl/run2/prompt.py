@@ -61,6 +61,19 @@ def protocol(cfg: dict[str, Any], origin: str) -> tuple[str, int]:
     return cfg.get("prompt_variant", "turns"), int(cfg["max_queries"])
 
 
+def recorded_protocol(cfg: dict[str, Any], history: str = "full") -> dict[str, Any]:
+    """What an evaluation's episodes depend on besides the model: written next to them
+    (`episodes.claim`), so episodes made under one protocol are never continued, or compared as
+    the run's own start, under another."""
+    return {
+        "prompt_variant": cfg.get("prompt_variant", "turns"),
+        "max_queries": int(cfg["max_queries"]),
+        "single_turn_sets": sorted(cfg.get("single_turn_sets") or []),
+        "obs": dict(cfg["obs"]["eval"]),
+        "history": history,
+    }
+
+
 def episode_messages(row: dict[str, Any], cfg: dict[str, Any]) -> list[dict[str, str]]:
     """The two messages an episode starts from (system, user), with the rule rewritten."""
     variant, max_queries = protocol(cfg, row["origin"])

@@ -362,11 +362,20 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
         for r in sdpo:  # normalise to mean 1 over the step's distilled tokens
             r["_t_w"] = r["_t_w"] / max(mean_w, 1e-12)
             del r["_t_ids"]
-        first = eps[0]
+        # the teacher's prompt is rendered here and the student's came from llama-server: they
+        # must be the same text. One episode per dataset, because a dataset on run 1's protocol
+        # reads another wording than the ones with turns (`prompt.protocol`)
+        firsts: dict[str, dict[str, Any]] = {}
+        for r in eps:
+            firsts.setdefault(r["origin"], r)
+        differ = [s for s, r in sorted(firsts.items()) if not srpo.student_prompt_matches(
+            tok, rows_by_id[r["qid"]], r["prompt_ids"], cfg)]  # fmt: skip
+        if differ:
+            raise RuntimeError(
+                "the trainer renders another prompt than the server for " + ", ".join(differ)
+            )
         sd_stats = {"sdpo_rollouts": len(sdpo), "sdpo_tokens": n_tok,
-                    "teacher_weight_mean": mean_w,
-                    "template_match": srpo.student_prompt_matches(
-                        tok, rows_by_id[first["qid"]], first["prompt_ids"], cfg)}  # fmt: skip
+                    "teacher_weight_mean": mean_w, "template_match": True}  # fmt: skip
 
     # the penalty: the start adapter's view of every trained first turn
     kcfg = mcfg.get("kl") or {}

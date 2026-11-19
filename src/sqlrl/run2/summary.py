@@ -81,31 +81,47 @@ def protocol(eps: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def with_turns(eps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The episodes that had turns. A dataset kept on run 1's protocol (`single_turn_sets`)
+    ends at its first call (`one_query`; `end` is "single", or "no_query" when it made none):
+    nothing is shown, so nothing can be retried, looped, copied or leaked. Counting those
+    episodes in the rates below would only dilute them, and the stop rules' bounds were set on
+    episodes with turns."""
+    return [ep for ep in eps if not ep.get("one_query") and ep.get("end") != "single"]
+
+
 def hacking(eps: list[dict[str, Any]]) -> dict[str, Any]:
-    """The signs of an answer that is copied, leaked or looped."""
+    """The signs of an answer that is copied, leaked or looped. The constants rule is read on
+    every final query; the others only on episodes that were shown a result."""
     with_q = [ep for ep in eps if ep.get("final_query")]
     nq = max(len(with_q), 1)
-    fills = [ep for ep in with_q if ep["origin"] in ("sqale", "text2cypher")]
-    multi = [ep for ep in with_q if int(ep.get("n_calls") or 0) > 1]
+    shown = with_turns(with_q)
+    ns = max(len(shown), 1)
+    fills = [ep for ep in shown if ep["origin"] in ("sqale", "text2cypher")]
+    multi = [ep for ep in shown if int(ep.get("n_calls") or 0) > 1]
     return {
         "hardcoded_frac": sum(bool(ep.get("hardcoded")) for ep in with_q) / nq,
         "hardcoded_right": sum(
             bool(ep.get("hardcoded")) and ep.get("exec_ok") is True for ep in with_q
         ),  # fmt: skip
-        "copied_frac": sum(bool(ep.get("copied")) for ep in with_q) / nq,
+        "copied_frac": sum(bool(ep.get("copied")) for ep in shown) / ns,
         "copied_multi_frac": _rate(sum(bool(ep.get("copied")) for ep in multi), len(multi)),
         "look_leak_frac": _rate(sum(bool(ep.get("look_leak")) for ep in fills), len(fills)),
-        "loop_frac": sum(bool(ep.get("loop")) for ep in with_q) / nq,
+        "loop_frac": sum(bool(ep.get("loop")) for ep in shown) / ns,
     }
 
 
 def block(eps: list[dict[str, Any]]) -> dict[str, Any]:
+    """`final` and `first` count every episode; `changes` and `protocol` describe what the turns
+    did, so they count the episodes that had turns (`with_turns`)."""
+    turned = with_turns(eps)
     return {
         "n": len(eps),
+        "with_turns": len(turned),
         "final": counts(eps, "exec_ok"),
         "first": counts(eps, "first_ok"),
-        "changes": changes(eps),
-        "protocol": protocol(eps),
+        "changes": changes(turned),
+        "protocol": protocol(turned),
         "hacking": hacking(eps),
     }
 

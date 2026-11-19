@@ -46,6 +46,10 @@ turns fixed a wrong first answer and how often they broke a right one.
 
 Limits: 3 calls. A fourth is not run. No call at all is a malformed answer.
 
+**One dataset keeps the old protocol.** SQaLe questions get the original prompt and one query,
+and nothing is shown (decisions R16; why is under "Limits" below). Such an episode ends at its
+first call (`end` is `single`). The setting is `single_turn_sets`.
+
 ## The pieces
 
 | File (`src/sqlrl/run2/`) | What it does | Runs on |
@@ -72,7 +76,7 @@ are standard library too), because they run next to llama-server.
 | Dataset | Engine | The model looks at |
 |---|---|---|
 | gretel | SQLite, in memory | the dataset's own tables and rows |
-| SQaLe | SQLite, in memory | its schema, filled with 60 random rows a table |
+| SQaLe | SQLite, in memory | its schema, filled with 60 random rows a table. Built, but not shown in run 2: SQaLe keeps one query |
 | CypherBench | Neo4j (the checker's container) | the benchmark's sampled graph |
 | text2cypher | Neo4j | a random graph built from the schema in the prompt |
 
@@ -133,7 +137,10 @@ Per step, in `<data>/run2/<run>/step-000k/`:
   query's (`first_ok`), and the flags `hardcoded`, `copied`, `look_leak`, `loop`, `dup`.
 - `metrics.json`: the step's numbers (also a line of `train_log.jsonl`).
 
-Per evaluation, in `eval-000k/`: `episodes.jsonl`, `scored.jsonl`, `summary.json`.
+Per evaluation, in `eval-000k/`: `episodes.jsonl`, `scored.jsonl`, `summary.json`, and
+`protocol.json`: the prompt variant, the call limit, the one-query datasets, the result format
+and whether thoughts stayed in the history. An episode file is only ever continued under the
+protocol it was started with, and the run checks its start reference against its own.
 
 ## How to look at it
 
@@ -168,7 +175,10 @@ runs each dev-slice reference on its look-around copy and counts how often it re
   dev slice. Never tune wording on the evaluation set.
 - **The result format:** `env.render` and the `obs` setting. If you add a form, keep the
   evaluation's fixed, or old evaluations stop being comparable.
-- **A dataset back to one query:** `single_turn_sets` in the run's settings (a new run only).
+- **Which datasets get turns:** `single_turn_sets` in the run's settings (a new run only;
+  `["sqale"]` by default). Changing it changes the task the evaluations measure, so the start
+  reference (`phase0.py heldout --samples 8`) has to be made again; the run refuses to start
+  against one made under another protocol.
 - **The look-around fill:** `env.question_literals` and the `FILL_*` / `PLANT_P` constants.
   Rerun `lookcheck` after any change and keep `tests/run2`'s test that the fill never contains a
   reference-only value.
@@ -179,7 +189,12 @@ runs each dev-slice reference on its look-around copy and counts how often it re
 
 - On SQaLe about a quarter of correct queries return nothing on the look-around copy, because
   they filter on a key or a constant the question doesn't spell out. The model would be shown
-  `0 rows` for a right answer.
+  `0 rows` for a right answer. On the dev slice turns fixed 1 SQaLe answer and broke 6, so
+  SQaLe keeps one query. This is a limit of the environment, not of the model: against a real
+  database a right query returns its rows. It also means run 2 can't teach or measure turns on
+  SQaLe-like schemas (large, many tables).
+- The one-query rule goes by dataset, and real use has no dataset label. A deployment picks one
+  prompt: with turns (what three datasets train) or the original (what SQaLe trains).
 - The pool keeps only questions whose reference returns rows, so in training an empty result
   is always wrong on the checker's data. In real use an empty result can be the right answer.
 - The constants rule catches the plain form of answer-copying, not every form. The canaries

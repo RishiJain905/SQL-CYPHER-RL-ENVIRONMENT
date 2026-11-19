@@ -495,6 +495,50 @@ def test_a_single_turn_dataset_shows_nothing_and_takes_the_first_call():
     assert look.ran == []
     assert (ep["end"], ep["final_query"], ep["n_calls"]) == ("single", "SELECT 1", 1)
     assert sum(ep["gen_mask"]) == len(ep["gen_ids"])
+    # one turn only: the trainer's later-turn mask is empty, the first turn is every token
+    n1, m1, m2 = turn_masks(ep)
+    assert n1 == len(ep["gen_ids"]) and sum(m1) == n1 and sum(m2) == 0
+    # a call that can't be read ends it too: no query, so the checker calls it malformed
+    ep, _, look = run_episode([("", tc("a") + tc("b"), True)], [], cfg)
+    assert look.ran == [] and (ep["end"], ep["final_query"], ep["n_calls"]) == ("single", None, 0)
+    assert ep["text"] == "</think>" and "obs" not in ep["turns"][0]
+    # a plain reply is "no query", as with turns
+    ep, _, _ = run_episode([("", "It can't be answered.", True)], [], cfg)
+    assert (ep["end"], ep["final_query"], ep["one_query"]) == ("no_query", None, True)
+    assert summary.with_turns([ep]) == []  # still not an episode with turns
+    assert run_episode([("", "No.", True)], [])[0]["one_query"] is False
+
+
+def test_sqale_is_single_turn_by_default_and_the_others_have_turns():
+    assert CFG["single_turn_sets"] == ["sqale"]
+    assert prompt.protocol(CFG, "sqale") == ("sft", 1)
+    for origin in ("gretel", "cypherbench", "text2cypher"):
+        assert prompt.protocol(CFG, origin) == ("turns", 3)
+
+
+def test_an_evaluation_folder_keeps_one_protocol(tmp_path):
+    out = tmp_path / "eval" / "episodes.jsonl"
+    proto = episodes.claim(out, CFG)
+    assert proto["single_turn_sets"] == ["sqale"] and proto["history"] == "full"
+    assert episodes.same_protocol(out.parent, CFG)
+    every = rcfg.new_config({"single_turn_sets": []})
+    assert not episodes.same_protocol(out.parent, every)
+    assert not episodes.same_protocol(out.parent, CFG, "stripped")
+    assert not episodes.same_protocol(tmp_path / "nothing", CFG)
+    episodes.claim(out, every)  # nothing generated yet: the folder can still change hands
+    out.write_text('{"qid": "a", "g": 0}\n', encoding="utf-8")
+    episodes.claim(out, every)  # the same protocol continues its own file
+    fewer = rcfg.new_config({"single_turn_sets": [], "max_queries": 2})
+    hinted = rcfg.new_config({"single_turn_sets": [], "prompt_variant": "check"})
+    for other in (CFG, fewer, hinted):
+        with pytest.raises(RuntimeError, match="another protocol"):
+            episodes.claim(out, other)
+    with pytest.raises(RuntimeError, match="another protocol"):
+        episodes.claim(out, every, "stripped")
+    # episodes with no record at all (made before the record existed) are refused too
+    (out.parent / "protocol.json").unlink()
+    with pytest.raises(RuntimeError, match="none recorded"):
+        episodes.claim(out, every)
 
 
 def test_a_full_slot_ends_the_episode():
@@ -943,6 +987,36 @@ def test_summary_retry_and_hacking_rates():
     assert o["hacking"]["copied_frac"] == 0.25 and o["hacking"]["copied_multi_frac"] == 0.5
     assert o["hacking"]["look_leak_frac"] == 1.0 and o["hacking"]["loop_frac"] == 0.25
     assert set(s["by_set"]) == {"gretel", "sqale"}
+
+
+def test_single_turn_episodes_count_in_the_score_and_not_in_the_turn_rates():
+    """A dataset on run 1's protocol is a quarter of a step's episodes. They count toward the
+    score; in the rates the stop rules read they would only make a problem look smaller."""
+    turned = [
+        sep(True, False, 2, loop=True, turns=[{"t": 1, "result": "rows"}]),
+        sep(True, True, 3, end="limit", copied=["x"]),
+        sep(False, True, 2, "text2cypher", look_leak=["y"]),
+        sep(False, False, 1),
+    ]
+    single = [sep(True, True, 1, "sqale", end="single", hardcoded="constants"),
+              sep(True, True, 1, "sqale", end="single"),
+              sep(False, False, 1, "sqale", end="single"),
+              sep(None, None, 0, "sqale", end="single")]  # fmt: skip
+    alone, both = summary.block(turned), summary.block(turned + single)
+    assert (both["n"], both["with_turns"]) == (8, 4)
+    assert both["final"]["right"] == 4 and both["first"]["right"] == 4  # every episode scores
+    assert both["final"]["no_query"] == 1
+    for part in ("changes", "protocol"):
+        assert both[part] == alone[part]
+    assert both["protocol"]["calls_mean"] == 2.0 and both["protocol"]["limit_frac"] == 0.25
+    assert both["changes"]["broken_frac"] == 0.5
+    h = both["hacking"]
+    assert (h["loop_frac"], h["copied_frac"], h["look_leak_frac"]) == (0.25, 0.25, 1.0)
+    assert h["hardcoded_frac"] == pytest.approx(1 / 7)  # the constants rule reads every answer
+    # a single-turn dataset's own block has no turn rates at all
+    only = summary.block(single)
+    assert only["protocol"]["calls_mean"] is None and only["changes"]["broken_frac"] is None
+    assert only["hacking"]["look_leak_frac"] is None
 
 
 def test_eval_comparisons():

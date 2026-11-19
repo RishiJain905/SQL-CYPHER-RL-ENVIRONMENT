@@ -183,6 +183,7 @@ def evaluate(cfg: dict[str, Any], run_dir: Path, k: int, launched_by: str,
     kind = "greedy and 8 sampled episodes" if full else "greedy"
     event(run_dir, "info", f"evaluation after step {k}: the evalset with turns, {kind}",
           phase="evaluating", step=k)  # fmt: skip
+    episodes.claim(out / "episodes.jsonl", cfg)
     server.start(model, out, slots=cfg["slots"], ctx=cfg["slot_ctx"] * cfg["slots"])
     try:
         url = f"http://127.0.0.1:{server.PORT}"
@@ -208,6 +209,22 @@ def evaluate(cfg: dict[str, Any], run_dir: Path, k: int, launched_by: str,
     if code != 0 or not done.exists():
         raise RuntimeError(f"scoring the evaluation failed (exit {code}, see {out.name}/score.log)")
     return json.loads(done.read_text(encoding="utf-8"))
+
+
+def check_start_reference(cfg: dict[str, Any]) -> None:
+    """The gate compares every full evaluation with the start adapter's own evaluation with
+    turns (`refs.start_with_turns`, made by `phase0.py heldout`). It must exist, and it must
+    have been made under this run's protocol: against a reference made with another prompt,
+    call limit or set of single-turn datasets the gate would compare two different tasks."""
+    rel = (cfg.get("refs") or {}).get("start_with_turns")
+    if not rel or cfg.get("smoke") or not (cfg["eval_steps"] or cfg.get("quick_eval_steps")):
+        return
+    ref = pool.data_dir() / rel
+    if not (ref / "summary.json").exists():
+        raise RuntimeError(f"no start reference at {rel}: run `phase0.py heldout --samples 8`")
+    if not episodes.same_protocol(ref, cfg):
+        raise RuntimeError(f"the start reference at {rel} was made under another protocol "
+                           "than this run's: make it again (`phase0.py heldout`)")  # fmt: skip
 
 
 def gate_failed(summary: dict[str, Any], cfg: dict[str, Any]) -> str | None:
@@ -264,6 +281,7 @@ def run(name: str, launched_by: str = "agent", new: dict[str, Any] | None = None
             raise RuntimeError("another llama-server is running: one GPU job at a time")
         if not env.GraphHost().ok():
             raise RuntimeError("the checker's Neo4j (asktrainer-neo4j) doesn't answer: start it")
+        check_start_reference(cfg)
         event(
             run_dir,
             "info",
@@ -334,7 +352,8 @@ def main(argv: list[str] | None = None) -> int:
     new.add_argument("--init-from", default=None, help="an adapter folder under `paths.models`")
     new.add_argument("--prompt-variant", default=None)
     new.add_argument("--single-turn", default=None,
-                     help="datasets kept on run 1's protocol, comma-separated")  # fmt: skip
+                     help="datasets kept on run 1's protocol, comma-separated (default: "
+                          "sqale; `none`: every dataset gets turns)")  # fmt: skip
     new.add_argument("--smoke", action="store_true",
                      help="a loop test: 2 steps of 8 questions (2 per dataset) from the pool's "
                           "tail, no evaluation")  # fmt: skip
@@ -343,8 +362,8 @@ def main(argv: list[str] | None = None) -> int:
                             "prompt_variant": a.prompt_variant}  # fmt: skip
     if a.mix:
         over["mix"] = rcfg.MIXES[a.mix]
-    if a.single_turn:
-        over["single_turn_sets"] = [s for s in a.single_turn.split(",") if s]
+    if a.single_turn:  # "none": every dataset gets turns
+        over["single_turn_sets"] = [s for s in a.single_turn.split(",") if s and s != "none"]
     if a.smoke:
         # 8 probe episodes are too few to check the step-1 drift reading: its rule is for real runs
         over.update(smoke=True, steps=a.steps or 2, eval_steps=[], quick_eval_steps=[],

@@ -16,7 +16,7 @@ Run from the repo root on Windows. Stop and tell Rishi if a line fails and the f
 | Docker and the checker's Neo4j | `docker ps` | `asktrainer-neo4j` is up. It has no restart policy: after a reboot, `docker start asktrainer-neo4j` |
 | The start adapter | `<models>/run1b-step30/lora_state.safetensors` and `ema_state.safetensors` | both there |
 | The database scripts | `<data>/run2/pool-v2.db.jsonl`, `<data>/run2/evalset.db.jsonl` | both there (`python -m sqlrl.run2.pool build-db`, in WSL, rebuilds them) |
-| The references | `<data>/run2/refs/run1b-eval-0030/`, `<data>/run2/phase0/heldout-step30/summary.json` | both there: the evaluations are compared with them |
+| The references | `<data>/run2/refs/run1b-eval-0030/`, `<data>/run2/phase0/heldout-step30/` (`summary.json` and `protocol.json`) | both there: the evaluations are compared with them. The run refuses to start when the second one is missing or was made under another protocol (another prompt, call limit or set of one-query datasets): `phase0.py heldout --samples 8` makes it again |
 | Tests | in WSL: `PYTHONPATH=src <venv>/bin/python -m pytest tests/run2 -q` | green |
 | No run named `run2` yet | `<data>/run2/run2/` | doesn't exist (if it does, this is a resume) |
 
@@ -34,8 +34,12 @@ C:\Python314\python.exe -I scripts\run2\pause.py --run run2 --after-step
 Start it hidden and detached (`Start-Process ... -WindowStyle Hidden`), as run 1b was. The
 start command also resumes: a step without `TRAINED` starts again from its kept episodes and
 scores. Settings come from `config.py` and are frozen into `<run>/config.json` when the run is
-created; `--steps`, `--lr`, `--mix`, `--init-from` and `--prompt-variant` change them for a new
-run only.
+created; `--steps`, `--lr`, `--mix`, `--init-from`, `--prompt-variant` and `--single-turn`
+change them for a new run only.
+
+SQaLe questions keep run 1's protocol (one query, nothing shown; decisions R16), so a quarter of
+a step's episodes have one turn. `--single-turn none` gives every dataset turns; the start
+reference then has to be made again under that protocol.
 
 A loop test (2 steps of 8 questions from a reserve no real run uses, no evaluation):
 `run.py --run <name> --smoke`.
@@ -70,6 +74,12 @@ A loop test (2 steps of 8 questions from a reserve no real run uses, no evaluati
 | `look_error_frac` | 0 | a database that didn't build: read `look_error` in the episodes |
 | `step_s` | 9 to 14 minutes | twice that: something else is on the GPU, or Neo4j is slow |
 
+`calls_mean`, `calls`, `retry_after`, `fixed`, `broken`, `limit_frac`, `loop_frac`,
+`copied_frac` and `look_leak_frac` count only the episodes that had turns (three datasets, 192
+of a step's 256 episodes): SQaLe's one-query episodes can't retry, loop or copy, and would only
+make a problem look smaller. The scores, `informative_frac`, the entropy and `hardcoded_frac`
+count every episode.
+
 Read some episodes by hand every ten steps: the highest-reward ones, the ones a retry fixed,
 the ones it broke, and any the canaries flag. An episode line holds every turn's text, every
 query and what came back.
@@ -97,6 +107,8 @@ Read the event's text, then the step's `train.log` (update) or `server.err.txt` 
 | "N episodes failed; run again to retry them" | the start command again (finished episodes are kept) |
 | "the rollout model for step k could not be written" | read `merge.log`; in WSL `python -m sqlrl.run2.tools merge --run-dir <dir> --step <k-1>`, then start again |
 | "the start adapter is missing" | `<models>/<init_from>/lora_state.safetensors` must exist |
+| "no start reference", or "made under another protocol" | the start adapter's evaluation with turns is missing or doesn't match this run's settings: `phase0.py heldout --samples 8` (about 40 minutes), then start again |
+| "holds episodes made under another protocol" | an evaluation folder has episodes from other settings; move the folder aside, never mix them |
 | A power cut or reboot | start Docker and the Neo4j container, then the start command; at most one update is redone |
 | The update hangs (GPU idle, the log silent for 15 minutes; run 1b step 35) | stop only that trainer inside WSL (`kill <pid>`), check the step before's state files against their `.sha256`, then ask Rishi before resuming |
 | Out of memory in the update | check nothing else holds the GPU; start again. If it repeats on the same step, stop and tell Rishi |

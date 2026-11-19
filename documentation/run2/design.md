@@ -12,7 +12,7 @@ R15). What the no-training tests measured is in `results/run2-phase0.md`; how to
 
 | | Run 1b | Run 2 |
 |---|---|---|
-| An answer | one query, never run in front of the model | up to 3 queries; the model reads each result; the last query that ran is the answer |
+| An answer | one query, never run in front of the model | up to 3 queries; the model reads each result; the last query that ran is the answer. SQaLe questions keep one query (section 3; decisions R16) |
 | Starts from | a new LoRA on the SFT model | run 1b's step-30 adapter, continued |
 | Drift is measured against | the SFT model | the start adapter, on first-turn tokens |
 | The penalty's weight | follows the drift (doubled up to 6.4) | fixed at 0.05 |
@@ -88,9 +88,25 @@ each reference on its look-around copy (a check only the scoring side may run):
 
 So on SQaLe about a quarter of correct first queries would be shown `0 rows`. The remaining
 cases filter on a key value or on a constant the question doesn't spell out, which a fill built
-without the reference can't know. This is the main risk of keeping SQaLe multi-turn. A setting
-(`single_turn_sets`) puts a dataset back on run 1's protocol: the original prompt, one query,
-nothing shown. It is off; turning it on is Rishi's call after the no-training test.
+without the reference can't know.
+
+**SQaLe therefore keeps run 1's protocol** (`single_turn_sets: ["sqale"]`; decisions R16): the
+original prompt, one query, nothing shown. The no-training test on the dev slice showed the
+cost of turns there: on SQaLe they fixed 1 answer and broke 6 (three after `0 rows` for a right
+query, three after rows the model second-guessed), while on the other three datasets they fixed
+8 and broke 1. Rishi's call: SQaLe must not regress. What this means:
+
+- A SQaLe episode is run 1b's episode: one turn, reward 1 / 0 / -0.1, distilled as a whole
+  when it is wrong and a sibling is right. The first-turn penalty covers all of it.
+- The headline, greedy with turns, is three datasets with turns and SQaLe with one query.
+- This is a limit of the environment, not of the model. Against a real database a right query
+  returns its rows. Run 2 can't teach or measure turns on SQaLe's kind of schema.
+- The rule goes by dataset, and real use has no dataset label: a deployment picks one prompt.
+
+An evaluation records the protocol it was made under (`protocol.json`: the prompt variant, the
+call limit, the one-query datasets, the result format). Its episode file is never continued
+under another one, and the run refuses to start when the start adapter's reference evaluation
+was made under another one.
 
 **Read only, enforced by the engines.** SQLite: `query_only`, plus an authorizer that allows
 reading and nothing else (no write, PRAGMA, ATTACH or temp table), a 2-second limit and caps on
@@ -165,6 +181,13 @@ measured offset is at that line, and its noise is a fifteenth of the bound, so t
 continued as planned. Step 1's own raw reading is still checked: above 0.025 means the run did
 not start from the model the offset was measured on, and it pauses.
 
+**How long an episode may be.** The update reads the prompt and every turn as one sequence, and
+its memory grows with the length. Measured on the 16 GB card (`tools memory`): 12.2 GB at 3,072
+tokens, 13.5 at 3,650, 14.5 at 4,096, and 4,608 doesn't fit. So `max_seq` is 3,840 (run 1's
+6,144 was never reached there, and would not fit). A longer episode is left out of the loss
+and counted (`too_long_frac`, a stop rule at 5%); none of 328 sampled episodes was longer than
+3,650.
+
 ## 6. Measuring it
 
 Every evaluation runs the 200-question set through the same episode engine as the rollouts.
@@ -218,6 +241,12 @@ a query twice, 6% of right first answers get broken). A fixed bound would pause 
 1 for what it started with. The teacher-leak rule reads first-turn thoughts only: in later
 turns "the correct query should be ..." is the model talking about its own retry.
 
+The protocol rules, the broken-answer rule, copied literals and the look-around leak are
+counted over the episodes that had turns (192 of a step's 256). SQaLe's one-query
+episodes can't retry, loop, copy or see a leak; counted in, they would make every such problem
+look a quarter smaller than the bound it is read against. The scores, the collapse rules, the
+drift and the constants rule count every episode.
+
 Nothing here adds an entropy bonus or pulls the model back by itself. Those would be method
 changes, and they are Rishi's to make.
 
@@ -236,6 +265,6 @@ CypherBench graphs. A finished run moves there as history; the kept adapter stay
    anchor, the wording test on the dev slice, and the evaluation set with turns on the start
    model, on step 26 and on the SFT model. Results: `results/run2-phase0.md`.
 2. **A loop test** (`run.py --smoke`): 2 steps of 8 questions from a reserve at the pool's tail.
-3. **Rishi reads Phase 0** against the design page's table (D10) and decides: start, a cold
-   start first, or a dataset on one query.
+3. **Rishi reads Phase 0** against the design page's table (D10) and decides: start, or a cold
+   start first. (The third branch, a dataset on one query, is taken for SQaLe: R16.)
 4. **The run**: 40 steps, about 10 hours with evaluations.

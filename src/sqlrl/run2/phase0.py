@@ -326,24 +326,31 @@ def _score(d: Path, rows: str, refs: dict[str, Path]) -> dict[str, Any]:
     return out
 
 
-def wording(model: str = "step30", variants: tuple[str, ...] = ("sft", "turns", "check")):
+def wording(model: str = "step30", variants: tuple[str, ...] = ("sft", "turns", "check"),
+            single_turn: list[str] | None = None, tag: str = "") -> dict[str, Any]:  # fmt: skip
     """0c: the dev slice (200 pool questions no run trains on), greedy with turns, once per
-    prompt variant. The evaluation set is not touched."""
-    base = rcfg.new_config()
+    prompt variant. The evaluation set is not touched. `single_turn`: the datasets kept on run
+    1's protocol (None: the config's); `tag` names the folders of a rerun (`turns-<tag>`)."""
+    over: dict[str, Any] = {} if single_turn is None else {"single_turn_sets": single_turn}
+    base = rcfg.new_config(over)
     d = out_dir() / f"wording-{model}"
     pubs = dev_rows(base)
+    names = {v: f"{v}-{tag}" if tag else v for v in variants}
+    cfgs = {v: rcfg.new_config({**over, "prompt_variant": v}) for v in variants}
+    for v in variants:
+        episodes.claim(d / names[v] / "episodes.jsonl", cfgs[v])
     out: dict[str, Any] = {}
     with serving(model, d, base) as url:
         for v in variants:
-            cfg = rcfg.new_config({"prompt_variant": v})
-            vd = d / v
-            vd.mkdir(parents=True, exist_ok=True)
-            res = episodes.generate(url, pubs, cfg, vd / "episodes.jsonl",
-                                    episodes.eval_spec(cfg), 1, env.GraphHost())  # fmt: skip
+            vd = d / names[v]
+            res = episodes.generate(url, pubs, cfgs[v], vd / "episodes.jsonl",
+                                    episodes.eval_spec(cfgs[v]), 1, env.GraphHost())  # fmt: skip
             (vd / "meta.json").write_text(json.dumps(res), encoding="utf-8")
     for v in variants:
-        out[v] = _score(d / v, "dev", {})
-    (d / "wording.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+        (d / names[v] / "scored.jsonl").unlink(missing_ok=True)
+        out[names[v]] = _score(d / names[v], "dev", {})
+    (d / f"wording{'-' + tag if tag else ''}.json").write_text(json.dumps(out, indent=1),
+                                                             encoding="utf-8")  # fmt: skip
     return out
 
 
@@ -355,12 +362,18 @@ def heldout(model: str = "step30", samples: int = 0, history: str = "full",
     name = f"heldout-{model}" + ("-stripped" if history == "stripped" else "")
     d = out_dir() / name
     d.mkdir(parents=True, exist_ok=True)
+    proto = episodes.claim(d / "episodes.jsonl", cfg, history)
     with serving(model, d, cfg) as url:
-        res = episodes.generate(url, eval_rows(), cfg, d / "episodes.jsonl",
-                                episodes.eval_spec(cfg), 1 + samples, env.GraphHost(),
-                                history=history)  # fmt: skip
-    (d / "meta.json").write_text(json.dumps({**res, "prompt_variant": cfg["prompt_variant"],
-                                             "history": history}), encoding="utf-8")  # fmt: skip
+        res: dict[str, Any] = {}
+        for _ in range(3):  # a failed episode is retried
+            res = episodes.generate(url, eval_rows(), cfg, d / "episodes.jsonl",
+                                    episodes.eval_spec(cfg), 1 + samples, env.GraphHost(),
+                                    history=history)  # fmt: skip
+            if not res["errors"]:
+                break
+    (d / "meta.json").write_text(json.dumps({**res, "model": model, **proto}), encoding="utf-8")
+    if res.get("errors"):
+        raise RuntimeError(f"{res['errors']} episodes failed after 3 tries: run it again")
     (d / "scored.jsonl").unlink(missing_ok=True)
     refs = {"single_turn": kept_scores(model).parent}
     if name != "heldout-step30" and (out_dir() / "heldout-step30" / "summary.json").exists():
@@ -405,6 +418,10 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--model", default="step30")
     w = sub.add_parser("wording")
     w.add_argument("--model", default="step30")
+    w.add_argument("--variants", default="sft,turns,check")
+    w.add_argument("--single-turn", default=None,
+                   help="datasets on run 1's protocol, comma-separated (`none`: none)")  # fmt: skip
+    w.add_argument("--tag", default="", help="names a rerun's folders: <variant>-<tag>")
     h = sub.add_parser("heldout")
     h.add_argument("--model", default="step30")
     h.add_argument("--samples", type=int, default=0)
@@ -426,7 +443,9 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "offset":
         print(json.dumps(offset(a.model)))
     elif a.cmd == "wording":
-        print(json.dumps(wording(a.model)))
+        single = (None if a.single_turn is None
+                  else [s for s in a.single_turn.split(",") if s and s != "none"])  # fmt: skip
+        print(json.dumps(wording(a.model, tuple(a.variants.split(",")), single, a.tag)))
     elif a.cmd == "heldout":
         print(json.dumps(heldout(a.model, a.samples, a.history, a.variant)))
     return 0

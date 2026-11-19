@@ -126,7 +126,7 @@ def score_dir(d: Path, rows_kind: str = "evalset", refs: dict[str, Path] | None 
                   for e in sampled if e["g"] == g] for g in range(1, SAMPLES + 1)]  # fmt: skip
         ps = passk.summarise(files, {q["id"]: q["final"] for q in qs.values()})
         s["sampled"] = {"overall": ps["overall"], "by_set": ps["by_set"]}
-        s["sampled_calls_mean"] = summary.protocol(sampled)["calls_mean"]
+        s["sampled_calls_mean"] = summary.protocol(summary.with_turns(sampled))["calls_mean"]
         s["sampled_hacking"] = summary.hacking(sampled)
     s["vs"] = {}
     for name, ref_dir in (refs or {}).items():
@@ -219,7 +219,8 @@ def log_wandb(run_dir: Path, cfg: dict[str, Any], s: dict[str, Any], step: int) 
                         flat[f"eval/{name}/{part}_{key}"] = blk[part][key]
             flat[f"eval/{name}/fixed"] = blk["changes"]["fixed"]
             flat[f"eval/{name}/broken"] = blk["changes"]["broken"]
-            flat[f"eval/{name}/calls_mean"] = blk["protocol"]["calls_mean"]
+            if blk["protocol"]["calls_mean"] is not None:  # None: a single-turn dataset
+                flat[f"eval/{name}/calls_mean"] = blk["protocol"]["calls_mean"]
         if "sampled" in s:
             o = s["sampled"]["overall"]
             flat["eval/overall/mean_at8"] = o["mean_at8"]
