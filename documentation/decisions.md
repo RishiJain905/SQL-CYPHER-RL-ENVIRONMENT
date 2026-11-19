@@ -441,7 +441,7 @@ text) and tested.
 
 **Not built:** an entropy bonus or any automatic pull-back (method changes, Rishi's to make); a
 held-out second copy for the constants rule (the design's option C, only if the canary rises);
-a live dashboard for run 2.
+a live dashboard for run 2 (its feed and brief came with R18).
 
 ## R16: run 2 keeps SQaLe on one query (2026-11-19)
 
@@ -566,4 +566,48 @@ quarter of gretel's training questions" and the reruns; these go further):
   That is the number training has to lower; nothing before training lowers it.
 
 The numbers, and how they are read against D10's table: `results/run2-phase0.md`, section 10.
+**Run 2 is still not started.**
+
+## R18: run 2 is started and watched like runs 1 and 1b; its dashboard feed (2026-11-19)
+
+**Rishi's ask**, after reading option C's results: a prompt for an Opus session that starts
+and watches run 2, a live dashboard "just like run 1", and a Sonnet agent that explains the
+key changes made for this run (option C).
+
+**Built** (the page itself is built by the Sonnet agent when the run starts, as before):
+
+- `src/sqlrl/run2/feed.py` (`scripts/run2/feed.py --run run2`): the dashboard's data. Run 1's
+  feed could not be reused: run 2's step rows hold nested values (calls, ends, what followed a
+  first result) and its evaluations have another shape (greedy with turns, the first query,
+  fixed and broken, the three kinds of question, the returned dev slice).
+- `documentation/run2/dashboard-brief.md`: the task for the dashboard agent, every field of
+  the feed, and the text of the page's "What is different in this run" panel.
+- `documentation/run2/RUNBOOK.md`, rewritten for the watching agent: what to read first, the
+  start command and the checks after it, the two Sonnet agents, what to read after a step,
+  the note after each evaluation, and the kickoff message Rishi pastes. That message is his
+  go for the run.
+
+**Choices the agent made, each Rishi's to overrule:**
+
+- **Run 1b is not drawn behind run 2.** The protocol and the questions differ, so the steps
+  don't pair. The run is read against its own start: the start adapter with turns (52.4%) and
+  on one query (54.5%), and the returned dev slice (25 right first, 11 after the turns).
+- **A note to Rishi after each evaluation** (every 5 steps), not a separate 5-step note.
+- **No success line.** The design's "+5 over 54.5" was written before the no-training tests
+  and Rishi has not replaced it. The watcher reports against the two start numbers and does
+  not call the run a success or a failure.
+- **The feed names a dead run.** A run whose process is gone with no end file shows as `dead`
+  (run 1b's two crashes left "running" on the page). The feed never creates a run's folder,
+  because the runbook reads "the folder exists" as a resume.
+- **10 steps a document** (run 1: 25): run 2's rows hold about 110 numbers.
+
+**Checked before handing over: the step-1 drift rule.** Both loop tests read 0.021 to 0.022 at
+step 1, close to the 0.025 that pauses a real run, after the offset had been measured at
+0.0084. Scored episode by episode: the two loop tests share their 8 probe episodes (the same
+questions and seeds), and 3 of the 8 hold 85 to 90% of the sum, so it is one unlucky small
+sample read twice. Drawing from the offset's own 200 episodes: 8 episodes read 0.0207 or more
+2.5% of the time; **32 episodes in the run's mix (what a real step uses) read 0.0084 on
+average, within 0.0023, and never above 0.020 in 20,000 draws.** The bound stays at 0.025; the
+runbook's healthy range for step 1 is now 0.004 to 0.014.
+
 **Run 2 is still not started.**

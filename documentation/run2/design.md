@@ -14,7 +14,8 @@ training questions (decisions R17; section 3 below). Under that setup the untrai
 model scores the same with turns as on its first query (52.4%), gains 3 to 8 points where a
 look can inform (two runs: net +3 and +7 questions of 87, at most one broken), and still
 breaks 7 of 10 right answers whose right result is nothing: the part training now has examples
-for (`results/run2-phase0.md`, section 10).
+for (`results/run2-phase0.md`, section 10). Starting and watching it, with its live
+dashboard: [`RUNBOOK.md`](RUNBOOK.md) and [`dashboard-brief.md`](dashboard-brief.md) (R18).
 
 ## 1. What changes from run 1b
 

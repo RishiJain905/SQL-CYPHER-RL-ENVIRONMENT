@@ -131,8 +131,9 @@ DEFAULTS: dict[str, Any] = {
         # drift (D7)
         "kl_start_max": 0.05,  # first-turn KL to the start adapter: the server's reading less
         # the measured offset
-        "kl_step1_max": 0.025,  # the raw reading at step 1 (the offset, about 0.010 +- 0.0035):
-        # above this the run did not start from the model the offset was measured on
+        "kl_step1_max": 0.025,  # the raw reading at step 1 (the offset: 0.0084 +- 0.0023 on a
+        # step's 32 probe episodes, never above 0.020 in 20,000 draws; decisions R18): above
+        # this the run did not start from the model the offset was measured on
         "mismatch_max": 0.10,
         # the protocol
         "malformed_max": 0.05,  # episodes that never ran a query ...

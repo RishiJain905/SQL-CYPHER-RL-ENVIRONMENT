@@ -69,6 +69,7 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 | `C:\Python314\python.exe -I scripts\run2\run.py --run run2` | run 2: start or resume (start it hidden and detached); `--steps`, `--lr`, `--mix`, `--init-from` for a new run |
 | `C:\Python314\python.exe -I scripts\run2\run.py --run <name> --smoke` | a loop test of run 2 (2 steps, 8 questions from a reserve no run uses) |
 | `C:\Python314\python.exe -I scripts\run2\pause.py --run <run> [--after-step]` | free the GPU now (or after the current step) |
+| `C:\Python314\python.exe -I scripts\run2\feed.py --run <run>` | run 2: one tick of the dashboard's data (`<run>/feed/*.json`; `documentation/run2/dashboard-brief.md` describes the fields), and a one-line summary of the latest step |
 | `PYTHONPATH=src <venv>/bin/python -m pytest -q` / `ruff check .` (WSL) | the tests (CPU) and lint |
 
 ## Documentation
@@ -77,7 +78,7 @@ Windows Python runs next to llama-server; the checker runs inside WSL. Paths com
 - [`documentation/rl-runs.md`](documentation/rl-runs.md): the two RL runs, the methods, the RL facts that matter here, the open questions
 - [`documentation/run1/`](documentation/run1/README.md): run 1: operating it (`README.md`), its design and the review behind it (`design.md`), the rollout loop on 16 GB and its measurements (`harness.md`)
 - [`documentation/run1b/`](documentation/run1b/design.md): run 1b: what it changes and why (`design.md`), starting and watching it (`RUNBOOK.md`), its dashboard's brief
-- [`documentation/run2/`](documentation/run2/design.md): run 2, the multi-turn agent: what was built and why (`design.md`), starting and watching it (`RUNBOOK.md`)
+- [`documentation/run2/`](documentation/run2/design.md): run 2, the multi-turn agent: what was built and why (`design.md`), starting and watching it (`RUNBOOK.md`, with the kickoff message), its dashboard's brief (`dashboard-brief.md`)
 - [`documentation/guides/run2-environment.md`](documentation/guides/run2-environment.md): the multi-turn environment: an episode step by step, the databases the model looks at, what comes back, how to look at it and change it
 - [`documentation/pilots/`](documentation/pilots/): step 2's tracker and live page
 - [`documentation/guides/sampling-baseline.md`](documentation/guides/sampling-baseline.md): pass@k, how the baseline works, how to run it

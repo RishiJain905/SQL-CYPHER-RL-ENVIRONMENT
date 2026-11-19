@@ -311,7 +311,7 @@ def train(run_dir: Path, k: int, launched_by: str = "agent") -> dict[str, Any]:
     # At step 1 the policy is the start adapter, so the true drift is zero and the reading is
     # the instrument's own offset (the server's Q8_0 merge against the trainer's bf16 adapter).
     # The offset that is subtracted is the one measured on many episodes before the run
-    # (`kl.offset`; `phase0.py offset`); one step's reading swings by about +-0.0035 around it.
+    # (`kl.offset`; `phase0.py offset`); one step's reading swings by about +-0.0023 around it.
     # Step 1's own reading is kept as a check that the run started from the model it meant to
     off_file = run_dir / "kl_offset.json"
     if k == 1 and kl_raw is not None:

@@ -1197,3 +1197,135 @@ def test_eval_comparisons():
     ]
     q = eval_score.questions(eps)["a"]
     assert (q["final"], q["first"], q["calls"], q["right"], q["scored"]) == (True, False, 2, 1, 2)
+
+
+def _feed_run(tmp_path, monkeypatch, steps):
+    """A run folder with `steps` trained steps, as the feed reads it."""
+    monkeypatch.setattr(rpool, "data_dir", lambda: tmp_path)
+    run = tmp_path / "r"
+    run.mkdir()
+    rcfg.save(rcfg.new_config({"run": "r"}), run)
+    rows = [
+        {"step": k, "solve_rate": 0.5 + k / 100, "first_solve_rate": 0.5, "step_s": 600.0,
+         "solve_by_set": {"gretel": 0.4}, "reward_by_set": {"gretel": 0.3},
+         "calls": {"1": 100, "2": 60}, "ends": {"reply": 150, "limit": 10},
+         "retry_after": {"empty": {"n": 8, "again": 0.75}, "rows": {"n": 90, "again": 0.1}},
+         "limit_frac": 0.1, "loop_frac": 0.0, "broken_frac": 0.2, "entropy_t1": 0.2,
+         "t1_tokens_median": 90.0, "look_leak_frac": None, "template_match": True}
+        for k in range(1, steps + 1)
+    ]  # fmt: skip
+    (run / "train_log.jsonl").write_text("\n".join(json.dumps(r) for r in rows), "utf-8")
+    (run / "events.jsonl").write_text(json.dumps(
+        {"at": "2026-01-01T00:00:00Z", "kind": "info", "text": "step 1: rollouts",
+         "phase": "rollouts", "step": 1}) + "\n", "utf-8")  # fmt: skip
+    return run
+
+
+def test_feed_never_creates_a_run_folder(tmp_path, monkeypatch):
+    from sqlrl.run2 import feed
+
+    monkeypatch.setattr(rpool, "data_dir", lambda: tmp_path)
+    res = feed.write("run2")
+    assert res["status"] == "not started" and res["files"] == []
+    assert not (tmp_path / "run2").exists()  # the runbook reads "the folder exists" as a resume
+
+
+def test_feed_rows_are_flat_and_chunked_and_bounds_follow_the_first_five_steps(
+    tmp_path, monkeypatch
+):
+    from sqlrl.run2 import feed
+
+    run = _feed_run(tmp_path, monkeypatch, steps=12)
+    res = feed.write("r")
+    assert res["files"] == ["state.json", "steps-1.json", "steps-2.json", "evals.json",
+                            "refs.json"]  # fmt: skip
+    assert res["changed"] == res["files"] and res["step_now"] == 12
+    first = json.loads((run / "feed" / "steps-1.json").read_text("utf-8"))
+    assert (first["from"], first["to"], len(first["steps"])) == (1, 10, 10)
+    row = first["steps"][0]
+    assert (row["solve_gretel"], row["reward_gretel"]) == (0.4, 0.3)
+    assert (row["calls_1"], row["calls_2"], row["ends_limit"]) == (100, 60, 10)
+    assert (row["retry_empty_n"], row["retry_empty_again"], row["retry_rows_again"]) == (
+        8, 0.75, 0.1)  # fmt: skip
+    assert row["look_leak_frac"] is None and row["template_match"] is True
+    assert all(not isinstance(v, (dict, list)) for v in row.values())
+    state = json.loads((run / "feed" / "state.json").read_text("utf-8"))
+    stop = state["config"]["stop"]
+    assert state["bounds"]["limit_frac"] == {
+        "start": 0.1, "bound": round(0.1 + stop["limit_up"], 5), "side": "above"}  # fmt: skip
+    assert state["bounds"]["entropy_t1"]["bound"] == round(0.2 * stop["entropy_min_frac"], 5)
+    assert state["bounds"]["t1_tokens_median"]["high"] == 90.0 * stop["length_ratio"]
+    assert state["shape"] == {"questions": 32, "with_turns": 20, "one_query": 12,
+                              "returned": 3, "group_size": 8}  # fmt: skip
+    # 28 steps of 600 s, and the evaluations still to come at their default lengths
+    left = state["timing"]
+    assert left["evals_left"] == [15, 20, 25, 30, 35, 40]
+    assert left["hours_left"] == pytest.approx((28 * 600 + 4 * 330 + 2 * 1230) / 3600, rel=1e-3)
+    assert feed.write("r")["changed"] in ([], ["state.json"])  # only the clock may differ
+
+
+def test_feed_bounds_wait_for_step_six_and_a_dead_process_is_named(tmp_path, monkeypatch):
+    import subprocess
+    import sys
+
+    from sqlrl.run2 import feed
+
+    run = _feed_run(tmp_path, monkeypatch, steps=5)
+    assert feed.build("r")["state"]["bounds"] == {}
+    assert feed.build("r")["state"]["status"] == "running"  # no pid file: it can't be told
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    (run / "run.pid").write_text(str(gone.pid), "utf-8")
+    state = feed.build("r")["state"]
+    assert state["status"] == "dead" and "resumes" in state["why"][0]
+    (run / "run.pid").write_text(str(os.getpid()), "utf-8")
+    assert feed.build("r")["state"]["status"] == "running"
+    (run / "PAUSED").write_text(json.dumps({"step": 5, "why": ["a rule"]}), "utf-8")
+    state = feed.build("r")["state"]
+    assert (state["status"], state["why"]) == ("paused", ["a rule"])
+
+
+def test_feed_eval_block_takes_a_quick_and_a_full_evaluation_and_a_bare_one():
+    from sqlrl.run2 import feed
+
+    block = {"n": 200, "with_turns": 100,
+             "final": {"right": 98, "wrong": 89, "undecided": 10, "no_query": 3,
+                       "decided": 0.524064, "strict": 0.49},
+             "first": {"right": 96, "decided": 0.51},
+             "changes": {"fixed": 7, "broken": 5, "net": 2, "broken_frac": 0.1},
+             "protocol": {"calls_mean": 1.62, "calls": {"1": 62},
+                          "retry_after": {"empty": {"n": 18, "again": 0.9}}},
+             "hacking": {"loop_frac": 0.07}}  # fmt: skip
+    quick = {"step": 5, "kind": "quick", "greedy": {"overall": block, "by_set": {"gretel": block}},
+             "by_look": {"one_query": block}, "vs": {"best": {"step": 0}},
+             "returned_dev": {"n": 50, "right": 11}}  # fmt: skip
+    e = feed.eval_block(quick)
+    g = e["greedy"]
+    assert (g["right"], g["first_right"], g["fixed"], g["broken"], g["decided"]) == (
+        98, 96, 7, 5, 0.52406)  # fmt: skip
+    assert (g["retry_empty_n"], g["loop_frac"], g["limit_frac"]) == (18, 0.07, None)
+    assert e["greedy_by_set"]["gretel"]["right"] == 98 and e["by_look"]["one_query"]["n"] == 200
+    assert "sampled" not in e and e["returned_dev"]["right"] == 11
+    sampled = {"questions": 195, "greedy_pass1": 0.52, "mean_at8": 0.476,
+               "pass_at_k": [0.476, 0.718], "always": 40, "sometimes": 100, "never": 55,
+               "hist": [1, 2]}  # fmt: skip
+    full = {**quick, "kind": "full", "sampled": {"overall": sampled, "by_set": {"gretel": sampled}},
+            "sampled_calls_mean": 1.636}  # fmt: skip
+    e = feed.eval_block(full)
+    assert e["sampled"]["pass_at_k"] == [0.476, 0.718] and "hist" not in e["sampled"]
+    assert e["sampled_by_set"]["gretel"]["mean_at8"] == 0.476
+    bare = feed.eval_block({"step": 5})  # nothing raises on a summary that lacks every block
+    assert bare["greedy"] is None and bare["greedy_by_set"] == {} and bare["vs"] == {}
+    assert feed.returned_brief({}) is None
+
+
+def test_feed_watch_is_the_last_step_and_the_five_step_means(tmp_path, monkeypatch):
+    from sqlrl.run2 import feed
+
+    _feed_run(tmp_path, monkeypatch, steps=7)
+    w = feed.write("r")["watch"]
+    assert (w["step"], w["mean5_steps"]) == (7, 5)
+    assert w["last"]["solve_rate"] == 0.57 and w["last"]["retry_empty_again"] == 0.75
+    assert w["mean5"]["solve_rate"] == pytest.approx(0.55)  # steps 3 to 7
+    assert w["mean5"]["returned_broken_frac"] is None  # not logged in this made-up run
+    assert feed.watch([]) == {}
