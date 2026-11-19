@@ -499,3 +499,55 @@ candidates whose reference returned no rows on the checker's graphs. By the desi
 table (D10) this reads "do not start RL". So, by the rule Rishi used for SQaLe, two more
 datasets fail on the evaluation set. **Nothing further was changed: what to do is open, and
 Rishi's** (the options are in the phase-0 results, section 9).
+
+## R17: run 2 trains on questions whose right result is nothing; text2cypher keeps one query (2026-11-19)
+
+**Rishi's call**, from three options (stop at step 30; turns for CypherBench only; fix the
+training questions): "Go with option C".
+
+**Why:** trained on the pool as it was, the model can only learn "nothing came back, so change
+the query until something does". The pool holds no question where nothing is the right result;
+the evaluation set does (13 of 50 gretel questions), and so does a real database, where an
+empty result is often the true answer.
+
+**What changes:**
+
+- **text2cypher keeps one query**, like SQaLe (`single_turn_sets: ["sqale", "text2cypher"]`).
+  31 of the evaluation set's 50 text2cypher prompts describe a graph with no relationships; a
+  look can only mislead there. Turns are now for gretel and CypherBench, the two datasets
+  where the model looks at real data: 20 of a step's 32 questions.
+- **The returned questions** (`pool-v2.returned.jsonl`, `pool.build_returned`): the 627 gretel
+  questions run 1's pool rejected because the reference's result says nothing, checked again;
+  604 kept. **3 of a step's 10 gretel questions** come from it (120 in 40 steps), a fixed
+  count so the stop rules' rates don't swing. Its last 50 are a second dev slice. The pool file
+  and its order are untouched, and the offset still counts run 1b's 10 gretel questions a step.
+- **A stricter reward for them** (`returned_guard`): the checker compares a gretel answer with
+  the reference on the dataset's own rows, and there every query that returns nothing equals a
+  reference that returns nothing. A returned question's answer is right only when the checker's
+  full SQL check also passes on filled copies of the schema. Measured on the second dev slice:
+  of 42 first answers the checker passes, the filled copies confirm 25 and reject 17. Without
+  the stricter reward 4 in 10 "right" answers there would be wrong queries that merely
+  returned nothing. Training and dev slices only: **the evaluation set's yardstick is
+  unchanged**, which also means its score on such questions was always this generous.
+- **Kept apart in the metrics:** the returned questions' solve, fixed and broken numbers beside
+  the other gretel questions' (`returned_*`, `gretel_other_*`).
+- **"The same query twice" means twice in a row.** Running the answer again after a look at
+  the data is what "the last query that ran is the answer" asks for.
+- **The evaluation's split:** greedy with turns is also reported for the questions with turns
+  whose reference says something on the copy the model looks at, for those where it says
+  nothing, and for the one-query questions.
+
+**Found while building, and Rishi's to weigh:**
+
+- **Three quarters of the returned questions have a database with no rows at all** (452 of
+  604; 10 of the evaluation set's 13). The dataset gave tables and no data. So what the model
+  mostly meets is "the tables are empty", not "the filter matches nothing". A rule that needs
+  no reference could treat these differently (nothing to look at: one query). Not built.
+- **A wording that says an empty result can be right did not help.** `keep`, tested on the two
+  dev slices by a rule set beforehand, broke more right answers on the returned slice (19
+  against 14). The run's prompt stays `turns`.
+- **The untrained start model breaks 14 of 25 right first answers on the returned slice.**
+  That is the number training has to lower; nothing before training lowers it.
+
+The numbers, and how they are read against D10's table: `results/run2-phase0.md`, section 10.
+**Run 2 is still not started.**

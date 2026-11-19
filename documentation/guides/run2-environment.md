@@ -46,9 +46,18 @@ turns fixed a wrong first answer and how often they broke a right one.
 
 Limits: 3 calls. A fourth is not run. No call at all is a malformed answer.
 
-**One dataset keeps the old protocol.** SQaLe questions get the original prompt and one query,
-and nothing is shown (decisions R16; why is under "Limits" below). Such an episode ends at its
-first call (`end` is `single`). The setting is `single_turn_sets`.
+**Two datasets keep the old protocol.** SQaLe and text2cypher questions get the original prompt
+and one query, and nothing is shown (decisions R16 and R17; why is under "Limits" below). Such
+an episode ends at its first call (`end` is `single`). The setting is `single_turn_sets`. Turns
+are for gretel and CypherBench, where the model looks at real data.
+
+**Some gretel questions have nothing as the right result.** Three of a step's ten gretel
+questions are "returned" ones: the reference's result on the dataset's own rows is empty, NULL
+or zero, often because the database has no rows at all. The model is not told which they are.
+They are there so it meets the case where nothing came back and the query was right (decisions
+R17). `pool.py` builds the file (`build-returned`), and `scoring.py` scores them more strictly:
+the answer must also match the reference on filled copies of the schema, because on an empty
+database every query "matches".
 
 ## The pieces
 
@@ -194,7 +203,8 @@ runs each dev-slice reference on its look-around copy and counts how often it re
   database a right query returns its rows. It also means run 2 can't teach or measure turns on
   SQaLe-like schemas (large, many tables).
 - The one-query rule goes by dataset, and real use has no dataset label. A deployment picks one
-  prompt: with turns (what three datasets train) or the original (what SQaLe trains).
+  prompt: with turns (what gretel and CypherBench train) or the original (what SQaLe and
+  text2cypher train).
 - **The pool keeps only questions whose reference's result says something** (rows with a value
   that is not NULL, zero or empty; for gretel on the dataset's own rows). So in training, and
   on the dev slice, an empty result always means a wrong query. In real use, and on the

@@ -6,24 +6,28 @@ the recommendations of the design page Rishi reviewed (D1 to D14), taken as a wh
 R15). What the no-training tests measured is in `results/run2-phase0.md`; how to run it is in
 `RUNBOOK.md`; the environment has its own guide, `guides/run2-environment.md`.
 
-**Status: built and tested, not started, and not ready to start.** The no-training test on the
-evaluation set (2026-11-19) landed in the "do not start RL" row of the design page's table: turns
-cost the untrained start model 4 points there, because a right query whose result says nothing
-gets rewritten, and the training pool holds no such question (`results/run2-phase0.md`,
-sections 7 to 9; section 3 below). What changes before a start is Rishi's choice.
+**Status: built and tested, not started. Rishi starts the run.** The first no-training test on
+the evaluation set (2026-11-19) landed in the "do not start RL" row of the design page's table:
+turns cost the untrained start model 4 points there, because a right query whose result says
+nothing gets rewritten, and the training pool held no such question. Rishi chose to fix the
+training questions (decisions R17; section 3 below). Under that setup the untrained start
+model scores the same with turns as on its first query (52.4%), gains 8 points where a look
+can inform (52.3% to 60.5%, nothing broken), and still breaks 7 of 10 right answers whose
+right result is nothing: the part training now has examples for
+(`results/run2-phase0.md`, section 10).
 
 ## 1. What changes from run 1b
 
 | | Run 1b | Run 2 |
 |---|---|---|
-| An answer | one query, never run in front of the model | up to 3 queries; the model reads each result; the last query that ran is the answer. SQaLe questions keep one query (section 3; decisions R16) |
+| An answer | one query, never run in front of the model | up to 3 queries; the model reads each result; the last query that ran is the answer. SQaLe and text2cypher questions keep one query (section 3; decisions R16, R17) |
 | Starts from | a new LoRA on the SFT model | run 1b's step-30 adapter, continued |
 | Drift is measured against | the SFT model | the start adapter, on first-turn tokens |
 | The penalty's weight | follows the drift (doubled up to 6.4) | fixed at 0.05 |
 | Reward | 1 / 0 / -0.1 | 1 - 0.03 x (calls - 1) when right, else 0 / -0.1 |
 | Self-distillation | the whole answer | the first turn only |
 | Headline score | greedy, one query | greedy with turns (the first query is reported beside it) |
-| Questions | pool steps 1-40 | the same pool from step 41 on; 200 held back as a dev slice |
+| Questions | pool steps 1-40 | the same pool from step 41 on, 200 held back as a dev slice; 3 of a step's 10 gretel questions are ones the pool had rejected because the right result is nothing (section 3), 50 of those held back as a second dev slice |
 | Code | `src/sqlrl/run1/` with a preset | `src/sqlrl/run2/`, self-contained |
 
 Unchanged: the datasets and the mix (10 CypherBench / 10 gretel / 8 SQaLe / 4 text2cypher a
@@ -102,23 +106,51 @@ So on SQaLe about a quarter of correct first queries would be shown `0 rows`. Th
 cases filter on a key value or on a constant the question doesn't spell out, which a fill built
 without the reference can't know.
 
-**SQaLe therefore keeps run 1's protocol** (`single_turn_sets: ["sqale"]`; decisions R16): the
-original prompt, one query, nothing shown. The no-training test on the dev slice showed the
-cost of turns there: on SQaLe they fixed 1 answer and broke 6 (three after `0 rows` for a right
-query, three after rows the model second-guessed), while on the other three datasets they fixed
-8 and broke 1. Rishi's call: SQaLe must not regress. What this means:
+**SQaLe therefore keeps run 1's protocol** (decisions R16): the original prompt, one query,
+nothing shown. The no-training test on the dev slice showed the cost of turns there: on SQaLe
+they fixed 1 answer and broke 6 (three after `0 rows` for a right query, three after rows the
+model second-guessed), while on the other three datasets they fixed 8 and broke 1. Rishi's
+call: SQaLe must not regress.
 
-- A SQaLe episode is run 1b's episode: one turn, reward 1 / 0 / -0.1, distilled as a whole
-  when it is wrong and a sibling is right. The first-turn penalty covers all of it.
-- The headline, greedy with turns, is three datasets with turns and SQaLe with one query.
+**text2cypher keeps one query too** (decisions R17; `single_turn_sets: ["sqale",
+"text2cypher"]`). 31 of the evaluation set's 50 text2cypher prompts describe a graph with no
+relationships and ask about paths; the look-around graph follows the schema, so the right
+answer is "no" or 0 and a look can only mislead. What the two mean:
+
+- A one-query episode is run 1b's episode: one turn, reward 1 / 0 / -0.1, distilled as a whole
+  when it is wrong and a sibling is right. The first-turn penalty covers all of it. It gets no
+  look-around database and doesn't wait for the graph.
+- **Turns are for gretel and CypherBench**, where the model looks at real data: 20 of a step's
+  32 questions, 160 of its 256 episodes. The headline, greedy with turns, is those two
+  datasets with turns and the other two with one query.
 - This is a limit of the environment, not of the model. Against a real database a right query
-  returns its rows. Run 2 can't teach or measure turns on SQaLe's kind of schema.
+  returns its rows. Run 2 can't teach or measure turns on the two random-fill datasets.
 - The rule goes by dataset, and real use has no dataset label: a deployment picks one prompt.
+
+**When nothing is the right result** (decisions R17). Run 1's pool keeps a question only when
+its reference's result says something, so on the pool an empty result always means a wrong
+query. On the evaluation set, and in real use, it is often the right result (13 of 50 gretel
+evaluation questions). Trained on the pool alone, the model can only learn "nothing came back:
+change the query until something does". So:
+
+- **The returned questions.** The 627 gretel questions the pool rejected for this are taken
+  back (`pool-v2.returned.jsonl`; 604 after a second check). Three of a step's ten gretel
+  questions come from that file, in its own order; its last 50 are a second dev slice. The
+  pool file is untouched, and the offset still counts run 1b's ten gretel questions a step.
+- **Their reward is stricter.** On the dataset's own rows every query that returns nothing
+  equals a reference that returns nothing, so the checker alone would pay "it showed nothing,
+  stop" whatever the query. A returned question's answer is right only when the checker's full
+  SQL check also passes on filled copies of the schema (`pool.strict_check`). On the second dev
+  slice the filled copies reject 17 of the 42 first answers the checker passes.
+- **The model never learns which questions these are.** They are gretel questions with gretel
+  ids; the mark stays on the scoring side (tested).
+- **Three quarters of them have a database with no rows at all** (452 of 604; 10 of the
+  evaluation set's 13): the dataset gave tables and no data.
 
 An evaluation records the protocol it was made under (`protocol.json`: the prompt variant, the
 call limit, the one-query datasets, the result format, and the version of the look-around
-data, `env.LOOK_VERSION`, which must be raised with any change to what the model is shown). Its episode file is never continued
-under another one, and the run refuses to start when the start adapter's reference evaluation
+data, `env.LOOK_VERSION`, which must be raised with any change to what the model is shown).
+Its episode file is never continued under another one, and the run refuses to start when the start adapter's reference evaluation
 was made under another one.
 
 **Read only, enforced by the engines.** SQLite: `query_only`, plus an authorizer that allows
@@ -154,7 +186,8 @@ wrong), and the first-try skill can be watched for free.
 |---|---|
 | Reading the answer off real rows and returning it as constants (`SELECT 'Alice', 42`) | `guards.hardcoded`: a final query that read no table (the SQLite authorizer reports this) or no graph pattern, or whose result columns are all literals, earns 0. Stop rule at 2% |
 | The same, hidden better (`SELECT 'Alice', (SELECT 42) FROM t`) | The canary `copied_frac`: final queries with a literal that appeared in an earlier result and nowhere in the prompt. Reading a value's spelling is legitimate, so it is watched against the run's own start (+5 points pauses) |
-| Seeing the reference's values in the look-around data | The fills are built without the reference. `look_leak_frac` counts random-fill episodes whose results show a reference literal that isn't in the prompt; above 5% pauses |
+| Seeing the reference's values in the look-around data | The fills are built without the reference. `look_leak_frac` counts random-fill episodes whose results show a reference literal that isn't in the prompt; above 5% pauses. (With both random-fill datasets on one query nothing from a fill is shown, so this reads nothing; it matters again if one of them gets turns) |
+| "It showed nothing, so stop" on a question whose right result is nothing | The stricter reward for returned questions (section 3): the query must also match the reference on filled copies. `returned_weak_only_frac` counts the answers only the checker passes |
 | Free information from many queries | 3 calls, the 0.03 cost, stop rules on calls an episode and on repeated queries |
 | Ending without an answer to dodge a wrong one | No query is -0.1, and the strict score counts it wrong |
 | Forging a turn through a result | Results are tokenised as plain text |
@@ -185,7 +218,9 @@ with the adapter merged in; the trainer reads the same adapter in bf16 and under
 adapter (decisions R7). So the two disagree a little even about the same policy. On 200
 episodes sampled from the start adapter (22,500 first-turn tokens), where the true drift is
 zero, the reading is **0.0099**; over batches of 32 episodes (one step's probe) it ranges from
-0.005 to 0.016, a standard deviation of 0.0035. The run subtracts 0.0099 (`kl.offset`). The
+0.005 to 0.016, a standard deviation of 0.0035. Measured again under the final protocol
+(text2cypher on one query): **0.0084**, 0.005 to 0.012, standard deviation 0.0021. The run
+subtracts 0.0084 (`kl.offset`). The
 0.05 bound is about 14 standard deviations above that, so it can be read.
 
 The design page's rule was "switch to merging the start adapter into a new base model if the
@@ -241,7 +276,7 @@ Any one pauses the run for a look. "The start" is the mean of run 2's own first 
 | The protocol | Episodes with no query above 5%, 3 steps |
 | | More than 2.0 calls an episode, 3 steps |
 | | Episodes trying a call too many: 15 points above the start, 3 steps |
-| | The same query twice in an episode: 10 points above the start, 3 steps |
+| | The same query twice in a row: 10 points above the start, 3 steps (the answer run again after a look at the data is not counted: the answer rule asks for it) |
 | | Episodes too long to train on above 5% |
 | The first-try skill | Right first answers a retry made wrong: 8 points above the start, 3 steps |
 | | The first query's solve rate 0.10 below the start, 3 steps |
@@ -255,7 +290,7 @@ a query twice, 6% of right first answers get broken). A fixed bound would pause 
 turns "the correct query should be ..." is the model talking about its own retry.
 
 The protocol rules, the broken-answer rule, copied literals and the look-around leak are
-counted over the episodes that had turns (192 of a step's 256). SQaLe's one-query
+counted over the episodes that had turns (160 of a step's 256). The one-query
 episodes can't retry, loop, copy or see a leak; counted in, they would make every such problem
 look a quarter smaller than the bound it is read against. The scores, the collapse rules, the
 drift and the constants rule count every episode.
@@ -279,6 +314,7 @@ CypherBench graphs. A finished run moves there as history; the kept adapter stay
    model, on step 26 and on the SFT model. Results: `results/run2-phase0.md`.
 2. **A loop test** (`run.py --smoke`): 2 steps of 8 questions from a reserve at the pool's tail.
 3. **Rishi reads Phase 0** against the design page's table (D10). Done 2026-11-19 for SQaLe
-   (one query: R16). The evaluation set then read "do not start RL" (the status note above);
-   what changes is his choice.
-4. **The run**: 40 steps, about 10 hours with evaluations. Not before step 3 is settled.
+   (one query: R16). The evaluation set then read "do not start RL"; he chose to fix the
+   training questions (R17), and the tests were run again under that setup
+   (`results/run2-phase0.md`, section 10).
+4. **The run**: 40 steps, about 10 hours with evaluations. When Rishi says go.

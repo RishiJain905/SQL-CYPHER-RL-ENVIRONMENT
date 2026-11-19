@@ -13,6 +13,10 @@ adapter merged into the SFT model, unless a row says otherwise.
   zero). The model breaks 9 of 25 such answers and 1 of 53 others. That case is a third of the
   evaluation set's right first answers and is absent from the pool, by the pool's own filter.
   Section 8. What to do about it is Rishi's choice (section 9).
+- **Rishi chose to fix the training questions** (decisions R17). Under that setup step 30
+  scores 52.4% with turns, the same as its first query; 60.5% against 52.3% where a look can
+  inform, with nothing broken; and it still breaks 7 of 10 right answers whose right result is
+  nothing, which training now has examples for. Section 10.
 
 ## 1. Checks
 
@@ -122,7 +126,9 @@ then scores the same tokens under the same adapter. The true drift is zero.
 | Later turns | 0.0057 |
 | Drift from the SFT model on the same tokens | 0.079 (run 1b's step 30: 0.078) |
 
-The run subtracts 0.0099. The 0.05 pause bound is about 14 standard deviations above it.
+The 0.05 pause bound is about 14 standard deviations above it. Measured again under the final
+protocol (section 10, text2cypher on one query): **0.0084** on 24,301 first-turn tokens, 0.005
+to 0.012 a batch, standard deviation 0.0021. The run subtracts 0.0084.
 
 ## 6. The update's memory, and a loop test
 
@@ -375,3 +381,82 @@ answers on the returned slice, and on the pool's dev slice loses no more than 2 
 broken and no more than 2 fixes after a result that says nothing. With 50 and 100 questions
 only a gap that size counts. The run's prompt stays `turns` unless Rishi takes the
 recommendation.
+
+### The results (step 30, no training, 2026-11-19)
+
+**The two dev slices, greedy.** The pool's slice counts its gretel and CypherBench questions
+(the ones with turns). On the returned slice "right" means the stricter check.
+
+| | First query right | With turns | Fixed | Broken | Calls an episode |
+|---|---|---|---|---|---|
+| Pool's dev slice, `turns` | 66 / 99 | 73 / 99 | 7 | 0 | 1.25 |
+| Pool's dev slice, `keep` | 67 / 99 | 71 / 99 | 5 | 1 | 1.24 |
+| Returned slice, `turns` | 25 / 50 | **11 / 50** | 0 | **14** (56%) | 2.02 |
+| Returned slice, `keep` | 24 / 50 | 5 / 50 | 0 | 19 (79%) | 2.12 |
+
+- **`keep` is not adopted.** It broke 5 more right answers on the returned slice, not 5 fewer.
+  Telling the model that an empty result can be right did not make it keep one. The run's
+  prompt stays `turns`.
+- **The baseline training has to lower: 14 of 25 right first answers broken on the returned
+  slice** (11 rewrote the query, 3 ran out of calls). By kind: 8 of 13 where the database has
+  no rows, 6 of 12 where it has rows the filter doesn't match.
+- **The reward hole, measured.** Of the 42 first answers the checker passes on the returned
+  slice, the filled copies confirm 25 and reject 17 (40%); of the 20 final answers it passes
+  they reject 9. Without the stricter reward 4 in 10 "right" answers would be queries that
+  merely returned nothing.
+- The whole pool's dev slice with this protocol: 114 / 198 on the first query, 121 / 198 with
+  turns (57.6% to 61.1%).
+
+**The evaluation set, the new start reference** (`phase0/heldout-step30`; gretel and CypherBench
+with turns, SQaLe and text2cypher with one query):
+
+| | First query | With turns | Fixed | Broken |
+|---|---|---|---|---|
+| **All 200** | 98 / 187 (52.4%) | **98 / 187 (52.4%)** | 7 | 7 |
+| With turns, the reference says something (87) | 45 / 86 (52.3%) | **52 / 86 (60.5%)** | 7 | 0 of 45 |
+| With turns, the reference says nothing (13 gretel) | 10 / 13 | 3 / 13 | 0 | 7 of 10 |
+| One query (100) | 43 / 88 (48.9%) | 43 / 88 | | |
+| CypherBench | 21 / 50 | 25 / 50 | 4 | 0 |
+| gretel | 34 / 49 | 30 / 49 | 3 | 7 |
+
+Strict count with turns: 49.0%. Against step 30's kept single-query evaluation, question by
+question: greedy 10 better, 14 worse (p 0.54). **With 8 samples: mean@8 47.6, pass@8 71.8**
+(kept: 43.4 and 67.5); the sampled sign test is 69 better, 41 worse (p 0.01), pass@8 14 gained,
+7 lost. By dataset (mean@8 / pass@8): CypherBench 46.8 / 76.0, gretel 63.8 / 88.0, SQaLe
+32.3 / 52.1, text2cypher 46.9 / 70.2.
+
+**Read by the rules set above:**
+
+| Number | Result | Reading |
+|---|---|---|
+| Evaluation questions with turns whose reference says something | net +7, 0 of 45 broken | D10's first row: a look helps where it can inform |
+| Pool's dev slice, gretel and CypherBench | fixed 7, broken 0 | As before |
+| Returned dev slice, broken | 14 of 25 (56%) | The baseline; training has to lower it |
+| Returned answers the checker passes that the filled copies reject | 17 of 42 (40%) | The stricter reward is needed |
+| Full evaluation score with turns | 52.4%, equal to the first query | Reported. All of the gap to the 60.5% above is the 13 questions whose right result is nothing |
+
+**One thing the returned questions showed, not built:** 10 of those 13 evaluation questions,
+and three quarters of the returned file, have a **database with no rows at all**. Six of the
+seven gretel breaks are on those ten. A rule that needs no reference ("a database with no rows
+gives one query: there is nothing to look at") would, on these same episodes, put step 30 at
+about 104 / 187 with turns (55.6%) with no training; this is an estimate that takes the first
+query as the one-query answer. It is a protocol change, so it is Rishi's.
+
+**The loop test under option C** (`smoke-5`, 2 steps, 8 questions x 8 episodes: 2 of each
+dataset, one gretel question a returned one):
+
+| | Step 1 | Step 2 |
+|---|---|---|
+| Episodes with turns / with one query | 32 / 32 | 32 / 32 |
+| Trained sequences, of them distilled | 48, 22 | 28, 13 |
+| Loss and gradient | finite; gradient norm 0.23 | finite; 0.16 |
+| The trainer's prompt against the server's, every dataset | equal | equal |
+| Returned question: right first query, right final answer | 8 of 8, 2 of 8 | 8 of 8, 0 of 8 |
+| Minutes, peak GPU memory | 4.0, 10.8 GB | 4.8, 13.2 GB |
+
+- The one-query episodes ran nothing and loaded no graph; nothing in the rollout file marks a
+  returned question.
+- The returned question shows the problem in miniature: every first query right, almost every
+  one rewritten.
+- Step 1's raw drift reading was 0.022 on its 8 probe episodes, so the offset was measured
+  again under this protocol: 0.0084 (section 5). A real step probes 32 episodes.

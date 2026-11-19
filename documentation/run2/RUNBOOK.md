@@ -6,11 +6,12 @@ Run 1b's runbook (`run1b/RUNBOOK.md`) is the model for this one; what differs is
 **Run 2 is not started by an agent on its own.** Rishi says when. Phase 0 and the loop test are
 done; their results are in `results/run2-phase0.md`.
 
-**As of 2026-11-19 the run is not ready to start.** On the evaluation set the untrained start
-model loses 4 points with turns (the "do not start RL" row of the design page's table), and
-what changes before a start is Rishi's choice (`results/run2-phase0.md`, section 9). If the
-look-around data or the protocol changes, raise `env.LOOK_VERSION` where it applies and make
-the start reference again; the run refuses a reference made under another protocol.
+**As of 2026-11-19 the setup is option C** (decisions R17): gretel and CypherBench with turns,
+SQaLe and text2cypher with one query, 3 of a step's 10 gretel questions from the returned
+file. Its no-training tests, its loop test and its start reference are done
+(`results/run2-phase0.md`, section 10). The go is still Rishi's. If the look-around data or
+the protocol changes, raise `env.LOOK_VERSION` where it applies and make the start reference
+again; the run refuses a reference made under another protocol.
 
 ## 0. Before starting
 
@@ -22,6 +23,7 @@ Run from the repo root on Windows. Stop and tell Rishi if a line fails and the f
 | Docker and the checker's Neo4j | `docker ps` | `asktrainer-neo4j` is up. It has no restart policy: after a reboot, `docker start asktrainer-neo4j` |
 | The start adapter | `<models>/run1b-step30/lora_state.safetensors` and `ema_state.safetensors` | both there |
 | The database scripts | `<data>/run2/pool-v2.db.jsonl`, `<data>/run2/evalset.db.jsonl` | both there (`python -m sqlrl.run2.pool build-db`, in WSL, rebuilds them) |
+| The returned questions | `<data>/run2/pool-v2.returned.jsonl` (604 lines) and `pool-v2.returned.db.jsonl` | both there. **Never rebuild the first one once a run has used it:** its order is what the steps count in |
 | The references | `<data>/run2/refs/run1b-eval-0030/`, `<data>/run2/phase0/heldout-step30/` (`summary.json` and `protocol.json`) | both there: the evaluations are compared with them. The run refuses to start when the second one is missing or was made under another protocol (another prompt, call limit or set of one-query datasets): `phase0.py heldout --samples 8` makes it again |
 | Tests | in WSL: `PYTHONPATH=src <venv>/bin/python -m pytest tests/run2 -q` | green |
 | No run named `run2` yet | `<data>/run2/run2/` | doesn't exist (if it does, this is a resume) |
@@ -43,9 +45,14 @@ scores. Settings come from `config.py` and are frozen into `<run>/config.json` w
 created; `--steps`, `--lr`, `--mix`, `--init-from`, `--prompt-variant` and `--single-turn`
 change them for a new run only.
 
-SQaLe questions keep run 1's protocol (one query, nothing shown; decisions R16), so a quarter of
-a step's episodes have one turn. `--single-turn none` gives every dataset turns; the start
-reference then has to be made again under that protocol.
+SQaLe and text2cypher questions keep run 1's protocol (one query, nothing shown; decisions R16,
+R17), so 12 of a step's 32 questions have one turn; gretel and CypherBench have turns.
+`--single-turn none` gives every dataset turns; the start reference then has to be made again
+under that protocol.
+
+Three of a step's ten gretel questions are **returned questions**: ones whose right result is
+nothing (decisions R17). They are scored more strictly (`design.md`, section 3) and reported
+apart.
 
 A loop test (2 steps of 8 questions from a reserve no real run uses, no evaluation):
 `run.py --run <name> --smoke`.
@@ -72,18 +79,20 @@ A loop test (2 steps of 8 questions from a reserve no real run uses, no evaluati
 | `fixed`, `broken`, `broken_frac` | fixed above broken | broken near fixed: turns aren't paying |
 | `informative_frac`, `distinct_final_mean` | about 0.4 to 0.6; several different final queries a group | both falling: the groups are collapsing onto one answer |
 | `entropy_t1`, `t1_tokens_median` | level | entropy falling for several steps |
-| `kl_start`, `kl_start_raw`, `kl_step1` | step 1's raw reading near 0.010 (0.005 to 0.016); `kl_start` (raw less the 0.0099 offset) within +-0.007 of 0 at first, then rising slowly | `kl_start` above 0.05 pauses the run; a step-1 raw reading above 0.025 pauses it |
+| `kl_start`, `kl_start_raw`, `kl_step1` | step 1's raw reading near 0.008 (0.005 to 0.012); `kl_start` (raw less the 0.0084 offset) within +-0.005 of 0 at first, then rising slowly | `kl_start` above 0.05 pauses the run; a step-1 raw reading above 0.025 pauses it |
 | `mismatch` | about 0.04 to 0.06 | above 0.10 pauses |
 | `hardcoded_frac`, `copied_frac`, `look_leak_frac` | 0, near 0, 0 | any rise. Read the episodes |
-| `loop_frac`, `limit_frac`, `broken_frac` | the untrained model's own level (about 0.08, 0.13 and 0.06 on the dev slice) and falling | rising: the model is learning to spend calls, not to fix |
+| `loop_frac`, `limit_frac`, `broken_frac` | the untrained model's own level and falling. `loop_frac` is the same query twice in a row; `rerun` in the scores also counts the answer run again after a look, which is fine | rising: the model is learning to spend calls, not to fix |
+| `returned_solve`, `returned_broken_frac`, `returned_calls_mean` beside `gretel_other_fixed`, `gretel_other_broken` | the returned questions start near 0.2 solved with over half of the right first answers broken (the untrained model on the second dev slice: 11 of 50, 14 of 25 broken, 2.0 calls); the other gretel questions fix more than they break | **this is what option C trains:** `returned_broken_frac` should fall while `gretel_other_fixed` holds. If the first falls because the model stopped retrying everywhere, `gretel_other_fixed` falls with it |
+| `returned_weak_only_frac` | about 0.4 to 0.5 untrained: answers the checker passes that the filled copies reject | rising toward 1: the model is ending on queries that merely return nothing. They earn 0, so it should not pay; read the episodes |
 | `grad_norm` | under the clip of 1.0 | at the clip for several steps (run 1b's sign that a penalty was driving) |
 | `look_error_frac` | 0 | a database that didn't build: read `look_error` in the episodes |
 | `step_s` | 9 to 14 minutes | twice that: something else is on the GPU, or Neo4j is slow |
 
 `calls_mean`, `calls`, `retry_after`, `fixed`, `broken`, `limit_frac`, `loop_frac`,
-`copied_frac` and `look_leak_frac` count only the episodes that had turns (three datasets, 192
-of a step's 256 episodes): SQaLe's one-query episodes can't retry, loop or copy, and would only
-make a problem look smaller. The scores, `informative_frac`, the entropy and `hardcoded_frac`
+`copied_frac` and `look_leak_frac` count only the episodes that had turns (gretel and
+CypherBench, 160 of a step's 256 episodes): one-query episodes can't retry, loop or copy, and
+would only make a problem look smaller. The scores, `informative_frac`, the entropy and `hardcoded_frac`
 count every episode.
 
 Read some episodes by hand every ten steps: the highest-reward ones, the ones a retry fixed,
@@ -129,7 +138,7 @@ and resume; stop and keep the best step).
 
 Two pauses have a known next step, still Rishi's to choose:
 
-- **"the drift reading at step 1 ... is above 0.025":** the offset was measured at 0.0099 on
+- **"the drift reading at step 1 ... is above 0.025":** the offset was measured at 0.0084 on
   the start adapter. A step-1 reading this far from it means the rollout model isn't the start
   adapter merged into the SFT model (check `merge.log` and `init_from`), or the offset has
   changed (`phase0.py offset` measures it again).

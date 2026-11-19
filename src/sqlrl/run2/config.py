@@ -108,12 +108,13 @@ DEFAULTS: dict[str, Any] = {
         "kl_beta": 0.0,
         "sdpo": {"top_k": 100, "ema": 0.05, "entropy_beta": 1.0, "turns": "first"},
         # `offset`: what the drift reading shows when the true drift is zero, measured on 200
-        # episodes of the start adapter (`phase0.py offset`: 0.0099, +-0.0035 a step)
+        # episodes of the start adapter under this protocol (`phase0.py offset`: 0.0084,
+        # +-0.0021 a step; 0.0099 before text2cypher went to one query)
         "kl": {
             "beta": 0.05,
             "top_k": 100,
             "turns": "first",
-            "offset": 0.0099,
+            "offset": 0.0084,
             "offset_for": "run1b-step30",
         },  # fmt: skip
     },
