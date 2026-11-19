@@ -224,6 +224,25 @@ Step 26 is the same (1 of 54, and 12 of 21); so is step 30 with thoughts strippe
 - **Shown nothing, it breaks a third to a half of them.** And 25 of the evaluation set's 78
   right first answers (32%) are shown nothing; on the dev slice 1 of 94 is.
 
+**The same evaluations, split by the reference instead of by the model's query.** A question is
+on the first line when its reference's result says something on the look-around copy (144 of
+200: CypherBench 50, gretel 37, SQaLe 39, text2cypher 18), on the second when it says nothing
+(56). Greedy:
+
+| | First query | With turns | Fixed | Broken | Step 30's kept single-query score |
+|---|---|---|---|---|---|
+| Step 30, the reference says something | 70 / 142 (49.3%) | **73 / 142 (51.4%)** | 4 | 1 | 72 / 142 (50.7%) |
+| Step 30, the reference says nothing | 29 / 47 (61.7%) | **18 / 47 (38.3%)** | 0 | 9 | 30 / 45 (66.7%) |
+| Step 26, says something | 72 / 141 (51.1%) | 75 / 140 (53.6%) | 4 | 1 | |
+| Step 26, says nothing | 24 / 44 (54.5%) | 13 / 49 (26.5%) | 1 | 12 | |
+| SFT, says something | 58 / 140 (41.4%) | 66 / 141 (46.8%) | 11 | 4 | |
+| SFT, says nothing | 12 / 46 (26.1%) | 6 / 53 (11.3%) | 1 | 7 | |
+
+Where a look can inform, turns add 2 to 5 points with no training, as on the dev slice (D10's
+first row: build as designed). All of the loss is on the 56 questions where the right result is
+nothing. Those questions also score far higher with one query (66.7% against 50.7%), which is
+the weak check described below, not an easier task.
+
 **Where the difference comes from: the pool's filter.** `run1/pool.py` keeps a training question
 only when its reference "can earn the reward": the checker must decide it, which needs a result
 that says something, and for gretel the reference's result on the dataset's own rows must say
