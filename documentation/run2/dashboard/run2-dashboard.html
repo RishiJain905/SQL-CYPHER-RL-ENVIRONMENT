@@ -1,0 +1,1862 @@
+<title>Spark RL Run 2</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: an instrument panel. A sticky status bar, a header with the run's state and the
+   numbers that matter, a short "what is different" panel, then ten panels of small charts in a
+   responsive grid. Same colours and type as the run 1b page; chart colours come from the
+   validated categorical set. */
+:root {
+  --bg: #F5F7F9;
+  --surface: #FFFFFF;
+  --surface-2: #EBEFF3;
+  --ink: #141D26;
+  --ink-2: #4A5866;
+  --muted: #647180;
+  --rule: #D5DCE3;
+  --grid: #E8ECF0;
+  --axis: #C3CCD5;
+  --accent: #0B7285;
+  --accent-bg: #E1F1F4;
+  /* chart series: categorical slots 1-4, validated on the surface */
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --s-other: #9AA6B2;
+  /* ordered split: never < sometimes < always */
+  --ord1: #86b6ef;
+  --ord2: #2a78d6;
+  --ord3: #0d366b;
+  /* status, always with an icon and words */
+  --bound: #d03b3b;
+  --ok: #006300;
+  --ok-bg: #E3F4E3;
+  --warn: #7A5200;
+  --warn-bg: #FFF1CF;
+  --bad: #A02323;
+  --bad-bg: #FBE2E2;
+  --neutral-bg: #E3E8ED;
+  --shadow: 0 4px 14px rgba(20, 29, 38, .16);
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141A; --surface: #151D25; --surface-2: #1C2630; --ink: #E4EBF1; --ink-2: #9AA9B7;
+    --muted: #8696A6; --rule: #2B3844; --grid: #212C37; --axis: #34424F;
+    --accent: #4DB8CC; --accent-bg: #12303A;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #5A6978;
+    --ord1: #184f95; --ord2: #3987e5; --ord3: #9ec5f4;
+    --bound: #e66767;
+    --ok: #5FD35F; --ok-bg: #123A12; --warn: #F0C04A; --warn-bg: #3A2E0C;
+    --bad: #F08A8A; --bad-bg: #3F1717; --neutral-bg: #232F3B;
+    --shadow: 0 4px 14px rgba(0, 0, 0, .55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141A; --surface: #151D25; --surface-2: #1C2630; --ink: #E4EBF1; --ink-2: #9AA9B7;
+  --muted: #8696A6; --rule: #2B3844; --grid: #212C37; --axis: #34424F;
+  --accent: #4DB8CC; --accent-bg: #12303A;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #5A6978;
+  --ord1: #184f95; --ord2: #3987e5; --ord3: #9ec5f4;
+  --bound: #e66767;
+  --ok: #5FD35F; --ok-bg: #123A12; --warn: #F0C04A; --warn-bg: #3A2E0C;
+  --bad: #F08A8A; --bad-bg: #3F1717; --neutral-bg: #232F3B;
+  --shadow: 0 4px 14px rgba(0, 0, 0, .55);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-padding-top: 64px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 14px/1.45 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+  -webkit-text-size-adjust: 100%;
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+  z-index: 40; background: var(--bg);
+}
+.wrap { max-width: 1280px; margin: 0 auto; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; }
+code, .mono { font-family: var(--mono); }
+code { font-size: .88em; background: var(--surface-2); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+button { font: inherit; color: inherit; }
+button:focus-visible, .chart:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px;
+}
+a { color: var(--accent); }
+
+/* sticky status bar */
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30;
+  background: var(--bg); border-bottom: 1px solid var(--rule);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 0;
+}
+.bar .name { font-weight: 600; }
+.bar .step { font: 500 13px var(--mono); white-space: nowrap; }
+.bar .prog { flex: 1 1 140px; min-width: 100px; }
+.bar .upd { font: 12px var(--sans); color: var(--ink-2); margin-left: auto; white-space: nowrap; }
+.bar .upd.stale { color: var(--warn); font-weight: 600; }
+
+.chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 var(--sans); letter-spacing: .05em;
+  text-transform: uppercase; padding: 5px 8px 5px 6px; border-radius: 3px; white-space: nowrap; }
+.chip svg { width: 12px; height: 12px; flex: none; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.neutral { background: var(--neutral-bg); color: var(--ink-2); }
+.chip.plain { background: transparent; border: 1px solid var(--rule); color: var(--ink-2); font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) { .chip.ok.live svg { animation: pulse 1.8s ease-in-out infinite; } }
+@keyframes pulse { 50% { opacity: .35; } }
+
+.meter { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; width: 0; transition: width .4s ease; }
+@media (prefers-reduced-motion: reduce) { .meter > i { transition: none; } }
+
+/* header */
+.hero { padding: 18px 0 6px; display: grid; gap: 14px; }
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+h1 { font: 600 clamp(26px, 5vw, 34px)/1.15 var(--sans); letter-spacing: -.015em; }
+.hero-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.hgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
+.hcell { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; min-width: 0; display: grid; gap: 4px; align-content: start; }
+.hcell .k { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.hcell .v { font: 600 17px/1.25 var(--sans); overflow-wrap: anywhere; }
+.hcell .s { font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+
+.banner { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--rule); font-size: 13.5px; }
+.banner svg { width: 16px; height: 16px; margin-top: 1px; }
+.banner.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.banner.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+.banner b { font-weight: 600; }
+.banner ul { margin: 2px 0 0; padding-left: 1.1em; }
+.banner li { overflow-wrap: anywhere; }
+
+/* the numbers that matter */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 330px) { .tiles { grid-template-columns: minmax(0, 1fr); } }
+.tile { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; display: grid; gap: 3px; min-width: 0; align-content: start; }
+.tile .k { font-size: 12px; color: var(--ink-2); }
+.tile .v { font: 600 24px/1.1 var(--sans); overflow-wrap: anywhere; }
+.tile .s { font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+.tile .chip { justify-self: start; margin-top: 3px; white-space: normal; }
+
+/* what is different in this run */
+details.diff { margin-top: 16px; background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 10px 14px; }
+details.diff > summary { cursor: pointer; font-weight: 600; font-size: 14.5px; }
+details.diff .body { display: grid; gap: 9px; margin: 10px 0 4px; max-width: 82ch; font-size: 13.5px; color: var(--ink-2); }
+details.diff .body b { color: var(--ink); font-weight: 600; }
+details.diff ol { margin: 0; padding-left: 1.3em; display: grid; gap: 4px; }
+
+/* filter row */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 14px 0 4px; }
+.filters .lbl { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin-right: 6px; }
+.seg { display: inline-flex; max-width: 100%; border: 1px solid var(--rule); border-radius: 5px; overflow-x: auto; overflow-y: hidden; background: var(--surface); }
+.seg button { flex: none; }
+.seg button { border: 0; background: transparent; padding: 6px 11px; cursor: pointer; font-size: 13px; color: var(--ink-2); border-right: 1px solid var(--rule); min-height: 32px; }
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--surface-2); }
+.seg button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-left: auto; font-size: 13px; }
+nav.toc a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule); }
+nav.toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+/* panels */
+section.panel { margin-top: 30px; }
+.panel > h2 { font: 600 19px/1.25 var(--sans); letter-spacing: -.005em; }
+.panel > .intro { color: var(--ink-2); max-width: 78ch; margin: 3px 0 12px; font-size: 13.5px; }
+.panel > .intro + .intro { margin-top: -6px; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: stretch; }
+.grid.sm { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
+.grid.md { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
+.grid + .grid, .grid + .rule-note, .rule-note + .grid, .rule-note + .rule-note { margin-top: 12px; }
+.subhead { font: 600 12px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin: 16px 0 8px; }
+.rule-note { font-size: 13px; color: var(--ink-2); max-width: 90ch; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 4px 4px 0; }
+.rule-note b { color: var(--ink); font-weight: 600; }
+
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px 8px; min-width: 0; display: flex; flex-direction: column; }
+.card .chart { margin-top: auto; padding-top: 4px; width: 100%; }
+.ch { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.ch { align-items: center; }
+.ch h3 { font: 600 13.5px/1.3 var(--sans); flex: 1 1 auto; }
+.ch .lat { order: 3; flex: 1 0 100%; font: 500 12px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; min-height: 1.3em; overflow-wrap: anywhere; }
+.ch .tb { border: 1px solid var(--rule); background: transparent; border-radius: 4px; font-size: 11.5px; padding: 2px 8px; color: var(--ink-2); cursor: pointer; min-height: 24px; }
+.ch .tb:hover { background: var(--surface-2); }
+.card .sub { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+.card .sub:empty { display: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 3px 14px; margin: 6px 0 0; font-size: 12px; color: var(--ink-2); }
+.legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--c, var(--s1)); }
+.sw.box { width: 10px; height: 10px; border: 0; background: var(--c); border-radius: 2px; }
+.sw.dot { width: 8px; height: 8px; border: 0; background: var(--c); border-radius: 50%; opacity: .6; }
+.sw.ring { width: 9px; height: 9px; border: 2px solid var(--c); background: var(--surface); border-radius: 50%; }
+.sw.bound { border-top: 2px dashed var(--bound); }
+.sw.ref { border-top: 2px dotted var(--muted); }
+.sw.refline { border-top: 2px dashed var(--muted); }
+.sw.best { width: 0; height: 12px; border-top: 0; border-left: 2px dotted var(--accent); }
+.chart { position: relative; margin-top: 4px; touch-action: pan-y; }
+.chart svg { display: block; max-width: 100%; }
+.chart .msg { display: grid; place-items: center; min-height: 110px; color: var(--muted); font-size: 12.5px; text-align: center; padding: 8px; }
+.chart.as-table { max-height: 270px; overflow: auto; border-top: 1px solid var(--rule); }
+.card .foot { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+.card .foot:empty { display: none; }
+.card .foot .warn { color: var(--warn); font-weight: 600; }
+
+/* a card with a number instead of a chart */
+.statbody { display: grid; gap: 8px; padding-top: 6px; }
+.statbody .big { font: 600 30px/1.1 var(--sans); font-variant-numeric: tabular-nums; }
+.statbody .scale { position: relative; height: 8px; background: var(--surface-2); border-radius: 4px; }
+.statbody .scale i { position: absolute; top: 0; left: 0; height: 100%; border-radius: 4px; background: var(--accent); }
+.statbody .scale b { position: absolute; top: -3px; width: 0; height: 14px; border-left: 2px dashed var(--bound); }
+.statbody .ticks { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); }
+.statbody .txt { font-size: 12.5px; color: var(--ink-2); }
+
+/* svg bits */
+.gl { stroke: var(--grid); stroke-width: 1; }
+.ax { stroke: var(--axis); stroke-width: 1; }
+.tk { fill: var(--muted); font: 10.5px var(--mono); }
+.hl { font: 500 10.5px var(--sans); fill: var(--ink-2); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.band { fill: var(--surface-2); opacity: .8; }
+.xl { stroke: var(--axis); stroke-width: 1; }
+.hm { stroke: var(--surface); stroke-width: 2; }
+.vl { stroke: var(--accent); stroke-width: 1.25; stroke-dasharray: 2 3; }
+.vlt { font: 600 10.5px var(--sans); fill: var(--accent); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.hot { fill: var(--surface-2); opacity: .9; }
+
+/* tooltip */
+.tip { position: absolute; z-index: 6; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); border-radius: 5px;
+  box-shadow: var(--shadow); padding: 6px 9px; font: 12px/1.4 var(--sans); min-width: 130px; max-width: 280px; top: 6px; }
+.tip .tt { font: 500 11px var(--mono); color: var(--ink-2); margin-bottom: 3px; }
+.tip .tr { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.tip .tr .k { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); min-width: 0; }
+.tip .tr b { font: 600 12px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tip .tr .sw { width: 12px; flex: none; }
+
+/* tables */
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+.tablewrap + .tablewrap, .tablewrap + .note { margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: middle; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+thead th { position: sticky; top: 0; background: var(--surface-2); font: 600 11px var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); z-index: 1; }
+td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td .d { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+td .chip { margin-left: 8px; }
+td .ln { display: block; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+td .ln i { font-style: normal; color: var(--muted); }
+tr.ref td { color: var(--ink-2); }
+tr.subrow td { background: var(--surface-2); font: 600 11px var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); white-space: normal; }
+.chart.as-table table { font-size: 12px; }
+.chart.as-table th, .chart.as-table td { padding: 4px 9px; }
+.splitbar { display: flex; height: 8px; width: 120px; border-radius: 4px; overflow: hidden; gap: 2px; background: transparent; }
+.splitbar i { display: block; height: 100%; min-width: 0; }
+.splitbar i:nth-child(1) { background: var(--ord1); }
+.splitbar i:nth-child(2) { background: var(--ord2); }
+.splitbar i:nth-child(3) { background: var(--ord3); }
+.evtools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 0 0 8px; font-size: 13px; }
+td.gatecol { background: var(--accent-bg); }
+th.gatecol { color: var(--accent); }
+
+/* events */
+.events { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; max-height: 420px; overflow: auto; }
+.ev { display: grid; grid-template-columns: 8.5em 4.8em 1fr; gap: 4px 10px; padding: 7px 12px; border-bottom: 1px solid var(--rule); align-items: baseline; }
+.ev:last-child { border-bottom: 0; }
+.ev .t { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.ev .x { overflow-wrap: anywhere; }
+.ev .x small { color: var(--muted); font: 11.5px var(--mono); margin-left: 6px; }
+.ev.warn { background: var(--warn-bg); }
+.ev.error { background: var(--bad-bg); }
+.ev .kd { font: 600 10.5px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.ev.warn .kd { color: var(--warn); }
+.ev.error .kd { color: var(--bad); }
+@media (max-width: 520px) { .ev { grid-template-columns: 1fr; } .ev .t, .ev .kd { display: inline; } }
+
+/* settings, empty and notes */
+details.cfg { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 12px; }
+details.cfg summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+dl.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 6px 18px; margin: 10px 0 2px; }
+dl.kv div { min-width: 0; }
+dl.kv dt { font: 600 11px var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
+dl.kv dd { margin: 0; font: 13px var(--mono); overflow-wrap: anywhere; }
+.empty { background: var(--surface); border: 1px dashed var(--axis); border-radius: 8px; padding: 22px 20px; display: grid; gap: 8px; margin-top: 18px; }
+.empty h2 { font: 600 18px var(--sans); }
+.empty p { color: var(--ink-2); max-width: 70ch; }
+.note { font-size: 12.5px; color: var(--ink-2); padding: 6px 0 0; }
+.note.warn { color: var(--warn); font-weight: 600; }
+footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 12.5px; color: var(--ink-2); max-width: 90ch; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 520px) {
+  body { font-size: 14px; }
+  .bar .upd { margin-left: 0; }
+  nav.toc { margin-left: 0; }
+}
+</style>
+
+<div class="wrap">
+
+<div class="bar" id="bar" aria-label="Run status">
+  <span class="name">Run 2</span>
+  <span id="bar-status"></span>
+  <span class="step" id="bar-step">no data yet</span>
+  <div class="prog"><div class="meter" role="progressbar" aria-label="Steps trained" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar-meter"><i id="bar-fill"></i></div></div>
+  <span class="upd" id="bar-upd"></span>
+</div>
+
+<header class="hero">
+  <div class="hero-top">
+    <h1>Run 2 dashboard</h1>
+    <span class="chip plain" id="feedname" hidden></span>
+  </div>
+  <div class="eyebrow">SQL + Cypher RL · stage B, up to 3 queries · SRPO · from run 1b's step 30 · live from the training log</div>
+  <div id="netnote" class="note" hidden></div>
+  <div id="banners" style="display:grid;gap:8px"></div>
+  <div class="hgrid" id="hgrid"></div>
+  <div class="tiles" id="tiles"></div>
+  <details class="cfg" id="cfg" hidden><summary>Run settings</summary><dl class="kv" id="cfgbody"></dl></details>
+</header>
+
+<details class="diff" id="diff" open>
+  <summary>What is different in this run</summary>
+  <div class="body">
+    <p><b>Run 2 lets the model look before it answers.</b> It may run up to 3 queries on a question,
+      sees each result, and its last query is its answer. It starts from run 1b's step 30.</p>
+    <p><b>The first test showed a problem.</b> With turns, the untrained model scored 4 points lower
+      on the evaluation set (52.4% to 48.1%). The cause: when a right query returns nothing (no
+      rows, NULL or zero), the model takes that for a mistake and rewrites it.</p>
+    <p><b>Option C, the setup this run uses, changes three things:</b></p>
+    <ol>
+      <li><b>Turns only where a look can help.</b> gretel and CypherBench have turns. SQaLe and
+        text2cypher keep one query, as in run 1b: their look-around data mostly shows nothing.</li>
+      <li><b>Questions whose right answer is nothing are back in training.</b> The question pool had
+        dropped them, so the model never practised them. Now 3 of every 10 gretel questions are
+        of this kind ("returned questions").</li>
+      <li><b>A stricter score for them.</b> On an empty database any query returns nothing, so the
+        usual check would pay for anything. These answers must also match on filled copies of
+        the same tables.</li>
+    </ol>
+    <p><b>Before training, with this setup:</b> 52.4% on the first query and 52.4% after the turns.
+      Where a look can inform, turns fixed 7 answers and broke none. Where the right result is
+      nothing, they broke 7 of 10 right answers. On 50 held-back returned questions the model has
+      25 right first and 11 after its turns.</p>
+    <p><b>What to watch:</b> the share of right answers broken on returned questions should fall,
+      while the other gretel questions are still fixed.</p>
+  </div>
+</details>
+
+<div class="empty" id="empty">
+  <h2>Waiting for the first feed</h2>
+  <p>Nothing has been pushed into this page's store yet. After every training step the watching agent writes the run's
+    <code>state</code>, <code>steps-n</code>, <code>evals</code> and <code>refs</code> files into it, and this page redraws on its own the moment they land.</p>
+  <p>Before the first step you will see the start references and the settings. After step 1 the rollout, turns, drift and canary charts fill in,
+    the stop bounds are drawn after step 5, and the first evaluation shows up after step 5.</p>
+</div>
+
+<div id="content">
+
+<div class="filters" role="group" aria-label="View options">
+  <span><span class="lbl">Steps shown</span><span class="seg" id="seg-range">
+    <button type="button" data-v="all" aria-pressed="true">All</button>
+    <button type="button" data-v="20" aria-pressed="false">Last 20</button>
+    <button type="button" data-v="10" aria-pressed="false">Last 10</button></span></span>
+  <span><span class="lbl">Charts as</span><span class="seg" id="seg-view">
+    <button type="button" data-v="charts" aria-pressed="true">Charts</button>
+    <button type="button" data-v="tables" aria-pressed="false">Tables</button></span></span>
+  <nav class="toc" aria-label="Panels">
+    <a href="#p-rollouts">Rollouts</a><a href="#p-turns">Turns</a><a href="#p-returned">Returned questions</a><a href="#p-drift">Drift</a><a href="#p-canaries">Canaries</a>
+    <a href="#p-evals">Evaluations</a><a href="#p-general">Generalising</a><a href="#p-optimizer">Optimizer</a><a href="#p-timing">Timing</a><a href="#p-events">Events</a>
+  </nav>
+</div>
+
+<section class="panel" id="p-rollouts"><h2>Rollouts</h2></section>
+<section class="panel" id="p-turns"><h2>Turns</h2></section>
+<section class="panel" id="p-returned"><h2>Returned questions: what option C trains</h2></section>
+<section class="panel" id="p-drift"><h2>Drift from the start adapter</h2></section>
+<section class="panel" id="p-canaries"><h2>Canaries</h2></section>
+<section class="panel" id="p-evals"><h2>Evaluations</h2></section>
+<section class="panel" id="p-general"><h2>Generalising or overfitting</h2></section>
+<section class="panel" id="p-optimizer"><h2>Optimizer</h2></section>
+<section class="panel" id="p-timing"><h2>Timing and memory</h2></section>
+<section class="panel" id="p-events"><h2>Events</h2></section>
+
+<footer>
+  Every series is a number from the run's own training log (the same values W&amp;B receives as <code>train/*</code>), written by
+  <code>scripts/run2/feed.py</code> after each step. Dashed red lines are the run's stop bounds; dotted grey lines are the start adapter's
+  numbers on the same yardstick (measured before the run); the dotted teal vertical line is the best evaluated step so far.
+  Rates about turns count only the episodes that had turns. Colours are validated for colour-blind readers; each chart has a table twin.
+</footer>
+
+</div>
+</div>
+
+
+<script>
+(function () {
+'use strict';
+
+/* ------------------------------------------------------------------ constants */
+var STORE = 'run2';
+var SETS = ['cypherbench', 'gretel', 'sqale', 'text2cypher'];
+var SET_NAME = { cypherbench: 'CypherBench', gretel: 'Gretel', sqale: 'SQaLe', text2cypher: 'Text2Cypher' };
+var ROLL = 5;
+var BASE_STEPS = 5;
+var CARD_GB = 16;
+
+var view = { range: 'all', tables: false, evalScope: 'overall' };
+var D = { state: null, rows: [], evals: [], refs: null, loaded: false };
+var cards = [];
+var dyn = [];
+var customs = [];
+
+/* ------------------------------------------------------------------ small helpers */
+function isNum(v) { return typeof v === 'number' && isFinite(v); }
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function avg(a) { var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return a.length ? s / a.length : null; }
+function $(sel, root) { return (root || document).querySelector(sel); }
+function h(tag, props) {
+  var e = document.createElement(tag);
+  if (props) Object.keys(props).forEach(function (k) {
+    var v = props[k];
+    if (v === false || v == null) return;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, '');
+    else e.setAttribute(k, v);
+  });
+  for (var i = 2; i < arguments.length; i++) append(e, arguments[i]);
+  return e;
+}
+function append(e, c) {
+  if (c == null || c === false) return;
+  if (Array.isArray(c)) { c.forEach(function (x) { append(e, x); }); return; }
+  e.append(c.nodeType ? c : document.createTextNode(String(c)));
+}
+function setText(id, t) { var e = document.getElementById(id); if (e) e.textContent = t; }
+/* a paragraph whose text is recomputed whenever the data changes (fn returns a string or nodes) */
+function dynP(cls, fn) { var p = h('p', { class: cls }); dyn.push({ el: p, fn: fn }); return p; }
+
+var F = {
+  pct: function (v) { return isNum(v) ? (v * 100).toFixed(1) + '%' : '–'; },
+  pct0: function (v) { return isNum(v) ? (v * 100).toFixed(0) + '%' : '–'; },
+  pctA: function (v) {
+    if (!isNum(v)) return '–';
+    var p = v * 100, a = Math.abs(p);
+    return (a >= 10 ? p.toFixed(1) : a >= 1 ? p.toFixed(2) : p.toFixed(3)) + '%';
+  },
+  d2: function (v) { return isNum(v) ? v.toFixed(2) : '–'; },
+  d3: function (v) { return isNum(v) ? v.toFixed(3) : '–'; },
+  d1: function (v) { return isNum(v) ? v.toFixed(1) : '–'; },
+  sig: function (v) { return isNum(v) ? (v === 0 ? '0' : String(Number(v.toPrecision(3)))) : '–'; },
+  sci: function (v) { return isNum(v) ? (v === 0 ? '0' : v.toExponential(1)) : '–'; },
+  int: function (v) { return isNum(v) ? Math.round(v).toLocaleString('en-US') : '–'; },
+  sec: function (v) { return isNum(v) ? v.toFixed(0) + ' s' : '–'; },
+  gb: function (v) { return isNum(v) ? v.toFixed(2) + ' GB' : '–'; },
+  signed: function (v, d) { return isNum(v) ? (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d == null ? 1 : d) : '–'; }
+};
+
+function niceScale(lo, hi, n) {
+  if (!(hi > lo)) hi = lo + 1;
+  var raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  var step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  var a = Math.floor(lo / step + 1e-9) * step, b = Math.ceil(hi / step - 1e-9) * step, ticks = [];
+  for (var v = a; v <= b + step * 1e-6; v += step) ticks.push(+v.toPrecision(12));
+  return { lo: a, hi: b, step: step, ticks: ticks };
+}
+function logCeil(v) {
+  var p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+function stepPathOf(pts) {
+  var d = '', prev = 0;
+  pts.forEach(function (p, i) {
+    d += (i ? 'L' + p[0].toFixed(1) + ' ' + prev.toFixed(1) + ' L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1) + ' ';
+    prev = p[1];
+  });
+  return d.trim();
+}
+function xTicks(x0, x1, max) {
+  var span = x1 - x0;
+  if (span <= 0) return [x0];
+  var opts = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000], st = 1000, i;
+  for (i = 0; i < opts.length; i++) { if (span / opts[i] <= max) { st = opts[i]; break; } }
+  var out = [], v = Math.ceil(x0 / st) * st;
+  if (v - x0 >= st * 0.6) out.push(x0);
+  for (; v <= x1; v += st) out.push(v);
+  return out;
+}
+function axisFmt(kind, step) {
+  if (kind === 'pct') { var ps = step * 100, dec = ps >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(ps) - 1e-9)); return function (v) { return (v * 100).toFixed(dec) + '%'; }; }
+  if (kind === 'sci') return function (v) { return v === 0 ? '0' : v.toExponential(0).replace('e-', 'e−'); };
+  if (kind === 'int') return function (v) { return Math.abs(v) >= 10000 ? (v / 1000).toFixed(0) + 'K' : Math.round(v).toLocaleString('en-US'); };
+  var d = step >= 1 ? 0 : Math.min(6, Math.ceil(-Math.log10(step) - 1e-9));
+  return function (v) { return v.toFixed(d); };
+}
+function pathOf(pts) { return pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' '); }
+
+function icon(name) {
+  var p = {
+    run: '<circle cx="6" cy="6" r="4.2" fill="currentColor"/>',
+    pause: '<rect x="2.2" y="1.6" width="2.8" height="8.8" rx=".6" fill="currentColor"/><rect x="7" y="1.6" width="2.8" height="8.8" rx=".6" fill="currentColor"/>',
+    fail: '<path d="M2.2 2.2l7.6 7.6M9.8 2.2l-7.6 7.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+    stop: '<rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1" fill="currentColor"/>',
+    done: '<path d="M2 6.4l2.6 2.6L10 3.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+    idle: '<circle cx="6" cy="6" r="3.8" stroke="currentColor" stroke-width="1.8" fill="none"/>',
+    warn: '<path d="M6 1.4L11 10.4H1z" fill="currentColor"/><rect x="5.3" y="4.4" width="1.4" height="3" fill="var(--surface)"/><rect x="5.3" y="8" width="1.4" height="1.2" fill="var(--surface)"/>',
+    ok: '<path d="M2 6.4l2.6 2.6L10 3.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+  }[name] || '';
+  return '<svg viewBox="0 0 12 12" aria-hidden="true">' + p + '</svg>';
+}
+function iconEl(name) { var t = document.createElement('span'); t.innerHTML = icon(name); return t.firstChild; }
+function chip(cls, ic, text, extra) {
+  var c = h('span', { class: 'chip ' + cls + (extra ? ' ' + extra : '') });
+  c.innerHTML = icon(ic);
+  c.append(document.createTextNode(text));
+  return c;
+}
+var STATUS = {
+  'running': ['ok', 'run', 'Running', 'live'], 'paused': ['warn', 'pause', 'Paused'], 'failed': ['bad', 'fail', 'Failed'],
+  'stopped': ['neutral', 'stop', 'Stopped'], 'done': ['ok', 'done', 'Done'], 'not started': ['neutral', 'idle', 'Not started'],
+  'dead': ['bad', 'fail', 'Dead']
+};
+
+/* ------------------------------------------------------------------ data layer */
+/* the store holds: state, steps-1 ... steps-4 (10 steps each), evals ({evals: [...]}), refs (never changes) */
+function derive(docs) {
+  var state = docs.state || null, map = {};
+  Object.keys(docs).forEach(function (id) {
+    if (!/^steps-\d+$/.test(id)) return;
+    var arr = docs[id] && docs[id].steps;
+    if (Array.isArray(arr)) arr.forEach(function (r) { if (r && isNum(r.step)) map[r.step] = r; });
+  });
+  var rows = Object.keys(map).map(Number).sort(function (a, b) { return a - b; }).map(function (k) { return map[k]; });
+  var evs = docs.evals && Array.isArray(docs.evals.evals) ? docs.evals.evals.filter(function (e) { return e && isNum(e.step); }) : [];
+  evs.sort(function (a, b) { return a.step - b.step; });
+  return { state: state, rows: rows, evals: evs, refs: docs.refs && typeof docs.refs === 'object' ? docs.refs : null, loaded: true };
+}
+function totalSteps() {
+  var s = D.state, n = (s && s.steps_total) || 0, last = D.rows.length ? D.rows[D.rows.length - 1].step : 0;
+  return Math.max(n, last, 2);
+}
+function stepNow() { return D.state && isNum(D.state.step_now) ? D.state.step_now : (D.rows.length ? D.rows[D.rows.length - 1].step : 0); }
+function stepDomain() {
+  var n = totalSteps(), now = Math.max(stepNow(), 1);
+  if (view.range === 'all') return [1, n];
+  var w = Number(view.range), lo = Math.max(1, now - w + 1), hi = Math.max(now, lo + 1);
+  return [lo, hi];
+}
+function cfgC() { return (D.state && D.state.config) || {}; }
+function cfgStop(k, d) { var s = cfgC().stop; return s && isNum(s[k]) ? s[k] : d; }
+function cfgNum(k, d) { var c = cfgC(); return isNum(c[k]) ? c[k] : d; }
+function bnd(key) { var b = D.state && D.state.bounds && D.state.bounds[key]; return b && typeof b === 'object' ? b : null; }
+function bndNum(key) { var b = bnd(key); return b && isNum(b.bound) ? b.bound : null; }
+function hasTurns(set) {
+  var one = cfgC().single_turn_sets;
+  if (!Array.isArray(one)) one = ['sqale', 'text2cypher'];
+  return one.indexOf(set) < 0;
+}
+function shape() {
+  var s = (D.state && D.state.shape) || {}, c = cfgC();
+  var g = isNum(s.group_size) ? s.group_size : isNum(c.group_size) ? c.group_size : 8;
+  var q = isNum(s.questions) ? s.questions : 32, wt = isNum(s.with_turns) ? s.with_turns : 20;
+  return { questions: q, with_turns: wt, one_query: isNum(s.one_query) ? s.one_query : q - wt, returned: isNum(s.returned) ? s.returned : 3, group: g };
+}
+/* the reference blocks, written before the run on the start adapter */
+function startEval() { return D.refs && D.refs.start && D.refs.start.greedy ? D.refs.start : null; }
+function startG() { var s = startEval(); return s ? s.greedy : null; }
+function oneQ() { return D.refs && D.refs.single_turn && D.refs.single_turn.overall ? D.refs.single_turn : null; }
+function retStart() { return D.refs && D.refs.returned_start ? D.refs.returned_start : null; }
+function bestStep() { var b = D.state && D.state.best; return b && isNum(b.step) ? b.step : null; }
+function lastEval() { return D.evals.length ? D.evals[D.evals.length - 1] : null; }
+function firstFloor() { return cfgNum('first_floor', 0.515); }
+function listSteps(a) { return a.join(', '); }
+function evalStepList() {
+  var c = cfgC(), q = Array.isArray(c.quick_eval_steps) ? c.quick_eval_steps : [], f = Array.isArray(c.eval_steps) ? c.eval_steps : [];
+  var all = {}; q.concat(f).forEach(function (x) { if (isNum(x)) all[x] = 1; });
+  return Object.keys(all).map(Number).sort(function (a, b) { return a - b; });
+}
+/* the step the next (or first) evaluation comes after */
+function firstEvalStep() {
+  var all = evalStepList(), done = {}; D.evals.forEach(function (e) { done[e.step] = 1; });
+  var now = stepNow(), nx = all.filter(function (e) { return e >= now && !done[e]; });
+  return nx.length ? nx[0] : (all.length ? all[0] : 5);
+}
+function baseMean(key) {
+  if (D.rows.length <= BASE_STEPS) return null;
+  var v = D.rows.slice(0, BASE_STEPS).map(function (r) { return r[key]; }).filter(isNum);
+  return v.length ? avg(v) : null;
+}
+function seriesOf(key, o) {
+  o = o || {};
+  var raw = [], roll = o.roll ? [] : null, win = [];
+  D.rows.forEach(function (r) {
+    var v = r[key];
+    if (isNum(v)) raw.push({ x: r.step, y: v });
+    if (roll) {
+      win.push(isNum(v) ? v : null); if (win.length > ROLL) win.shift();
+      var vs = win.filter(isNum);
+      if (isNum(v) && vs.length) roll.push({ x: r.step, y: avg(vs) });
+    }
+  });
+  return { label: o.label || key, short: o.short || o.label || key, color: o.color || 'var(--s1)', data: raw, roll: roll, fmt: o.fmt, dash: o.dash };
+}
+function lastPt(a) { return a && a.length ? a[a.length - 1] : null; }
+function gblk(e) { return e && e.greedy ? e.greedy : null; }
+function pass8(b) { return b && Array.isArray(b.pass_at_k) && b.pass_at_k.length ? b.pass_at_k[b.pass_at_k.length - 1] : null; }
+
+/* ------------------------------------------------------------------ chart: line / dots */
+function legendEl(items) {
+  return h('div', { class: 'legend' }, items.map(function (it) {
+    var sw = h('i', { class: 'sw ' + (it.kind || 'line') });
+    sw.style.setProperty('--c', it.color || 'var(--s1)');
+    return h('span', { class: 'lg' }, sw, it.label);
+  }));
+}
+function keyEl(color, kind) { var i = h('i', { class: 'sw ' + (kind || 'line') }); i.style.setProperty('--c', color); return i; }
+
+function placeTip(tip, host, px, W) {
+  var tw = tip.offsetWidth, left = px + 14;
+  if (left + tw > W - 2) left = px - 14 - tw;
+  tip.style.left = Math.max(2, left) + 'px';
+}
+
+function renderLine(host, spec, card) {
+  var W = Math.max(200, Math.floor(host.clientWidth) || 300), H = spec.h || 172;
+  var m = { l: spec.ml || 44, r: 14, t: 12, b: 24 }, pw = W - m.l - m.r, ph = H - m.t - m.b, PAD = 8;
+  var x0 = spec.x[0], x1 = spec.x[1];
+  function px(x) { return m.l + PAD + (x1 === x0 ? (pw - 2 * PAD) / 2 : (x - x0) / (x1 - x0) * (pw - 2 * PAD)); }
+  function vis(arr) { return (arr || []).filter(function (p) { return p.x >= x0 && p.x <= x1; }); }
+
+  var ys = [];
+  spec.series.forEach(function (s) { if (s.noPlot) return; vis(s.data).forEach(function (p) { ys.push(p.y); }); vis(s.roll).forEach(function (p) { ys.push(p.y); }); });
+  (spec.hlines || []).forEach(function (l) { if (isNum(l.y) && !l.noscale) ys.push(l.y); });
+  var sc, ylo, yhi, py, yf;
+  var lo = ys.length ? Math.min.apply(null, ys) : 0, hi = ys.length ? Math.max.apply(null, ys) : 1;
+  if (spec.zero !== false) lo = Math.min(lo, 0);
+  if (!(hi > lo)) hi = lo + (Math.abs(lo) || 1) * 0.2;
+  var padY = (hi - lo) * 0.06, dataHi = hi;
+  if (spec.zero === false) lo -= padY;
+  hi += padY;
+  if (spec.ymax != null) hi = Math.max(hi, spec.ymax);
+  if (spec.axis === 'pct' && dataHi <= 1) hi = Math.min(hi, 1); /* a share never needs an axis above 100% */
+  sc = niceScale(lo, hi, 4); ylo = sc.lo; yhi = sc.hi;
+  py = function (y) { return m.t + ph - (y - ylo) / (yhi - ylo) * ph; };
+  yf = axisFmt(spec.axis || 'num', sc.step);
+
+  var g = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">';
+  (spec.bands || []).forEach(function (b) {
+    var a = Math.max(b.x0, x0), z = Math.min(b.x1, x1);
+    if (z < a) return;
+    var xa = px(a) - 4, xz = px(z) + 4;
+    g += '<rect class="band" x="' + xa.toFixed(1) + '" y="' + m.t + '" width="' + (xz - xa).toFixed(1) + '" height="' + ph + '"/>';
+    g += '<text class="tk" x="' + (xa + 3).toFixed(1) + '" y="' + (m.t + 10) + '">' + esc(b.label) + '</text>';
+  });
+  sc.ticks.forEach(function (t) {
+    var y = py(t);
+    g += '<line class="' + (Math.abs(t - ylo) < 1e-12 ? 'ax' : 'gl') + '" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>';
+    g += '<text class="tk" x="' + (m.l - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end">' + esc(yf(t)) + '</text>';
+  });
+  xTicks(x0, x1, Math.max(2, Math.floor(pw / 58))).forEach(function (t) {
+    g += '<text class="tk" x="' + px(t).toFixed(1) + '" y="' + (H - 7) + '" text-anchor="middle">' + esc((spec.xTick || String)(t)) + '</text>';
+  });
+  (spec.vlines || []).forEach(function (l) {
+    if (l.x < x0 || l.x > x1) return;
+    var X = px(l.x), right = X > W - m.r - 80;
+    g += '<line class="vl" x1="' + X.toFixed(1) + '" x2="' + X.toFixed(1) + '" y1="' + m.t + '" y2="' + (m.t + ph) + '"/>';
+    g += '<text class="vlt" x="' + (right ? X - 4 : X + 4).toFixed(1) + '" y="' + (m.t + 10) + '" text-anchor="' + (right ? 'end' : 'start') + '">' + esc(l.label) + '</text>';
+  });
+  (spec.hlines || []).forEach(function (l) {
+    if (!isNum(l.y) || l.y < ylo || l.y > yhi) return;
+    var y = py(l.y);
+    var st = l.kind === 'bound' ? 'stroke:var(--bound);stroke-width:1.25;stroke-dasharray:5 3'
+      : 'stroke:var(--muted);stroke-width:1.25;stroke-dasharray:1.5 3';
+    g += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" style="' + st + '"/>';
+    var ty = (y - 4 < m.t + 6) ? y + 12 : y - 4;
+    if (l.below) ty = y + 12;
+    g += '<text class="hl" x="' + (W - m.r - 3) + '" y="' + ty.toFixed(1) + '" text-anchor="end">' + esc(l.label) + '</text>';
+  });
+
+  var all = {};
+  spec.series.forEach(function (s, si) {
+    var col = s.color, dx = s.dx || 0, dash = s.dash ? ' stroke-dasharray="' + s.dash + '"' : '';
+    var d = vis(s.data), r = vis(s.roll), lw = s.refline ? 1.75 : 2, pathF = s.stepLine ? stepPathOf : pathOf;
+    d.forEach(function (p) { all[p.x] = 1; });
+    if (s.noPlot) return;
+    if (s.roll) {
+      r.forEach(function (p) { all[p.x] = 1; });
+      d.forEach(function (p) { g += '<circle cx="' + (px(p.x) + dx).toFixed(1) + '" cy="' + py(p.y).toFixed(1) + '" r="2.6" fill="' + col + '" opacity=".42"/>'; });
+      if (r.length > 1) g += '<path d="' + pathOf(r.map(function (p) { return [px(p.x) + dx, py(p.y)]; })) + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"' + dash + '/>';
+      var e = lastPt(r);
+      if (e) g += '<circle cx="' + (px(e.x) + dx).toFixed(1) + '" cy="' + py(e.y).toFixed(1) + '" r="4" fill="' + col + '" stroke="var(--surface)" stroke-width="2"/>';
+    } else if (s.mark === 'pts') {
+      if (s.join && d.length > 1) g += '<path d="' + pathOf(d.map(function (p) { return [px(p.x) + dx, py(p.y)]; })) + '" fill="none" stroke="' + col + '" stroke-width="' + lw + '" stroke-linejoin="round" stroke-linecap="round"' + dash + '/>';
+      d.forEach(function (p) {
+        var cx = (px(p.x) + dx).toFixed(1), cy = py(p.y).toFixed(1);
+        if (s.shape === 'sq') g += '<rect x="' + (+cx - 4).toFixed(1) + '" y="' + (+cy - 4).toFixed(1) + '" width="8" height="8" rx="1" fill="' + col + '" fill-opacity=".3" stroke="' + col + '" stroke-width="1.75"/>';
+        else g += s.hollow ? '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="var(--surface)" stroke="' + col + '" stroke-width="2"/>'
+                           : '<circle cx="' + cx + '" cy="' + cy + '" r="4.5" fill="' + col + '" stroke="var(--surface)" stroke-width="2"/>';
+      });
+    } else {
+      if (d.length > 1) g += '<path d="' + pathF(d.map(function (p) { return [px(p.x) + dx, py(p.y)]; })) + '" fill="none" stroke="' + col + '" stroke-width="' + lw + '" stroke-linejoin="round" stroke-linecap="round"' + dash + '/>';
+      var e2 = lastPt(d);
+      if (e2 && !s.noEnd) g += '<circle cx="' + (px(e2.x) + dx).toFixed(1) + '" cy="' + py(e2.y).toFixed(1) + '" r="4" fill="' + col + '" stroke="var(--surface)" stroke-width="2"/>';
+    }
+  });
+  g += '<line class="xl" y1="' + m.t + '" y2="' + (m.t + ph) + '" style="display:none"/>';
+  spec.series.forEach(function (s, i) { g += '<circle class="hm" data-i="' + i + '" r="5" fill="' + s.color + '" style="display:none"/>'; });
+  g += '<rect class="ov" x="' + m.l + '" y="' + m.t + '" width="' + pw + '" height="' + ph + '" fill="transparent"/></svg>';
+  host.innerHTML = g;
+  host.style.minHeight = H + 'px';
+
+  var xs = Object.keys(all).map(Number).sort(function (a, b) { return a - b; });
+  if (!xs.length) return;
+  var maps = spec.series.map(function (s) {
+    var mm = {}; (s.data || []).forEach(function (p) { mm[p.x] = { y: p.y }; });
+    (s.roll || []).forEach(function (p) { if (!mm[p.x]) mm[p.x] = {}; mm[p.x].r = p.y; });
+    return mm;
+  });
+  var xl = $('line.xl', host), dots = host.querySelectorAll('.hm'), ov = $('rect.ov', host), tip = null, cur = -1;
+  function hide() { xl.style.display = 'none'; dots.forEach(function (d) { d.style.display = 'none'; }); if (tip) { tip.remove(); tip = null; } cur = -1; }
+  function show(i) {
+    i = Math.max(0, Math.min(xs.length - 1, i)); cur = i;
+    var x = xs[i], X = px(x);
+    xl.setAttribute('x1', X); xl.setAttribute('x2', X); xl.style.display = '';
+    if (tip) tip.remove();
+    tip = h('div', { class: 'tip', role: 'status' }, h('div', { class: 'tt', text: (spec.xLabel || function (v) { return 'step ' + v; })(x) }));
+    spec.series.forEach(function (s, si) {
+      var p = maps[si][x], dot = dots[si];
+      if (!p) { dot.style.display = 'none'; return; }
+      var main = isNum(p.r) ? p.r : p.y;
+      if (s.noPlot) dot.style.display = 'none';
+      else { dot.setAttribute('cx', X + (s.dx || 0)); dot.setAttribute('cy', py(main)); dot.style.display = ''; }
+      if (s.tip === false) return;
+      var f = s.fmt || spec.fmt || F.sig, txt = isNum(p.y) ? f(p.y) : '';
+      if (isNum(p.r)) txt = (isNum(p.y) ? f(p.y) : '') + '  ·  avg5 ' + f(p.r);
+      tip.append(h('div', { class: 'tr' }, h('span', { class: 'k' }, s.noPlot ? null : keyEl(s.color, s.hollow ? 'ring' : s.refline ? 'refline' : 'line'), s.label), h('b', { text: txt })));
+    });
+    host.append(tip);
+    placeTip(tip, host, X, W);
+  }
+  function nearest(clientX) {
+    var rect = host.getBoundingClientRect(), x = clientX - rect.left, best = 0, bd = 1e9;
+    for (var i = 0; i < xs.length; i++) { var dd = Math.abs(px(xs[i]) - x); if (dd < bd) { bd = dd; best = i; } }
+    return best;
+  }
+  ov.addEventListener('pointermove', function (e) { show(nearest(e.clientX)); });
+  ov.addEventListener('pointerdown', function (e) { show(nearest(e.clientX)); });
+  ov.addEventListener('pointerleave', hide);
+  host.onkeydown = function (e) {
+    if (e.key === 'ArrowLeft') { show(cur < 0 ? xs.length - 1 : cur - 1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { show(cur < 0 ? xs.length - 1 : cur + 1); e.preventDefault(); }
+    else if (e.key === 'Home') { show(0); e.preventDefault(); }
+    else if (e.key === 'End') { show(xs.length - 1); e.preventDefault(); }
+    else if (e.key === 'Escape') hide();
+  };
+  host.onblur = hide;
+}
+
+/* ------------------------------------------------------------------ chart: stacked columns */
+function renderStack(host, spec) {
+  var W = Math.max(200, Math.floor(host.clientWidth) || 300), H = spec.h || 190;
+  var m = { l: 44, r: 14, t: 12, b: 24 }, pw = W - m.l - m.r, ph = H - m.t - m.b, PAD = 8;
+  var x0 = spec.x[0], x1 = spec.x[1], n = x1 - x0 + 1, slot = (pw - 2 * PAD) / n;
+  var cols = spec.cols.filter(function (c) { return c.x >= x0 && c.x <= x1; });
+  var mx = 0; cols.forEach(function (c) { mx = Math.max(mx, c.total); });
+  var segF = spec.segFmt || F.sec;
+  var sc = niceScale(0, spec.ymax != null ? spec.ymax : mx * 1.05 || 1, 4), yhi = sc.hi, yf = axisFmt(spec.axis || 'int', sc.step);
+  function py(y) { return m.t + ph - y / yhi * ph; }
+  function cx(x) { return m.l + PAD + (x - x0 + 0.5) * slot; }
+  var gap = slot >= 7 ? 2 : 1, bw = Math.max(1.5, Math.min(24, slot - gap));
+  var g = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">';
+  sc.ticks.forEach(function (t) {
+    var y = py(t);
+    g += '<line class="' + (t === 0 ? 'ax' : 'gl') + '" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>';
+    g += '<text class="tk" x="' + (m.l - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end">' + esc(yf(t)) + '</text>';
+  });
+  xTicks(x0, x1, Math.max(2, Math.floor(pw / 58))).forEach(function (t) {
+    g += '<text class="tk" x="' + cx(t).toFixed(1) + '" y="' + (H - 7) + '" text-anchor="middle">' + t + '</text>';
+  });
+  g += '<rect class="hot" y="' + m.t + '" height="' + ph + '" width="' + Math.max(slot, 2).toFixed(1) + '" style="display:none"/>';
+  cols.forEach(function (c) {
+    var acc = 0, left = cx(c.x) - bw / 2;
+    c.segs.forEach(function (v, i) {
+      if (!(v > 0)) return;
+      var y1 = py(acc + v), y0 = py(acc), hh = y0 - y1;
+      var dh = hh > 3 ? 1 : 0;
+      g += '<rect x="' + left.toFixed(1) + '" y="' + (y1 + dh / 2).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(0.5, hh - dh).toFixed(1) + '" fill="' + spec.segs[i].color + '"' + (bw >= 5 ? ' rx="1.2"' : '') + '/>';
+      acc += v;
+    });
+  });
+  if (spec.hlines) spec.hlines.forEach(function (l) {
+    if (l.y > yhi) return; var y = py(l.y);
+    g += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" style="stroke:var(--muted);stroke-width:1.25;stroke-dasharray:1.5 3"/>';
+    g += '<text class="hl" x="' + (W - m.r - 3) + '" y="' + (y - 4).toFixed(1) + '" text-anchor="end">' + esc(l.label) + '</text>';
+  });
+  g += '<rect class="ov" x="' + m.l + '" y="' + m.t + '" width="' + pw + '" height="' + ph + '" fill="transparent"/></svg>';
+  host.innerHTML = g;
+  host.style.minHeight = H + 'px';
+  if (!cols.length) return;
+  var hot = $('rect.hot', host), ov = $('rect.ov', host), tip = null, cur = -1;
+  function hide() { hot.style.display = 'none'; if (tip) { tip.remove(); tip = null; } cur = -1; }
+  function show(i) {
+    i = Math.max(0, Math.min(cols.length - 1, i)); cur = i;
+    var c = cols[i], X = cx(c.x);
+    hot.setAttribute('x', (X - Math.max(slot, 2) / 2).toFixed(1)); hot.style.display = '';
+    if (tip) tip.remove();
+    tip = h('div', { class: 'tip', role: 'status' }, h('div', { class: 'tt', text: 'step ' + c.x }));
+    for (var k = c.segs.length - 1; k >= 0; k--) {
+      tip.append(h('div', { class: 'tr' }, h('span', { class: 'k' }, keyEl(spec.segs[k].color, 'box'), spec.segs[k].label), h('b', { text: segF(c.segs[k]) })));
+    }
+    if (!spec.noTotal) tip.append(h('div', { class: 'tr' }, h('span', { class: 'k' }, 'step total'), h('b', { text: segF(c.total) })));
+    if (spec.tipExtra) { var xt = spec.tipExtra(c); if (xt) tip.append(h('div', { class: 'tr' }, h('span', { class: 'k' }, xt[0]), h('b', { text: xt[1] }))); }
+    host.append(tip); placeTip(tip, host, X, W);
+  }
+  function nearest(clientX) {
+    var rect = host.getBoundingClientRect(), x = clientX - rect.left, best = 0, bd = 1e9;
+    for (var i = 0; i < cols.length; i++) { var dd = Math.abs(cx(cols[i].x) - x); if (dd < bd) { bd = dd; best = i; } }
+    return best;
+  }
+  ov.addEventListener('pointermove', function (e) { show(nearest(e.clientX)); });
+  ov.addEventListener('pointerdown', function (e) { show(nearest(e.clientX)); });
+  ov.addEventListener('pointerleave', hide);
+  host.onkeydown = function (e) {
+    if (e.key === 'ArrowLeft') { show(cur < 0 ? cols.length - 1 : cur - 1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { show(cur < 0 ? cols.length - 1 : cur + 1); e.preventDefault(); }
+    else if (e.key === 'Escape') hide();
+  };
+  host.onblur = hide;
+}
+
+/* ------------------------------------------------------------------ table twin */
+function renderTable(host, spec) {
+  host.style.minHeight = '';
+  var cols = [], xsAll = {};
+  if (spec.type === 'stack') {
+    var sf = spec.segFmt || F.sec;
+    cols = spec.segs.map(function (s) { return s.label; }).concat(spec.noTotal ? [] : ['total']);
+    spec.cols.forEach(function (c) { xsAll[c.x] = c.segs.map(sf).concat(spec.noTotal ? [] : [sf(c.total)]); });
+  } else {
+    spec.series.forEach(function (s) {
+      var f = s.fmt || spec.fmt || F.sig;
+      if (s.tip === false) return;
+      cols.push(s.label);
+      (s.data || []).forEach(function (p) { (xsAll[p.x] = xsAll[p.x] || {})[s.label] = f(p.y); });
+      if (s.roll) {
+        cols.push(s.label + ' · avg5');
+        (s.roll || []).forEach(function (p) { (xsAll[p.x] = xsAll[p.x] || {})[s.label + ' · avg5'] = f(p.y); });
+      }
+    });
+  }
+  var xs = Object.keys(xsAll).map(Number).sort(function (a, b) { return b - a; });
+  var head = h('tr', null, h('th', { class: 'n' }, (spec.xName || 'step')));
+  cols.forEach(function (c) { head.append(h('th', { class: 'n', text: c })); });
+  var tb = h('tbody');
+  xs.forEach(function (x) {
+    var row = h('tr', null, h('td', { class: 'n', text: (spec.xLabelShort || String)(x) }));
+    cols.forEach(function (c, i) {
+      var v = spec.type === 'stack' ? xsAll[x][i] : xsAll[x][c];
+      row.append(h('td', { class: 'n', text: v == null ? '–' : v }));
+    });
+    tb.append(row);
+  });
+  var bl = (spec.hlines || []).map(function (l) { return l.label; });
+  host.append(h('table', null, h('thead', null, head), tb));
+  if (bl.length) host.append(h('div', { class: 'note', text: 'Drawn on the chart: ' + bl.join(' · ') }));
+}
+
+/* ------------------------------------------------------------------ cards */
+function makeCard(o) {
+  var root = h('section', { class: 'card' });
+  var lat = h('span', { class: 'lat' });
+  var btn = h('button', { class: 'tb', type: 'button', 'aria-pressed': 'false' }, 'Table');
+  var chart = h('div', { class: 'chart', tabindex: '0', role: 'group' });
+  var foot = h('div', { class: 'foot' });
+  var subEl = h('p', { class: 'sub', text: typeof o.sub === 'string' ? o.sub : '' });
+  root.append(h('header', { class: 'ch' }, h('h3', { text: o.title }), lat, btn), subEl);
+  if (o.legend) root.append(legendEl(o.legend));
+  var legHost = o.dynLegend ? h('div') : null;
+  if (legHost) root.append(legHost);
+  root.append(chart, foot);
+  var card = { o: o, root: root, chart: chart, lat: lat, btn: btn, foot: foot, subEl: subEl, legHost: legHost, flip: false };
+  btn.addEventListener('click', function () { card.flip = !card.flip; drawCard(card); });
+  cards.push(card);
+  return root;
+}
+function defaultLatest(spec) {
+  if (spec.type === 'stack') return '';
+  var parts = [], nShown = spec.series.filter(function (s) { return !(s.tip === false || s.noLatest || s.noPlot); }).length;
+  spec.series.forEach(function (s) {
+    if (s.tip === false || s.noLatest || s.noPlot) return;
+    var f = s.fmt || spec.fmt || F.sig, r = lastPt(s.roll), d = lastPt(s.data);
+    if (!d) return;
+    var t = (nShown > 1 ? (s.short || s.label) + ' ' : '') + f(d.y) + (r ? ' (avg5 ' + f(r.y) + ')' : '');
+    parts.push(t);
+  });
+  return parts.join(' · ');
+}
+function drawCard(card) {
+  var spec = D.loaded ? card.o.build() : null, host = card.chart;
+  if (typeof card.o.sub === 'function') card.subEl.textContent = card.o.sub() || '';
+  if (card.legHost) { card.legHost.textContent = ''; if (spec && spec.legend) card.legHost.append(legendEl(spec.legend)); }
+  host.textContent = ''; host.style.minHeight = ''; host.classList.remove('as-table');
+  host.onkeydown = null; host.onblur = null;
+  if (!spec || spec.empty) {
+    card.lat.textContent = ''; card.btn.hidden = true; card.foot.textContent = '';
+    host.append(h('div', { class: 'msg', text: (spec && spec.empty) || 'Waiting for data.' }));
+    host.setAttribute('aria-label', card.o.title + ': no data yet');
+    return;
+  }
+  var asTable = view.tables !== card.flip;
+  card.btn.hidden = false;
+  card.btn.textContent = asTable ? 'Chart' : 'Table';
+  card.btn.setAttribute('aria-pressed', String(asTable));
+  card.btn.setAttribute('aria-label', (asTable ? 'Show chart: ' : 'Show table: ') + card.o.title);
+  var lt = spec.latest != null ? spec.latest : defaultLatest(spec);
+  card.lat.textContent = lt;
+  host.setAttribute('aria-label', card.o.title + '. ' + lt + (asTable ? '. Table view.' : '. Use the left and right arrow keys to read each step.'));
+  if (asTable) { host.classList.add('as-table'); renderTable(host, spec); }
+  else if (spec.type === 'stack') renderStack(host, spec);
+  else renderLine(host, spec, card);
+  card.foot.textContent = '';
+  if (spec.foot) card.foot.append(spec.foot.nodeType ? spec.foot : document.createTextNode(spec.foot));
+}
+function renderCards() { cards.forEach(drawCard); }
+
+/* ------------------------------------------------------------------ chart specs */
+function noRows() { return !D.rows.length ? 'No training step has finished yet.' : null; }
+function lineSpec(o) {
+  var e = noRows(); if (e) return { empty: e };
+  var base = {};
+  Object.keys(o).forEach(function (k) { base[k] = o[k]; });
+  base.x = stepDomain();
+  if (!o.series.some(function (s) { return s.data.length; })) return { empty: o.emptyMsg || 'No values logged for this metric yet.' };
+  return base;
+}
+function stepCard(id, title, sub, legend, fn) { return makeCard({ id: id, title: title, sub: sub, legend: legend, build: fn }); }
+/* a stop line that is read from state.bounds (the mean of the first five steps moved by the rule's margin) */
+function relLine(key, fmt, text, suffix) {
+  var b = bndNum(key);
+  return isNum(b) ? [{ y: b, label: text + ' ' + fmt(b) + (suffix || ''), kind: 'bound' }] : [];
+}
+function pctS(v) { return F.pct(v).replace('.0%', '%'); }
+function forSteps(k, d) { return ' for ' + cfgStop(k, d) + ' steps'; }
+function boundFoot(keys) {
+  var missing = (Array.isArray(keys) ? keys : [keys]).some(function (k) { return !bnd(k); });
+  return missing ? 'The stop line is drawn after step 5: it needs the run\'s first five steps.' : '';
+}
+function fixedLine(key, dflt, fmt, text, steps) {
+  var v = cfgStop(key, dflt);
+  return [{ y: v, label: text + ' ' + fmt(v) + (steps ? ' for ' + steps + ' steps' : ''), kind: 'bound' }];
+}
+
+
+/* ------------------------------------------------------------------ panel: rollouts */
+function buildRollouts(panel) {
+  panel.append(dynP('intro', function () {
+    var s = shape();
+    return 'What the policy produced this step: ' + s.questions + ' questions, ' + s.group + ' episodes each. Per-step numbers swing with the batch, so dots are the step itself and the line is a 5-step rolling mean.';
+  }));
+  var grid1 = h('div', { class: 'grid md' });
+  grid1.append(
+    stepCard('solve', 'Solve rate and first-query solve rate', 'Solve rate: the share of final answers that matched the reference result. First query: the first query alone, before any turn. The gap between the two lines is what the turns add or cost.',
+      [{ label: 'solve rate', color: 'var(--s1)' }, { label: 'first query', color: 'var(--s2)' }, { label: 'per step', color: 'var(--muted)', kind: 'dot' }, { label: 'stop line, first query', kind: 'bound' }],
+      function () {
+        return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('solve_rate', { label: 'solve rate', short: 'final', color: 'var(--s1)', roll: true }), seriesOf('first_solve_rate', { label: 'first query', short: 'first', color: 'var(--s2)', roll: true })],
+          hlines: relLine('first_solve_rate', F.pct, 'stop below', forSteps('first_right_steps', 3)), foot: boundFoot('first_solve_rate') });
+      }),
+    stepCard('reward', 'Reward', function () { return '1 − ' + cfgNum('turn_cost', 0.03) + ' × (calls − 1) when the final answer is right, else 0; −0.1 when there is no query at all.'; }, null, function () {
+      return lineSpec({ fmt: F.d3, series: [seriesOf('reward_mean', { label: 'reward', color: 'var(--s1)', roll: true })] });
+    }),
+    stepCard('informative', 'Informative groups', 'Share of question groups with both right and not-right answers: the only ones that teach.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('informative_frac', { label: 'informative share', roll: true })],
+        hlines: fixedLine('informative_min', 0.25, pctS, 'stop below', cfgStop('informative_steps', 5)) });
+    }),
+    stepCard('distinct', 'Different queries in a group', 'How many different final (and first) queries the 8 episodes of a question wrote, on average. A group that writes one query teaches nothing.',
+      [{ label: 'final queries', color: 'var(--s1)' }, { label: 'first queries', color: 'var(--s2)' }, { label: 'stop line, final', kind: 'bound' }], function () {
+        return lineSpec({ fmt: F.d2, series: [seriesOf('distinct_final_mean', { label: 'final queries', short: 'final', color: 'var(--s1)', roll: true }), seriesOf('distinct_first_mean', { label: 'first queries', short: 'first', color: 'var(--s2)', roll: true })],
+          hlines: relLine('distinct_final_mean', F.d2, 'stop below', forSteps('diversity_steps', 3)), foot: boundFoot('distinct_final_mean') });
+      }),
+    stepCard('malformed', 'Malformed and undecided answers', 'Malformed: no query at all (all episodes). Undecided: the checker could not decide.',
+      [{ label: 'malformed', color: 'var(--s1)' }, { label: 'undecided', color: 'var(--s2)' }], function () {
+        return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('malformed_frac', { label: 'malformed', color: 'var(--s1)' }), seriesOf('undecided_frac', { label: 'undecided', color: 'var(--s2)' })],
+          hlines: fixedLine('malformed_max', 0.05, pctS, 'stop above', cfgStop('malformed_steps', 3)) });
+      })
+  );
+  var multiNote = h('div', { class: 'subhead', text: 'Solve rate per dataset' });
+  var leg = legendEl([{ label: 'training solve rate, 5-step rolling mean', color: 'var(--s1)' }, { label: 'per step', color: 'var(--s1)', kind: 'dot' }, { label: 'start adapter on the evaluation set, mean@8', color: 'var(--muted)', kind: 'ref' }]);
+  leg.style.marginBottom = '8px';
+  var grid2 = h('div', { class: 'grid sm' });
+  SETS.forEach(function (s) {
+    grid2.append(makeCard({ id: 'solve-' + s, title: SET_NAME[s], sub: function () { return hasTurns(s) ? 'with turns' : 'one query'; }, build: function () {
+      var ref = D.refs && D.refs.start && D.refs.start.sampled_by_set && D.refs.start.sampled_by_set[s];
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('solve_' + s, { label: SET_NAME[s], roll: true })],
+        hlines: ref && isNum(ref.mean_at8) ? [{ y: ref.mean_at8, label: 'start eval ' + F.pct(ref.mean_at8), kind: 'ref' }] : [], h: 150 });
+    } }));
+  });
+  var grid3 = h('div', { class: 'grid md' });
+  grid3.append(
+    stepCard('len', 'Length of the first turn and later turns', 'Median tokens, thinking included. The stop rule watches the first turn: outside 1/3 to 3 times its start.',
+      [{ label: 'first turn', color: 'var(--s1)' }, { label: 'later turns', color: 'var(--s2)' }, { label: 'stop lines, first turn', kind: 'bound' }], function () {
+        var b = bnd('t1_tokens_median'), hl = [];
+        if (b && isNum(b.high)) hl.push({ y: b.high, label: 'stop above ' + F.int(b.high) + ' (first turn)', kind: 'bound' });
+        if (b && isNum(b.low)) hl.push({ y: b.low, label: 'stop below ' + F.int(b.low), kind: 'bound' });
+        return lineSpec({ axis: 'int', fmt: F.int, series: [seriesOf('t1_tokens_median', { label: 'first turn, median', short: 'first', color: 'var(--s1)' }), seriesOf('later_tokens_median', { label: 'later turns, median', short: 'later', color: 'var(--s2)' })],
+          hlines: hl, foot: boundFoot('t1_tokens_median') });
+      }),
+    stepCard('forced', 'Forced end of thinking', 'Share of turns cut off at the thinking budget and made to answer.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('think_forced_frac', { label: 'forced </think>' })] });
+    }),
+    stepCard('toks', 'Rollout speed', 'Tokens per second across all slots while sampling.', null, function () {
+      return lineSpec({ axis: 'int', fmt: F.d1, series: [seriesOf('rollout_tok_s', { label: 'tokens/s' })] });
+    })
+  );
+  panel.append(grid1, multiNote, leg, grid2, h('div', { class: 'subhead', text: 'Length and speed' }), grid3);
+}
+
+/* ------------------------------------------------------------------ panel: turns */
+function buildTurns(panel) {
+  panel.append(dynP('rule-note', function () {
+    var s = shape(), names = SETS.filter(hasTurns).map(function (x) { return SET_NAME[x]; }).join(' and ');
+    return [h('b', { text: 'Episodes with turns only: ' }), names + ', ' + (s.with_turns * s.group) + ' of ' + (s.questions * s.group) + ' episodes a step. ' +
+      'The other ' + (s.one_query * s.group) + ' have one query and cannot retry, loop or copy, so they are left out of every rate on this panel.'];
+  }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    stepCard('calls', 'Calls an episode', 'Mean number of queries an episode ran: 1 to 3.', null, function () {
+      return lineSpec({ fmt: F.d2, zero: false, series: [seriesOf('calls_mean', { label: 'calls an episode', roll: true })],
+        hlines: fixedLine('queries_mean_max', 2.0, F.d1, 'stop above', cfgStop('queries_steps', 3)) });
+    }),
+    makeCard({ id: 'bycalls', title: 'Episodes by number of calls', sub: 'Share of episodes with turns that stopped after 1, 2 or 3 calls.',
+      legend: [{ label: '1 call', color: 'var(--s1)', kind: 'box' }, { label: '2 calls', color: 'var(--s2)', kind: 'box' }, { label: '3 calls', color: 'var(--s3)', kind: 'box' }], build: function () {
+        var e = noRows(); if (e) return { empty: e };
+        var has0 = false;
+        var cols = D.rows.map(function (r) {
+          var c1 = isNum(r.calls_1) ? r.calls_1 : 0, c2 = isNum(r.calls_2) ? r.calls_2 : 0, c3 = isNum(r.calls_3) ? r.calls_3 : 0, c0 = isNum(r.calls_0) ? r.calls_0 : 0;
+          var tot = c0 + c1 + c2 + c3; if (!(tot > 0)) return null;
+          if (c0 > 0) has0 = true;
+          return { x: r.step, segs: [c1 / tot, c2 / tot, c3 / tot, c0 / tot], total: 1, n: tot };
+        }).filter(Boolean);
+        if (!cols.length) return { empty: 'No call counts logged yet.' };
+        var lc = cols[cols.length - 1];
+        var segs = [{ label: '1 call', color: 'var(--s1)' }, { label: '2 calls', color: 'var(--s2)' }, { label: '3 calls', color: 'var(--s3)' }];
+        if (has0) segs.push({ label: 'no call', color: 'var(--s-other)' });
+        else cols.forEach(function (c) { c.segs = c.segs.slice(0, 3); });
+        return { type: 'stack', x: stepDomain(), cols: cols, h: 190, axis: 'pct', ymax: 1, noTotal: true, segFmt: F.pct, segs: segs,
+          tipExtra: function (c) { return ['episodes counted', String(c.n)]; },
+          latest: 'step ' + lc.x + ': 1 call ' + F.pct0(lc.segs[0]) + ' · 2 ' + F.pct0(lc.segs[1]) + ' · 3 ' + F.pct0(lc.segs[2]),
+          foot: has0 ? 'Grey: episodes that made no call at all.' : '' };
+      } }),
+    stepCard('retry', 'Another call after a first result', 'After a first result of each kind: the share of episodes that made another call. Hover for how many episodes there were.',
+      [{ label: 'after an empty result', color: 'var(--s1)' }, { label: 'after an error', color: 'var(--s2)' }, { label: 'after rows', color: 'var(--s3)' }], function () {
+        function cnt(key, label) { var n = seriesOf(key, { label: label, fmt: F.int }); n.noPlot = true; n.noLatest = true; return n; }
+        return lineSpec({ axis: 'pct', fmt: F.pct, series: [
+          seriesOf('retry_empty_again', { label: 'after an empty result', short: 'empty', color: 'var(--s1)', roll: true }),
+          seriesOf('retry_error_again', { label: 'after an error', short: 'error', color: 'var(--s2)', roll: true }),
+          seriesOf('retry_rows_again', { label: 'after rows', short: 'rows', color: 'var(--s3)', roll: true }),
+          cnt('retry_empty_n', 'episodes after an empty result'), cnt('retry_error_n', 'episodes after an error'), cnt('retry_rows_n', 'episodes after rows')] });
+      }),
+    stepCard('fixedbroken', 'Fixed and broken answers', 'Fixed: the first query was wrong and the final answer is right. Broken: the first query was right and the final answer is wrong. Counts of episodes a step.',
+      [{ label: 'fixed', color: 'var(--s1)' }, { label: 'broken', color: 'var(--s2)' }], function () {
+        return lineSpec({ axis: 'int', fmt: F.int, series: [seriesOf('fixed', { label: 'fixed', color: 'var(--s1)', roll: true }), seriesOf('broken', { label: 'broken', color: 'var(--s2)', roll: true })] });
+      }),
+    stepCard('brokenfrac', 'Right first answers that were broken', 'Share of right first queries that a later turn made wrong.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('broken_frac', { label: 'broken share', roll: true })],
+        hlines: relLine('broken_frac', F.pct, 'stop above', forSteps('broken_steps', 3)), foot: boundFoot('broken_frac') });
+    }),
+    stepCard('limit', 'Episodes that tried a call too many', 'A fourth call is not run. The untrained model already does this in about 13% of episodes, so the line is its own start plus 15 points.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('limit_frac', { label: 'tried a 4th call', roll: true })],
+        hlines: relLine('limit_frac', F.pct, 'stop above', forSteps('queries_steps', 3)), foot: boundFoot('limit_frac') });
+    }),
+    stepCard('loop', 'The same query twice in a row', 'Running a query again after a look at the data is allowed by the answer rule and is not counted here.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('loop_frac', { label: 'same query twice', roll: true })],
+        hlines: relLine('loop_frac', F.pct, 'stop above', forSteps('loops_steps', 3)), foot: boundFoot('loop_frac') });
+    })
+  );
+  panel.append(g, h('p', { class: 'rule-note' }, h('b', { text: 'Reading rule. ' }),
+    'After an error the model should retry; after rows it mostly should not; after an empty result it depends on the question, which is what the returned questions teach.'));
+}
+
+/* ------------------------------------------------------------------ panel: returned questions */
+function buildReturned(panel) {
+  panel.append(dynP('intro', function () {
+    var s = shape();
+    return 'A step has ' + s.returned + ' returned questions among its gretel questions (' + (s.returned * s.group) + ' episodes): questions whose right result is nothing, scored by the stricter check. A single step swings a lot, so read the 5-step lines.';
+  }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    stepCard('ret-solve', 'First query and final answer', 'Right on the first query, and right in the end (the stricter score). The gap between the lines is what the turns cost.',
+      [{ label: 'first query', color: 'var(--s1)' }, { label: 'final answer', color: 'var(--s2)' }], function () {
+        return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('returned_first_solve', { label: 'first query', short: 'first', color: 'var(--s1)', roll: true }), seriesOf('returned_solve', { label: 'final answer', short: 'final', color: 'var(--s2)', roll: true })] });
+      }),
+    stepCard('ret-broken', 'Right first answers broken', 'Of the right first answers on returned questions, the share a later turn made wrong. The dotted line is the untrained model.',
+      [{ label: 'broken share', color: 'var(--s1)' }, { label: 'untrained', kind: 'ref' }], function () {
+        var rs = retStart();
+        return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('returned_broken_frac', { label: 'broken share', roll: true })],
+          hlines: rs && isNum(rs.broken_frac) ? [{ y: rs.broken_frac, label: 'untrained ' + F.pct0(rs.broken_frac), kind: 'ref' }] : [],
+          foot: rs ? '' : 'The untrained value arrives with the refs document.' });
+      }),
+    stepCard('ret-other', 'The other gretel questions: fixed and broken', 'Counts of episodes a step. Turns should still fix more than they break here.',
+      [{ label: 'fixed', color: 'var(--s1)' }, { label: 'broken', color: 'var(--s2)' }], function () {
+        return lineSpec({ axis: 'int', fmt: F.int, series: [seriesOf('gretel_other_fixed', { label: 'fixed', color: 'var(--s1)', roll: true }), seriesOf('gretel_other_broken', { label: 'broken', color: 'var(--s2)', roll: true })] });
+      }),
+    stepCard('ret-calls', 'Calls an episode', 'Returned questions against the other gretel questions.',
+      [{ label: 'returned', color: 'var(--s1)' }, { label: 'other gretel', color: 'var(--s2)' }], function () {
+        return lineSpec({ fmt: F.d2, zero: false, series: [seriesOf('returned_calls_mean', { label: 'returned', color: 'var(--s1)', roll: true }), seriesOf('gretel_other_calls_mean', { label: 'other gretel', color: 'var(--s2)', roll: true })] });
+      }),
+    stepCard('ret-weak', 'Answers only the plain check passes', 'Answers the plain checker passes and the stricter check rejects: they earn nothing. Rising toward 100% would mean the model ends on queries that merely return nothing.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('returned_weak_only_frac', { label: 'rejected by the strict check', roll: true })] });
+    })
+  );
+  panel.append(g, h('div', { class: 'subhead', text: 'The returned dev slice: 50 questions no step trains on' }), h('div', { id: 'rettable' }),
+    h('p', { class: 'rule-note', style: 'margin-top:12px' }, h('b', { text: 'Reading rule. ' }),
+      'Working: the broken share falls while the other gretel questions are still fixed. Not working: both fall, which means the model stopped retrying everywhere.'));
+}
+function renderReturnedTable() {
+  var holder = document.getElementById('rettable'); if (!holder) return;
+  holder.textContent = '';
+  var rs = retStart(), rows = [];
+  if (rs) rows.push({ name: 'Untrained start', d: rs, ref: true });
+  D.evals.forEach(function (e) { if (e.returned_dev) rows.push({ name: 'After step ' + e.step, d: e.returned_dev }); });
+  if (!rows.length) { holder.append(h('p', { class: 'note', text: 'The start reference and the evaluations appear here once the feed carries them. The first evaluation comes after step ' + firstEvalStep() + '.' })); return; }
+  var thead = h('tr', null, h('th', { text: 'Checkpoint' }), h('th', { class: 'n', text: 'right on the first query' }), h('th', { class: 'n', text: 'right after the turns' }),
+    h('th', { class: 'n', text: 'broken' }), h('th', { class: 'n', text: 'broken share' }), h('th', { class: 'n', text: 'calls an episode' }));
+  var tbody = h('tbody'), b0 = rs;
+  rows.forEach(function (r) {
+    var d = r.d, n = isNum(d.n) ? ' of ' + d.n : '';
+    var tr = h('tr', { class: r.ref ? 'ref' : null });
+    tr.append(h('td', { text: r.name }),
+      h('td', { class: 'n' }, isNum(d.first_right) ? d.first_right + n : '–', (!r.ref && b0 && isNum(d.first_right) && isNum(b0.first_right)) ? h('span', { class: 'd', text: F.signed(d.first_right - b0.first_right, 0) }) : null),
+      h('td', { class: 'n' }, isNum(d.right) ? d.right + n : '–', (!r.ref && b0 && isNum(d.right) && isNum(b0.right)) ? h('span', { class: 'd', text: F.signed(d.right - b0.right, 0) }) : null),
+      h('td', { class: 'n' }, isNum(d.broken) ? String(d.broken) : '–', (!r.ref && b0 && isNum(d.broken) && isNum(b0.broken)) ? h('span', { class: 'd', text: F.signed(d.broken - b0.broken, 0) }) : null),
+      h('td', { class: 'n', text: F.pct(d.broken_frac) }), h('td', { class: 'n', text: F.d2(d.calls_mean) }));
+    tbody.append(tr);
+  });
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, thead), tbody)),
+    h('p', { class: 'note', text: 'Greedy, with turns. Differences are against the untrained start. Right after the turns means the stricter score.' }));
+}
+
+/* ------------------------------------------------------------------ panel: drift */
+function step1Card() {
+  var root = h('section', { class: 'card' }), body = h('div', { class: 'statbody' });
+  root.append(h('header', { class: 'ch' }, h('h3', { text: 'Step 1\'s reading' })),
+    h('p', { class: 'sub', text: 'The raw first-turn drift of step 1, before the offset is taken off. It checks that the run started from the model the offset was measured on.' }), body);
+  customs.push(function () {
+    body.textContent = '';
+    var v = null, r = D.rows.filter(function (x) { return isNum(x.kl_step1); })[0];
+    if (r) v = r.kl_step1;
+    var max = cfgStop('kl_step1_max', 0.025), off = D.state && cfgC().method_cfg && cfgC().method_cfg.kl && cfgC().method_cfg.kl.offset;
+    if (!isNum(v)) { body.append(h('div', { class: 'txt', text: 'Waiting for step 1. The run pauses itself if the reading is above ' + F.sig(max) + '.' })); return; }
+    var ok = v <= max, scaleMax = Math.max(max * 1.25, v * 1.1);
+    var sc = h('div', { class: 'scale', role: 'img', 'aria-label': 'Step 1 reading ' + F.sig(v) + ' against the bound ' + F.sig(max) });
+    var fill = h('i'); fill.style.width = Math.min(100, v / scaleMax * 100) + '%'; sc.append(fill);
+    var bm = h('b'); bm.style.left = (max / scaleMax * 100) + '%'; sc.append(bm);
+    body.append(h('div', { class: 'big', text: F.sig(v) }),
+      ok ? chip('ok', 'ok', 'Inside the bound of ' + F.sig(max)) : chip('bad', 'warn', 'Above the bound of ' + F.sig(max)),
+      sc, h('div', { class: 'ticks' }, h('span', { text: '0' }), h('span', { text: 'bound ' + F.sig(max) })),
+      h('div', { class: 'txt', text: isNum(off) ? 'Expected near the offset, ' + F.sig(off) + ' (a reading of 0.004 to 0.014 is normal).' : '' }));
+    var tr = D.rows[0];
+    if (tr && (tr.template_match != null || isNum(tr.template_equal_share))) {
+      body.append(h('div', { class: 'txt', text: 'Template check at step ' + tr.step + ': ' + (tr.template_match === true ? 'match' : tr.template_match === false ? 'NO MATCH' : 'not reported') +
+        (isNum(tr.template_equal_share) ? ', ' + F.pct(tr.template_equal_share) + ' equal (the runbook expects a match and above 99%).' : '.') }));
+    }
+  });
+  return root;
+}
+function buildDrift(panel) {
+  panel.append(h('p', { class: 'intro', text: 'How far the policy has moved from the start adapter (run 1b\'s step 30). The penalty has a fixed weight and pulls on the first turn only. Nothing pulls the model back by itself: when the drift passes its bound the run pauses for a person.' }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    stepCard('klstart', 'Drift from the start adapter (first turn)', 'The server\'s reading less the measured offset, on first-turn tokens. The stop rule reads this one.',
+      [{ label: 'drift', color: 'var(--s1)' }, { label: 'stop bound', kind: 'bound' }, { label: 'zero', kind: 'ref' }], function () {
+        return lineSpec({ fmt: F.sig, h: 200, ml: 54, series: [seriesOf('kl_start', { label: 'drift', color: 'var(--s1)' })],
+          hlines: fixedLine('kl_start_max', 0.05, F.sig, 'stop above').concat([{ y: 0, label: 'zero drift', kind: 'ref' }]) });
+      }),
+    stepCard('klraw', 'The raw reading', 'The server\'s reading before the offset is taken off. Where the drift is zero it reads about the offset.',
+      [{ label: 'raw reading', color: 'var(--s1)' }, { label: 'offset', kind: 'ref' }], function () {
+        var kl = cfgC().method_cfg && cfgC().method_cfg.kl, off = kl && isNum(kl.offset) ? kl.offset : null;
+        return lineSpec({ fmt: F.sig, ml: 54, series: [seriesOf('kl_start_raw', { label: 'raw reading', color: 'var(--s1)' })],
+          hlines: isNum(off) ? [{ y: off, label: 'offset ' + F.sig(off), kind: 'ref' }] : [] });
+      }),
+    step1Card(),
+    stepCard('klsft', 'KL to the SFT model (for information)', 'Not a stop rule. It reads about 0.08 from step 1, because the start adapter is already that far from the SFT model.', null, function () {
+      return lineSpec({ fmt: F.sig, ml: 54, series: [seriesOf('kl_sft', { label: 'KL to SFT', color: 'var(--s4)' })] });
+    }),
+    stepCard('mismatch', 'Server against trainer', 'Mean difference between the log-probabilities the rollout server and the trainer give the same tokens.', null, function () {
+      return lineSpec({ fmt: F.sig, series: [seriesOf('mismatch', { label: 'mismatch' })], hlines: fixedLine('mismatch_max', 0.1, F.d2, 'stop above') });
+    }),
+    stepCard('kllater', 'Later turns and the trainer\'s view', 'Later turns are not pulled back: they react to results the start adapter never saw. The penalty is computed from the trainer\'s own view.',
+      [{ label: 'later turns', color: 'var(--s1)' }, { label: 'trainer, probe tokens', color: 'var(--s2)' }, { label: 'penalty (kl_pen)', color: 'var(--s3)' }], function () {
+        return lineSpec({ fmt: F.sig, ml: 54, series: [seriesOf('kl_start_later', { label: 'later turns', color: 'var(--s1)' }), seriesOf('kl_start_trainer', { label: 'trainer', color: 'var(--s2)' }), seriesOf('kl_pen', { label: 'penalty', color: 'var(--s3)' })] });
+      })
+  );
+  panel.append(g, h('p', { class: 'rule-note' }, h('b', { text: 'How to read it. ' }),
+    'The drift is measured against the start adapter (run 1b\'s step 30), on first-turn tokens: the server\'s reading less a measured offset. One step\'s reading swings by about 0.002.'));
+}
+
+/* ------------------------------------------------------------------ panel: canaries */
+function buildCanaries(panel) {
+  panel.append(h('p', { class: 'intro', text: 'Signs of reward hacking and of the teacher leaking into the student, read from the episode text. Bounds are the run\'s stop rules; a share with no bound is watched by eye. Rates about turns count only episodes with turns.' }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    stepCard('hardcoded', 'Answers made of constants', 'Final queries that read no table or graph pattern, or whose result columns are all literals. They earn 0.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('hardcoded_frac', { label: 'constants' })], hlines: fixedLine('hardcoded_max', 0.02, pctS, 'stop above') });
+    }),
+    stepCard('copied', 'Literals copied from a result', 'Final queries with a literal that appeared in an earlier result and nowhere in the prompt. Reading a value\'s spelling is legitimate, so the line is the run\'s own start plus 5 points.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('copied_frac', { label: 'copied literals' })], hlines: relLine('copied_frac', F.pctA, 'stop above'), foot: boundFoot('copied_frac') });
+    }),
+    stepCard('lookleak', 'Look-around data showing the reference', 'Random-fill episodes whose results show a literal of the reference query that is not in the prompt.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('look_leak_frac', { label: 'leak' })], hlines: fixedLine('look_leak_max', 0.05, pctS, 'stop above'),
+        emptyMsg: 'Not measured: with SQaLe and text2cypher on one query, nothing from a random fill is shown to the model.' });
+    }),
+    stepCard('distinctq', 'Queries using DISTINCT', 'A common way to pad an answer into matching. The line is the run\'s own start plus 10 points.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('distinct_frac', { label: 'DISTINCT' })], hlines: relLine('distinct_frac', F.pctA, 'stop above'), foot: boundFoot('distinct_frac') });
+    }),
+    stepCard('star', 'Queries using SELECT *', null, null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [seriesOf('select_star_frac', { label: 'SELECT *' })], hlines: fixedLine('select_star_max', 0.05, pctS, 'stop above') });
+    }),
+    stepCard('leak', 'Thoughts citing a given solution', 'The teacher sees a right sibling under the words "Correct solution". A student that writes as if it had one is copying the teacher\'s situation. First-turn thoughts only.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('leak_frac', { label: 'cites a solution' })], hlines: fixedLine('leak_max', 0.02, pctS, 'stop above') });
+    }),
+    stepCard('dup', 'Answers that repeat rows (CypherBench)', 'Of the CypherBench answers the checker passed, the share the duplicate probe withheld the reward from: answers that repeat rows where the reference does not. Falling is good.', null, function () {
+      var sr = seriesOf('dup_differ_frac', { label: 'withheld share', color: 'var(--s1)' });
+      var pr = seriesOf('dup_probed', { label: 'answers judged', fmt: F.int }); pr.noPlot = true; pr.noLatest = true;
+      var lastR = null; D.rows.forEach(function (r) { if (isNum(r.dup_differ_frac)) lastR = r; });
+      return lineSpec({ axis: 'pct', fmt: F.pct, series: [sr, pr],
+        latest: lastR ? F.pct(lastR.dup_differ_frac) + (isNum(lastR.dup_probed) ? ' of ' + lastR.dup_probed + ' judged' : '') : '',
+        hlines: relLine('dup_differ_frac', F.pctA, 'stop above', forSteps('dup_steps', 3)), foot: boundFoot('dup_differ_frac') });
+    }),
+    stepCard('toolong', 'Episodes too long to train on', function () { return 'Longer than ' + F.int(cfgNum('max_seq', 3840)) + ' tokens: left out of the loss and counted here.'; }, null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('too_long_frac', { label: 'too long' })], hlines: fixedLine('too_long_max', 0.05, pctS, 'stop above') });
+    }),
+    stepCard('looklate', 'Look-around databases that failed to build', 'Should be 0. Above it, read look_error in the episodes.', null, function () {
+      return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('look_error_frac', { label: 'failed to build' })] });
+    }),
+    stepCard('qchars', 'Median query length', 'Characters in the query the model calls the tool with.', null, function () {
+      return lineSpec({ axis: 'int', fmt: F.int, series: [seriesOf('query_chars_median', { label: 'characters' })] });
+    })
+  );
+  panel.append(g);
+}
+
+
+/* ------------------------------------------------------------------ panel: evaluations */
+function evalChartSpec() {
+  var sg = startG(), evs = D.evals;
+  if (!sg && !evs.length) return { empty: 'The start reference has not been pushed yet.' };
+  var defs = [
+    { label: 'greedy with turns', short: 'turns', key: 'decided', color: 'var(--s1)' },
+    { label: 'first query', short: 'first', key: 'first_decided', color: 'var(--s2)' },
+    { label: 'strict score', short: 'strict', key: 'strict', color: 'var(--s3)' }
+  ];
+  var series = defs.map(function (d) {
+    var pts = [];
+    if (sg && isNum(sg[d.key])) pts.push({ x: 0, y: sg[d.key] });
+    evs.forEach(function (e) { var g = gblk(e); if (g && isNum(g[d.key])) pts.push({ x: e.step, y: g[d.key] }); });
+    return { label: d.label, short: d.short, color: d.color, data: pts, mark: 'pts', join: true, fmt: F.pct };
+  });
+  var oq = oneQ(), hl = [], bs = bestStep();
+  if (sg && isNum(sg.decided)) hl.push({ y: sg.decided, label: 'start with turns ' + F.pct(sg.decided), kind: 'ref' });
+  if (oq && isNum(oq.overall.greedy_pass1)) hl.push({ y: oq.overall.greedy_pass1, label: 'start, one query ' + F.pct(oq.overall.greedy_pass1), kind: 'ref' });
+  hl.push({ y: firstFloor(), label: 'first-query floor ' + F.pct(firstFloor()), kind: 'bound', below: true });
+  var le = lastEval(), g = gblk(le);
+  return { x: [0, totalSteps()], series: series, axis: 'pct', fmt: F.pct, zero: false, h: 210, hlines: hl,
+    vlines: bs != null ? [{ x: bs, label: 'best so far' }] : [],
+    xLabel: function (x) { return x === 0 ? 'start with turns (step 0)' : 'after step ' + x; },
+    xLabelShort: function (x) { return x === 0 ? 'start' : String(x); }, xName: 'checkpoint',
+    latest: le && g ? 'after step ' + le.step + ': ' + F.pct(g.decided) + ' with turns · first query ' + F.pct(g.first_decided) + (bs != null ? ' · best: step ' + bs : '') : 'start only',
+    foot: le ? '' : 'First evaluation after step ' + firstEvalStep() + '.' };
+}
+function passkSpec() {
+  var oq = oneQ(), se = startEval(), sm = se && se.sampled, series = [], leg = [];
+  function pts(b) { return (b.pass_at_k || []).map(function (v, i) { return { x: i + 1, y: v }; }).filter(function (p) { return isNum(p.y); }); }
+  if (oq && oq.overall && oq.overall.pass_at_k && oq.overall.pass_at_k.length) {
+    series.push({ label: 'start, one query', short: 'one query', color: 'var(--muted)', data: pts(oq.overall), mark: 'pts', join: true, dash: '5 3', refline: true, fmt: F.pct, noLatest: true });
+    leg.push({ label: 'start, one query', color: 'var(--muted)', kind: 'refline' });
+  }
+  if (sm && sm.pass_at_k && sm.pass_at_k.length) {
+    series.push({ label: 'start, with turns', short: 'start', color: 'var(--ink-2)', data: pts(sm), mark: 'pts', join: true, fmt: F.pct, noLatest: true });
+    leg.push({ label: 'start, with turns', color: 'var(--ink-2)' });
+  }
+  var slots = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)'], k = 0, last = null;
+  D.evals.forEach(function (e) {
+    if (!e.sampled || !e.sampled.pass_at_k || !e.sampled.pass_at_k.length) return;
+    var col = slots[k++ % slots.length];
+    series.push({ label: 'after step ' + e.step, short: 'step ' + e.step, color: col, data: pts(e.sampled), mark: 'pts', join: true, fmt: F.pct, noLatest: true });
+    leg.push({ label: 'after step ' + e.step, color: col });
+    last = e;
+  });
+  if (!series.length) return { empty: 'The start reference has not been pushed yet.' };
+  return { x: [1, 8], series: series, axis: 'pct', fmt: F.pct, zero: false, h: 200, legend: leg,
+    xLabel: function (x) { return 'k = ' + x; }, xLabelShort: function (x) { return 'k = ' + x; }, xName: 'samples',
+    latest: last ? 'after step ' + last.step + ': pass@8 ' + F.pct(pass8(last.sampled)) : 'start only',
+    foot: last ? '' : 'The first full evaluation comes after step ' + (fullStepList()[0] || 20) + '.' };
+}
+function fullStepList() { var f = cfgC().eval_steps; return Array.isArray(f) ? f.slice() : []; }
+
+function buildEvals(panel) {
+  panel.append(dynP('intro', function () {
+    var c = cfgC(), q = Array.isArray(c.quick_eval_steps) && c.quick_eval_steps.length ? listSteps(c.quick_eval_steps) : '5, 10, ..., 40';
+    var f = fullStepList(); f = f.length ? f.join(' and ') : '20 and 40';
+    return 'The 200-question evaluation set, greedy with turns; the first query is reported beside it. A quick evaluation (greedy) runs after steps ' + q + '; a full one (also 8 sampled answers a question) after steps ' + f +
+      '. The start adapter was measured before the run, with turns and on one query: step 0 and the dotted lines.';
+  }));
+  var leg = legendEl([{ label: 'greedy with turns', color: 'var(--s1)' }, { label: 'first query', color: 'var(--s2)' }, { label: 'strict score', color: 'var(--s3)' },
+    { label: 'start (dotted)', kind: 'ref' }, { label: 'first-query floor', kind: 'bound' }, { label: 'best step so far', kind: 'best' }]);
+  leg.style.marginBottom = '10px';
+  var g = h('div', { class: 'grid md' });
+  g.append(makeCard({ id: 'evchart', title: 'Greedy with turns, the first query and the strict score', build: evalChartSpec }));
+  panel.append(leg, g, h('p', { class: 'note', text: 'One evaluation is good to about 3 points; one question is 0.5.' }),
+    h('div', { class: 'subhead', text: 'Every evaluation, with the start on top' }), h('div', { id: 'evaltables' }),
+    h('div', { class: 'subhead', text: 'Sampled answers: full evaluations only' }));
+  var g2 = h('div', { class: 'grid md' });
+  g2.append(makeCard({ id: 'passk', title: 'pass@k: the chance one of k samples is right', sub: 'k = 1 is mean@8. The run is read against the two start curves.', dynLegend: true, build: passkSpec }));
+  panel.append(g2, h('div', { id: 'evaltables2', style: 'margin-top:12px' }));
+}
+
+function deltaTxt(v, base) { if (!isNum(v) || !isNum(base)) return null; return h('span', { class: 'd', text: F.signed((v - base) * 100, 1) }); }
+function splitBar(b) {
+  var n = b && b.questions; if (!n) return h('span', { text: '–' });
+  var bar = h('span', { class: 'splitbar', role: 'img', 'aria-label': 'never ' + b.never + ', sometimes ' + b.sometimes + ', always ' + b.always });
+  [b.never, b.sometimes, b.always].forEach(function (v) { var i = h('i'); i.style.flex = (v || 0) + ' 1 0'; if (!v) i.style.display = 'none'; bar.append(i); });
+  return bar;
+}
+function nn(v) { return v == null ? '–' : String(v); }
+var BYLOOK = [['turns_says_something', 'Turns, and a look can inform'], ['turns_says_nothing', 'Turns, and the right result is nothing'], ['one_query', 'One query (SQaLe, text2cypher)']];
+
+function renderEvalTables() {
+  var holder = document.getElementById('evaltables'); if (!holder) return;
+  holder.textContent = '';
+  var sg = startG(), oq = oneQ(), rs = retStart(), bs = bestStep(), floor = firstFloor();
+  if (!sg && !oq && !D.evals.length) { holder.append(h('p', { class: 'note', text: 'The start reference and the evaluations appear here once the feed carries them.' })); return; }
+
+  var bst = D.state && D.state.best;
+  holder.append(h('p', { class: 'rule-note', style: 'margin-bottom:10px' }, bst && isNum(bst.step)
+    ? [h('b', { text: 'Best step so far: ' + bst.step + '. ' }), 'Greedy with turns ' + F.pct(bst.greedy_with_turns) + (sg ? ' (start ' + F.pct(sg.decided) + ')' : '') + ', first query ' + F.pct(bst.first_query) + ', strict ' + F.pct(bst.strict) + '. ' +
+      (bst.first_query_ok === false ? 'Its first query is under the ' + F.pct(floor) + ' floor, so the step would not be kept. ' : '') +
+      'The run keeps the evaluated step with the highest greedy with turns, and every new evaluation is compared with it (the turn rule, below).']
+    : [h('b', { text: 'First evaluation after step ' + firstEvalStep() + '. ' }), 'Until then the start is the only row. The run keeps the evaluated step with the highest greedy with turns as its best step.']));
+
+  // the table, one row an evaluation, the start's two rows on top
+  var rows = [];
+  if (sg) rows.push({ name: 'Start, with turns', kind: 'step 0', g: sg, ret: rs, samp: startEval().sampled, ref: true });
+  if (oq) rows.push({ name: 'Start, one query', kind: 'run 1b step 30', one: oq.overall, ref: true });
+  D.evals.forEach(function (e) { rows.push({ name: 'After step ' + e.step, kind: e.kind || '', g: gblk(e), ret: e.returned_dev, samp: e.sampled, best: bs === e.step }); });
+  var head = ['Checkpoint', 'Kind', 'Greedy with turns', 'Strict', 'First query', 'Fixed', 'Broken', 'Net', 'Calls an episode', 'Returned dev: right first', 'right', 'broken', 'mean@8', 'pass@8'];
+  var thead = h('tr', null, head.map(function (t, i) { return h('th', { class: i > 1 ? 'n' : '', text: t }); }));
+  var tbody = h('tbody');
+  rows.forEach(function (r) {
+    var g = r.g, o = r.one, tr = h('tr', { class: r.ref ? 'ref' : null });
+    tr.append(h('td', null, r.name, r.best ? chip('ok', 'ok', 'Best so far') : null), h('td', { text: r.kind }));
+    if (o) {
+      tr.append(h('td', { class: 'n', text: F.pct(o.greedy_pass1) }), h('td', { class: 'n', text: '–' }), h('td', { class: 'n', text: F.pct(o.greedy_pass1) }));
+      for (var i = 0; i < 6; i++) tr.append(h('td', { class: 'n', text: '–' }));
+      tr.append(h('td', { class: 'n', text: F.pct(o.mean_at8) }), h('td', { class: 'n', text: F.pct(pass8(o)) }));
+      tbody.append(tr); return;
+    }
+    if (!g) { tr.append(h('td', { class: 'n', colspan: String(head.length - 2), text: 'no data' })); tbody.append(tr); return; }
+    var dl = r.ref ? null : sg, under = !r.ref && isNum(g.first_decided) && g.first_decided < floor;
+    tr.append(h('td', { class: 'n' }, F.pct(g.decided), dl ? deltaTxt(g.decided, dl.decided) : null),
+      h('td', { class: 'n', text: F.pct(g.strict) }),
+      h('td', { class: 'n' }, F.pct(g.first_decided), dl ? deltaTxt(g.first_decided, dl.first_decided) : null, under ? chip('warn', 'warn', 'Under the floor') : null),
+      h('td', { class: 'n', text: nn(g.fixed) }), h('td', { class: 'n', text: nn(g.broken) }),
+      h('td', { class: 'n', text: isNum(g.net) ? F.signed(g.net, 0) : '–' }), h('td', { class: 'n', text: F.d2(g.calls_mean) }));
+    var rd = r.ret;
+    tr.append(h('td', { class: 'n', text: rd ? nn(rd.first_right) : '–' }), h('td', { class: 'n', text: rd ? nn(rd.right) : '–' }), h('td', { class: 'n', text: rd ? nn(rd.broken) : '–' }),
+      h('td', { class: 'n', text: r.samp ? F.pct(r.samp.mean_at8) : '–' }), h('td', { class: 'n', text: r.samp ? F.pct(pass8(r.samp)) : '–' }));
+    tbody.append(tr);
+  });
+  if (!D.evals.length) { var t0 = h('tr'); t0.append(h('td', { colspan: String(head.length), style: 'color:var(--ink-2)', text: 'First evaluation after step ' + firstEvalStep() + '.' })); tbody.append(t0); }
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, thead), tbody)),
+    h('p', { class: 'note', text: 'Differences are in points against the start with turns. Strict counts an answer with no query or no verdict as wrong. Returned dev is the held-back returned questions (greedy)' + (rs && isNum(rs.first_right) ? ': the start has ' + rs.first_right + ' right first, ' + rs.right + ' after the turns and ' + rs.broken + ' broken' : '') + '. mean@8 and pass@8 are filled on full evaluations.' }));
+
+  // by kind of question
+  holder.append(h('div', { class: 'subhead', text: 'By kind of question: what a look can tell' }));
+  var sb = startEval() && startEval().by_look, le = lastEval(), lb = le && le.by_look;
+  var h1 = h('tr', null, h('th', { text: '' }), h('th', { class: 'n', text: '' }), h('th', { class: 'n', colspan: '4', style: 'text-align:center', text: 'Start (untrained)' }),
+    h('th', { class: 'n', colspan: '4', style: 'text-align:center', text: le ? 'Latest: after step ' + le.step : 'Latest' }));
+  var h2 = h('tr', null, ['Kind of question', 'Questions', 'Right on the first query', 'Right after the turns', 'Fixed', 'Broken', 'Right on the first query', 'Right after the turns', 'Fixed', 'Broken'].map(function (t, i) { return h('th', { class: i ? 'n' : '', text: t }); }));
+  var tb2 = h('tbody');
+  BYLOOK.forEach(function (k) {
+    var a = sb && sb[k[0]], b = lb && lb[k[0]], tr = h('tr');
+    tr.append(h('td', { text: k[1] }), h('td', { class: 'n', text: a && isNum(a.n) ? String(a.n) : b && isNum(b.n) ? String(b.n) : '–' }));
+    [a, b].forEach(function (x) {
+      if (!x) { for (var i = 0; i < 4; i++) tr.append(h('td', { class: 'n', text: '–' })); return; }
+      var t = !!x.with_turns;
+      tr.append(h('td', { class: 'n', text: nn(x.first_right) }), h('td', { class: 'n', text: nn(x.right) }), h('td', { class: 'n', text: t ? nn(x.fixed) : '–' }), h('td', { class: 'n', text: t ? nn(x.broken) : '–' }));
+    });
+    tb2.append(tr);
+  });
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, h1, h2), tb2)));
+  var ss = sb && sb.turns_says_something, sn = sb && sb.turns_says_nothing;
+  holder.append(h('p', { class: 'rule-note', style: 'margin-top:10px' }, 'Turns can only help where a look can inform (' + (ss && isNum(ss.n) ? ss.n : 87) + ' questions). On the ' + (sn && isNum(sn.n) ? sn.n : 13) +
+    ' where the right result is nothing the untrained model breaks ' + (sn && isNum(sn.broken) ? sn.broken : 7) + ' of ' + (sn && isNum(sn.first_right) ? sn.first_right : 10) + ' right answers.'));
+
+  // per dataset
+  holder.append(h('div', { class: 'subhead', text: 'Per dataset: greedy, and the first query beneath it' }));
+  var ph = h('tr', null, h('th', { text: 'Checkpoint' }), SETS.map(function (s) { return h('th', { class: 'n', text: SET_NAME[s] + (hasTurns(s) ? ' · turns' : ' · one query') }); }));
+  var pb = h('tbody');
+  function setCell(blockG, sampled, one) {
+    var td = h('td', { class: 'n' });
+    if (one) { td.append(h('span', { class: 'ln', text: F.pct(one.greedy_pass1) }), h('span', { class: 'ln' }, h('i', { text: 'mean@8 ' }), F.pct(one.mean_at8))); return td; }
+    if (!blockG) { td.append('–'); return td; }
+    td.append(h('span', { class: 'ln', text: F.pct(blockG.decided) }), h('span', { class: 'ln' }, h('i', { text: 'first ' }), F.pct(blockG.first_decided)));
+    if (sampled) td.append(h('span', { class: 'ln' }, h('i', { text: 'mean@8 ' }), F.pct(sampled.mean_at8)));
+    return td;
+  }
+  if (sg) { var r1 = h('tr', { class: 'ref' }, h('td', { text: 'Start, with turns' })); SETS.forEach(function (s) { r1.append(setCell(startEval().greedy_by_set && startEval().greedy_by_set[s], startEval().sampled_by_set && startEval().sampled_by_set[s])); }); pb.append(r1); }
+  if (oq) { var r2 = h('tr', { class: 'ref' }, h('td', { text: 'Start, one query' })); SETS.forEach(function (s) { r2.append(setCell(null, null, oq.by_set && oq.by_set[s])); }); pb.append(r2); }
+  D.evals.forEach(function (e) {
+    var tr = h('tr', null, h('td', { text: 'After step ' + e.step }));
+    SETS.forEach(function (s) { tr.append(setCell(e.greedy_by_set && e.greedy_by_set[s], e.sampled_by_set && e.sampled_by_set[s])); });
+    pb.append(tr);
+  });
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, ph), pb)));
+
+  // sign tests
+  var gateP = cfgNum('gate_p', 0.05), turnP = cfgNum('turn_p', 0.1);
+  function lines(t, parts) {
+    var out = [];
+    parts.forEach(function (p) {
+      var x = t && t[p[0]]; if (!x) return;
+      out.push(h('span', { class: 'ln' }, h('i', { text: p[1] + ' ' }), x.better + ' better · ' + x.worse + ' worse · p ' + F.d3(x.p)));
+    });
+    return out.length ? out : '–';
+  }
+  var PARTS = [['greedy', 'greedy'], ['sampled', 'sampled'], ['pass8', 'pass@8']];
+  holder.append(h('div', { class: 'subhead', text: 'Sign tests against the start, question by question' }));
+  var tbA = h('tbody');
+  D.evals.forEach(function (e) {
+    var v = e.vs || {}, swt = v.start_with_turns, p8 = swt && swt.pass8, failed = p8 && p8.worse > p8.better && p8.p < gateP, tr = h('tr');
+    tr.append(h('td', { text: 'After step ' + e.step + (e.kind ? ' · ' + e.kind : '') }), h('td', null, lines(v.single_turn, PARTS)), h('td', null, lines(swt, PARTS)),
+      h('td', null, !p8 ? h('span', { class: 'd', text: 'full evaluations only' }) : failed ? chip('bad', 'fail', 'Gate failed') : chip('ok', 'ok', 'Gate passed')));
+    tbA.append(tr);
+  });
+  if (!D.evals.length) { var ta = h('tr'); ta.append(h('td', { colspan: '4', style: 'color:var(--ink-2)', text: 'No evaluation yet. The first one runs after step ' + firstEvalStep() + '.' })); tbA.append(ta); }
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, h('tr', null, h('th', { text: 'Evaluation' }), h('th', { text: 'Against the start on one query' }), h('th', { text: 'Against the start with turns' }), h('th', { text: 'The gate' }))), tbA)));
+  holder.append(h('p', { class: 'note', text: 'The gate stops the run after a full evaluation when pass@8 with turns is worse than the start adapter\'s with turns on more questions than it is better, with p below ' + gateP + '. One question is 0.5 points: read the counts and p, not the points.' }));
+
+  holder.append(h('div', { class: 'subhead', text: 'Sign tests against the best earlier evaluation' }));
+  var tbB = h('tbody');
+  D.evals.forEach(function (e) {
+    var v = e.vs && e.vs.best, tr = h('tr');
+    if (!v) { tr.append(h('td', { text: 'After step ' + e.step }), h('td', { colspan: '2', style: 'color:var(--ink-2)', text: 'Nothing earlier to compare with.' })); }
+    else {
+      var gt = v.greedy, hit = gt && gt.worse > gt.better && gt.p < turnP;
+      tr.append(h('td', { text: 'After step ' + e.step + (isNum(v.step) ? ' against step ' + v.step : '') }), h('td', null, lines(v, PARTS)),
+        h('td', null, !gt ? '–' : hit ? chip('warn', 'pause', 'Pauses the run') : chip('ok', 'ok', 'Not triggered')));
+    }
+    tbB.append(tr);
+  });
+  if (!D.evals.length) { var tb0 = h('tr'); tb0.append(h('td', { colspan: '3', style: 'color:var(--ink-2)', text: 'First evaluation after step ' + firstEvalStep() + '. Each later one is compared with the best earlier one.' })); tbB.append(tb0); }
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, h('tr', null, h('th', { text: 'Evaluation' }), h('th', { text: 'Against the best earlier evaluation' }), h('th', { class: 'gatecol', text: 'The turn rule' }))), tbB)));
+  holder.append(h('p', { class: 'note', text: 'The turn rule pauses the run when greedy with turns is worse than the run\'s best earlier evaluation on more questions than it is better, with p below ' + turnP.toFixed(2) + '.' }));
+}
+
+function renderSampledTables() {
+  var holder = document.getElementById('evaltables2'); if (!holder) return;
+  holder.textContent = '';
+  var oq = oneQ(), se = startEval(), sm = se && se.sampled;
+  if (!oq && !sm) { holder.append(h('p', { class: 'note', text: 'The start reference arrives with the refs document.' })); return; }
+  var rows = [];
+  if (oq) rows.push({ name: 'Start, one query', b: oq.overall, ref: true });
+  if (sm) rows.push({ name: 'Start, with turns', b: sm, calls: se.sampled_calls_mean, ref: true, base: true });
+  D.evals.forEach(function (e) { if (e.sampled) rows.push({ name: 'After step ' + e.step, b: e.sampled, calls: e.sampled_calls_mean }); });
+  var thead = h('tr', null, h('th', { text: 'Checkpoint' }), ['mean@8', 'pass@8', 'never', 'sometimes', 'always'].map(function (t) { return h('th', { class: 'n', text: t }); }), h('th', { text: 'split' }), h('th', { class: 'n', text: 'calls an episode' }));
+  var tbody = h('tbody');
+  rows.forEach(function (r) {
+    var b = r.b, tr = h('tr', { class: r.ref ? 'ref' : null }), base = sm;
+    tr.append(h('td', { text: r.name }));
+    var vals = [b.mean_at8, pass8(b)], bs = base ? [base.mean_at8, pass8(base)] : [];
+    vals.forEach(function (v, i) { tr.append(h('td', { class: 'n' }, F.pct(v), r.ref || !bs.length ? null : deltaTxt(v, bs[i]))); });
+    tr.append(h('td', { class: 'n', text: nn(b.never) }), h('td', { class: 'n', text: nn(b.sometimes) }), h('td', { class: 'n', text: nn(b.always) }), h('td', null, splitBar(b)),
+      h('td', { class: 'n', text: isNum(r.calls) ? F.d2(r.calls) : '–' }));
+    tbody.append(tr);
+  });
+  if (!D.evals.some(function (e) { return e.sampled; })) {
+    var t0 = h('tr'); t0.append(h('td', { colspan: '8', style: 'color:var(--ink-2)', text: 'The first full evaluation comes after step ' + (fullStepList()[0] || 20) + '.' })); tbody.append(t0);
+  }
+  holder.append(h('div', { class: 'tablewrap' }, h('table', null, h('thead', null, thead), tbody)));
+  var lg = h('div', { class: 'legend', style: 'margin-top:6px' });
+  [['never', 'var(--ord1)'], ['sometimes', 'var(--ord2)'], ['always', 'var(--ord3)']].forEach(function (p) { lg.append(h('span', { class: 'lg' }, keyEl(p[1], 'box'), p[0] + ' right (of 8 samples)')); });
+  holder.append(lg, h('p', { class: 'note', text: 'Differences are in points against the start with turns. Calls an episode is over all episodes, one-query datasets included.' }));
+}
+
+/* ---- generalising */
+function trainGain(set) {
+  var vals = D.rows.map(function (r) { return r['solve_' + set]; }).filter(isNum);
+  if (vals.length < 2 * ROLL) return null;
+  return avg(vals.slice(-ROLL)) - avg(vals.slice(0, ROLL));
+}
+function evalSetDecided(e, set) { var b = e && e.greedy_by_set && e.greedy_by_set[set]; return b && isNum(b.decided) ? b.decided : null; }
+function genReading(set) {
+  var tg = trainGain(set), sg = startEval(), le = lastEval();
+  var b0 = sg && sg.greedy_by_set && sg.greedy_by_set[set], d0 = b0 && isNum(b0.decided) ? b0.decided : null, d1 = evalSetDecided(le, set);
+  var eg = isNum(d0) && isNum(d1) ? d1 - d0 : null;
+  var node = h('span');
+  if (tg == null) node.append('Training curve needs at least 10 steps. ');
+  else node.append('Training ' + F.signed(tg * 100) + ' points since steps 1-5. ');
+  if (eg == null) { node.append('Evaluation: first one after step ' + firstEvalStep() + '.'); return node; }
+  node.append('Evaluation ' + F.signed(eg * 100) + ' points against the start. ');
+  if (tg != null) {
+    var t = tg * 100, e = eg * 100, w;
+    if (t >= 1 && e <= -1) w = h('span', { class: 'warn', text: 'Training up, evaluation down: overfitting signal.' });
+    else if (t >= 1 && e < 1) w = h('span', { class: 'warn', text: 'Training up, evaluation flat: watch it.' });
+    else if (t >= 1 && e >= 1) w = 'Both up.';
+    else w = 'No clear training gain yet.';
+    node.append(w);
+  }
+  return node;
+}
+function genCard(set) {
+  return makeCard({ id: 'gen-' + set, title: SET_NAME[set], sub: function () { return hasTurns(set) ? 'with turns' : 'one query'; }, build: function () {
+    var sg = startEval();
+    var train = seriesOf('solve_' + set, { label: 'training solve rate', short: 'train', color: 'var(--s1)', roll: true, fmt: F.pct });
+    var b0 = sg && sg.greedy_by_set && sg.greedy_by_set[set];
+    var pts = []; if (b0 && isNum(b0.decided)) pts.push({ x: 0, y: b0.decided });
+    D.evals.forEach(function (e) { var d = evalSetDecided(e, set); if (isNum(d)) pts.push({ x: e.step, y: d }); });
+    var ev = { label: 'evaluation, greedy', short: 'eval', color: 'var(--s2)', data: pts, mark: 'pts', join: true, fmt: F.pct };
+    if (!D.rows.length && !pts.length) return { empty: 'No training step and no evaluation yet.' };
+    return { x: [0, totalSteps()], series: [train, ev], axis: 'pct', fmt: F.pct, zero: false, h: 176, foot: genReading(set),
+      xLabel: function (x) { return x === 0 ? 'start with turns (step 0)' : 'step ' + x; },
+      xLabelShort: function (x) { return x === 0 ? 'start' : String(x); },
+      latest: (lastPt(train.roll) ? 'train ' + F.pct(lastPt(train.roll).y) : '') + (pts.length ? ' · eval ' + F.pct(lastPt(pts).y) : '') };
+  } });
+}
+function buildGeneral(panel) {
+  panel.append(h('p', { class: 'intro', text: 'Each dataset: how well the policy does on the training questions it is seeing (new ones every step) against the 200-question evaluation set (questions it has never seen; for CypherBench, graphs it has never seen either). The evaluation line is the greedy score with turns, right over right plus wrong.' }));
+  panel.append(h('p', { class: 'rule-note' }, h('b', { text: 'Reading rule. ' }), 'Training solve rate going up while the evaluation stays flat or falls is overfitting: the policy is learning the training questions, not the task. One evaluation moves by about 3 points from noise alone, and a dataset\'s 50 questions are 2 points each.'));
+  var leg = legendEl([{ label: 'training solve rate, 5-step rolling mean', color: 'var(--s1)' }, { label: 'evaluation, greedy with turns decided; the start at step 0', color: 'var(--s2)' }]);
+  leg.style.margin = '12px 0 8px';
+  var g = h('div', { class: 'grid sm' });
+  SETS.forEach(function (sc) { g.append(genCard(sc)); });
+  panel.append(leg, g);
+}
+
+
+/* ------------------------------------------------------------------ panel: optimizer */
+function buildOptimizer(panel) {
+  panel.append(h('p', { class: 'intro', text: 'What the update did. The learning rate ramps over the warm-up steps; the loss is the sign-adjusted policy loss and only its trend and spikes matter.' }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    stepCard('loss', 'Loss', null, null, function () { return lineSpec({ fmt: F.d3, zero: false, series: [seriesOf('loss', { label: 'loss' })] }); }),
+    stepCard('grad', 'Gradient norm', 'Averaged over the step\'s minibatches, with the largest one beside it. The update clips at 1.0; a norm at the clip for several steps means a penalty is driving.',
+      [{ label: 'mean', color: 'var(--s1)' }, { label: 'largest minibatch', color: 'var(--s2)' }, { label: 'clip', kind: 'bound' }], function () {
+        return lineSpec({ fmt: F.d3, series: [seriesOf('grad_norm', { label: 'grad norm', short: 'mean', color: 'var(--s1)' }), seriesOf('grad_norm_max', { label: 'largest minibatch', short: 'max', color: 'var(--s2)' })],
+          hlines: [{ y: 1.0, label: 'clip at 1.0', kind: 'bound' }] });
+      }),
+    stepCard('lr', 'Learning rate', null, null, function () {
+      var wu = cfgC().warmup_steps;
+      return lineSpec({ axis: 'sci', fmt: F.sci, series: [seriesOf('lr', { label: 'learning rate' })], bands: isNum(wu) && wu > 0 ? [{ x0: 1, x1: wu, label: 'warm-up' }] : [] });
+    }),
+    stepCard('clip', 'Clip fraction', 'Share of tokens whose update was clipped.', null, function () { return lineSpec({ axis: 'pct', fmt: F.pctA, series: [seriesOf('clip_frac', { label: 'clipped' })] }); }),
+    stepCard('entropy', 'Entropy', 'Mean token entropy of the policy on its own episodes: the first turn, which the stop rule watches, and later turns beside it.',
+      [{ label: 'first turn', color: 'var(--s1)' }, { label: 'later turns', color: 'var(--s2)' }, { label: 'stop line, first turn', kind: 'bound' }], function () {
+        return lineSpec({ fmt: F.d3, series: [seriesOf('entropy_t1', { label: 'first turn', short: 'first', color: 'var(--s1)' }), seriesOf('entropy_later', { label: 'later turns', short: 'later', color: 'var(--s2)' })],
+          hlines: relLine('entropy_t1', F.d3, 'stop below'), foot: boundFoot('entropy_t1') });
+      }),
+    stepCard('seqs', 'Sequences trained and distilled', 'Trained: whole episodes in the update. Distilled: first turns that the teacher re-weighted token by token.',
+      [{ label: 'trained', color: 'var(--s1)' }, { label: 'distilled', color: 'var(--s2)' }], function () {
+        return lineSpec({ axis: 'int', fmt: F.int, series: [seriesOf('trained_seqs', { label: 'trained', color: 'var(--s1)' }), seriesOf('sdpo_rollouts', { label: 'distilled', color: 'var(--s2)' })] });
+      }),
+    stepCard('jsd', 'Distillation JSD', 'Gap between the student and its teacher on the distilled first turns.', null, function () { return lineSpec({ fmt: F.sig, series: [seriesOf('distill_jsd', { label: 'JSD' })] }); }),
+    stepCard('tw', 'Teacher weight', 'Mean weight the teacher gets across distilled tokens.', null, function () { return lineSpec({ fmt: F.d3, series: [seriesOf('teacher_weight_mean', { label: 'teacher weight' })] }); })
+  );
+  panel.append(g);
+}
+
+/* ------------------------------------------------------------------ panel: timing */
+var SEG = [
+  { label: 'rollouts', color: 'var(--s1)' }, { label: 'scoring + load', color: 'var(--s2)' }, { label: 'update', color: 'var(--s3)' },
+  { label: 'merge', color: 'var(--s4)' }, { label: 'other', color: 'var(--s-other)' }
+];
+function timingCols() {
+  return D.rows.filter(function (r) { return isNum(r.step_s) || isNum(r.rollout_s); }).map(function (r) {
+    var a = (r.rollout_s || 0) + (r.serve_s || 0), b = Math.max(r.load_s || 0, r.score_s || 0), c = r.train_s || 0, d = r.merge_s || 0;
+    var tot = isNum(r.step_s) ? r.step_s : a + b + c + d, o = Math.max(0, tot - a - b - c - d);
+    return { x: r.step, segs: [a, b, c, d, o], total: tot };
+  });
+}
+function buildTiming(panel) {
+  panel.append(h('p', { class: 'intro', text: 'Where a step\'s time goes (rollout_s, score_s, load_s, train_s, merge_s). Scoring runs on the CPU while the model loads, so "scoring + load" counts the longer of the two; "other" is the rest of the step (server start, saving).' }));
+  var g = h('div', { class: 'grid md' });
+  g.append(
+    makeCard({ id: 'timing', title: 'Seconds per step', legend: SEG.map(function (s) { return { label: s.label, color: s.color, kind: 'box' }; }), build: function () {
+      var e = noRows(); if (e) return { empty: e };
+      var cols = timingCols();
+      if (!cols.length) return { empty: 'No timings logged yet.' };
+      var lc = lastPt(cols), m = D.state && D.state.timing && D.state.timing.mean_step_s;
+      return { type: 'stack', x: stepDomain(), cols: cols, segs: SEG, h: 200, latest: 'latest ' + F.sec(lc.total) + (isNum(m) ? ' · mean of last 10: ' + F.sec(m) : '') };
+    } }),
+    makeCard({ id: 'gb', title: 'Peak GPU memory', sub: 'Highest allocation inside the trainer during the step.', build: function () {
+      return lineSpec({ fmt: F.gb, axis: 'num', series: [seriesOf('peak_gb', { label: 'peak GB' })], hlines: [{ y: CARD_GB, label: 'the card: 16 GB', kind: 'ref' }], h: 200 });
+    } })
+  );
+  panel.append(g);
+}
+
+/* ------------------------------------------------------------------ header, tiles, banners, events */
+function ago(ms) {
+  var s = Math.max(0, Math.round(ms / 1000));
+  if (s < 90) return s + ' s';
+  var m = Math.round(s / 60); if (m < 90) return m + ' min';
+  var hh = s / 3600; if (hh < 48) return hh.toFixed(1) + ' h';
+  return Math.round(hh / 24) + ' days';
+}
+function parseT(t) { var d = Date.parse(t); return isNaN(d) ? null : d; }
+function localTime(t) {
+  var d = new Date(Date.parse(t)); if (isNaN(d)) return '';
+  var now = new Date(), same = d.toDateString() === now.toDateString();
+  var tm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return same ? tm : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + tm;
+}
+function tickAgo() {
+  var s = D.state, el = document.getElementById('bar-upd'); if (!el) return;
+  if (!s || !s.updated_at) { el.textContent = ''; return; }
+  var t = parseT(s.updated_at); if (t == null) { el.textContent = ''; return; }
+  var age = Date.now() - t, stale = s.status === 'running' && age > 45 * 60 * 1000;
+  el.textContent = 'updated ' + ago(age) + ' ago' + (stale ? ' · feed may be stale' : '');
+  el.className = 'upd' + (stale ? ' stale' : '');
+}
+function renderStatusBar() {
+  var s = D.state, st = $('#bar-status'); st.textContent = '';
+  var n = stepNow(), N = s && s.steps_total;
+  if (s) {
+    var d = STATUS[s.status] || ['neutral', 'idle', String(s.status || 'unknown')];
+    st.append(chip(d[0], d[1], d[2], d[3]));
+  } else if (D.rows.length) st.append(chip('neutral', 'idle', 'No state yet'));
+  setText('bar-step', s || D.rows.length ? 'Step ' + n + (N ? ' of ' + N : '') : 'no data yet');
+  var pct = N ? Math.min(100, Math.round(n / N * 100)) : 0;
+  $('#bar-fill').style.width = pct + '%';
+  $('#bar-meter').setAttribute('aria-valuenow', String(pct));
+  tickAgo();
+}
+var PHASE = { rollouts: 'Sampling episodes', training: 'Training update', evaluating: 'Evaluating on the evaluation set', running: 'Between steps', paused: 'Paused', failed: 'Failed', done: 'Done' };
+function whyList(s) { return (s.why || []).filter(Boolean); }
+function banner(cls, ic, title, items) {
+  var b = h('div', { class: 'banner ' + cls, role: 'alert' });
+  b.append(iconEl(ic), h('div', null, h('b', { text: title }), items && items.length ? h('ul', null, items.map(function (w) { return h('li', { text: w }); })) : null));
+  return b;
+}
+function renderHeader() {
+  var s = D.state, grid = $('#hgrid'), ban = $('#banners'); grid.textContent = ''; ban.textContent = '';
+  var fn = $('#feedname');
+  if (s && s.run) { fn.hidden = false; fn.textContent = 'feed: ' + s.run; } else fn.hidden = true;
+  if (!s) return;
+  // banners
+  if (s.status === 'dead') ban.append(banner('bad', 'fail', 'The run is not running.', whyList(s)));
+  else if (s.status === 'failed') ban.append(banner('bad', 'fail', 'The run failed.', whyList(s)));
+  else if (s.status === 'paused') ban.append(banner('warn', 'pause', 'The run is paused and waiting for a decision.', whyList(s)));
+  else if (s.status === 'stopped') ban.append(banner('warn', 'stop', 'The run stopped after a step.', whyList(s)));
+  var shown = (s.status === 'paused' || s.status === 'failed' || s.status === 'stopped' || s.status === 'dead') ? whyList(s) : [];
+  var rules = (s.stop_rules_now || []).filter(function (r) { return r && shown.indexOf(r) < 0; });
+  if (rules.length) ban.append(banner('bad', 'warn', 'Stop rules firing on the latest step', rules));
+  // header cells
+  var ph = s.phase, ip = s.in_progress, n = stepNow(), sh = shape();
+  var c1 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: 'Phase' }), h('div', { class: 'v', text: PHASE[ph] || (ph ? String(ph) : '–') }),
+    h('div', { class: 's', text: (s.phase_text || '') + (s.phase_at && parseT(s.phase_at) ? ' · ' + ago(Date.now() - parseT(s.phase_at)) + ' ago' : '') }));
+  var sampling = ip && isNum(ip.episodes_total) && ip.episodes_total > 0 && (ph === 'rollouts' || ph === 'training') && s.status !== 'done';
+  var c2 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: sampling ? 'Step ' + ip.step + ' in progress' : 'Steps' }));
+  if (sampling) {
+    var pc = Math.min(100, Math.round(ip.episodes_done / ip.episodes_total * 100));
+    var mt = h('div', { class: 'meter', role: 'progressbar', 'aria-label': 'Episodes written for the step in progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pc) }); var fi = h('i'); fi.style.width = pc + '%'; mt.append(fi);
+    c2.append(h('div', { class: 'v', text: ip.episodes_done + ' of ' + ip.episodes_total + ' episodes' }), mt);
+  } else c2.append(h('div', { class: 'v', text: s.status === 'done' ? 'All steps trained' : 'Step ' + n + ' trained' }));
+  var t = s.timing || {}, left = t.hours_left, el = Array.isArray(t.evals_left) ? t.evals_left.length : null;
+  var c3 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: 'Time left' }),
+    h('div', { class: 'v', text: s.status === 'done' ? 'Finished' : isNum(left) ? (left < 1 ? '≈ ' + Math.round(left * 60) + ' min' : '≈ ' + left.toFixed(1) + ' h') : '–' }),
+    h('div', { class: 's', text: isNum(t.mean_step_s) ? (t.mean_step_s / 60).toFixed(1) + ' min a step (mean of the last 10)' + (el != null && s.status !== 'done' ? ' · ' + el + ' evaluations left' : '') : 'needs a finished step' }));
+  var started = s.started_at && parseT(s.started_at);
+  var c4 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: 'Run' }), h('div', { class: 'v', text: String(s.run || '–') }),
+    h('div', { class: 's', text: (started ? 'started ' + localTime(s.started_at) : '') + (s.launched_by ? ' · launched by ' + s.launched_by : '') }));
+  var c5 = h('div', { class: 'hcell' }, h('div', { class: 'k', text: 'A step' }), h('div', { class: 'v', text: sh.questions + ' questions · ' + (sh.questions * sh.group) + ' episodes' }),
+    h('div', { class: 's', text: sh.with_turns + ' with turns · ' + sh.one_query + ' one query · ' + sh.returned + ' returned' }));
+  grid.append(c1, c2, c3, c4, c5);
+  // settings
+  var cf = s.config, cfg = $('#cfg'), body = $('#cfgbody'); body.textContent = '';
+  if (cf) {
+    cfg.hidden = false;
+    var kv = [];
+    function add(k, v) { if (v != null && v !== '') kv.push([k, String(v)]); }
+    var mk = cf.method_cfg && cf.method_cfg.kl, sp = cf.stop || {};
+    add('Method', cf.method && String(cf.method).toUpperCase());
+    add('Starts from', cf.init_from);
+    add('Questions a step', cf.mix ? Object.keys(cf.mix).map(function (k) { return (SET_NAME[k] || k) + ' ' + cf.mix[k]; }).join(' · ') + (isNum(cf.questions_per_step) ? ' = ' + cf.questions_per_step : '') : cf.questions_per_step);
+    add('Episodes per question', cf.group_size);
+    add('Calls allowed', cf.max_queries); add('Prompt', cf.prompt_variant);
+    add('One query only', Array.isArray(cf.single_turn_sets) ? cf.single_turn_sets.map(function (k) { return SET_NAME[k] || k; }).join(', ') : null);
+    add('Returned questions a step', cf.returned_per_step ? Object.keys(cf.returned_per_step).map(function (k) { return (SET_NAME[k] || k) + ' ' + cf.returned_per_step[k]; }).join(', ') : null);
+    add('Stricter score for them', cf.returned_guard == null ? null : cf.returned_guard ? 'on' : 'off');
+    add('Reward', isNum(cf.turn_cost) ? '1 − ' + cf.turn_cost + ' × (calls − 1) when right; ' + cf.reward_malformed + ' with no query' : null);
+    add('Learning rate', isNum(cf.lr) ? cf.lr.toExponential(1) + (cf.warmup_steps ? ', ' + cf.warmup_steps + ' warm-up steps' : '') : null);
+    add('Minibatches', cf.minibatches); add('Temperature', cf.temperature); add('Longest episode trained', isNum(cf.max_seq) ? cf.max_seq + ' tokens' : null);
+    add('Thinking budget', cf.think_budget && cf.think_budget + ' tokens'); add('Max tokens', cf.max_tokens);
+    add('Quick evaluations after steps', Array.isArray(cf.quick_eval_steps) ? cf.quick_eval_steps.join(', ') : null);
+    add('Full evaluations after steps', Array.isArray(cf.eval_steps) ? cf.eval_steps.join(', ') : null);
+    add('Gate p (pass@8 vs the start)', cf.gate_p); add('Turn rule p (vs the best)', cf.turn_p); add('First-query floor', isNum(cf.first_floor) ? F.pct(cf.first_floor) : null);
+    add('Slots', cf.slots); add('Question pool', cf.pool);
+    add('LoRA', cf.lora_r ? 'rank ' + cf.lora_r + ', alpha ' + cf.lora_alpha : null); add('Advantage std floor', cf.adv_std_floor);
+    add('Drift penalty', mk ? 'weight ' + mk.beta + ' fixed, ' + (mk.turns || 'first') + ' turn, offset ' + mk.offset + ', top ' + mk.top_k + ' tokens' : null);
+    add('Stop above drift', sp.kl_start_max); add('Stop above step 1 raw reading', sp.kl_step1_max);
+    add('Duplicate probe', cf.dup_probe == null ? null : cf.dup_probe ? 'on' : 'off');
+    kv.forEach(function (p) { body.append(h('div', null, h('dt', { text: p[0] }), h('dd', { text: p[1] }))); });
+  } else $('#cfg').hidden = true;
+}
+
+function tile(label, value, sub, state) {
+  var t = h('div', { class: 'tile' }, h('div', { class: 'k', text: label }), h('div', { class: 'v', text: value }), h('div', { class: 's', text: sub || '' }));
+  if (state === 'ok') t.append(chip('ok', 'ok', 'Inside the bound'));
+  else if (state === 'over') t.append(chip('bad', 'warn', 'Outside the bound'));
+  else if (state && state.text) t.append(chip(state.cls, state.icon, state.text));
+  return t;
+}
+function rollNow(key) { var sr = seriesOf(key, { roll: true }); var r = lastPt(sr.roll), d = lastPt(sr.data); return { roll: r ? r.y : null, raw: d ? d.y : null, x: d ? d.x : null }; }
+function renderTiles() {
+  var box = $('#tiles'); box.textContent = '';
+  var s = D.state; if (!s && !D.rows.length) return;
+  var last = D.rows[D.rows.length - 1] || {}, n = stepNow(), N = s && s.steps_total || totalSteps();
+  box.append(tile('Training step', 'Step ' + n + ' of ' + N, s ? (PHASE[s.phase] || '') : ''));
+  var so = rollNow('solve_rate'), fq = rollNow('first_solve_rate'), fb = bndNum('first_solve_rate');
+  box.append(tile('Solve rate', F.pct(so.roll), isNum(so.raw) ? 'step ' + so.x + ': ' + F.pct(so.raw) + ' · avg of last 5' : 'after step 1'));
+  box.append(tile('First-query solve rate', F.pct(fq.roll), (isNum(fq.raw) ? 'step ' + fq.x + ': ' + F.pct(fq.raw) + ' · avg of last 5 · ' : '') + (isNum(fb) ? 'stop line ' + F.pct(fb) : 'stop line drawn after step 5'),
+    isNum(fq.roll) && isNum(fb) ? (fq.roll >= fb ? { cls: 'ok', icon: 'ok', text: 'Above the stop line' } : { cls: 'bad', icon: 'warn', text: 'Below the stop line' }) : null));
+  var cm = rollNow('calls_mean'), cmax = cfgStop('queries_mean_max', 2.0);
+  box.append(tile('Calls an episode', F.d2(cm.roll), (isNum(cm.raw) ? 'step ' + cm.x + ': ' + F.d2(cm.raw) + ' · avg of last 5 · ' : '') + 'bound ' + F.d1(cmax) + ' · episodes with turns',
+    isNum(cm.roll) ? (cm.roll > cmax ? 'over' : 'ok') : null));
+  var rb = rollNow('returned_broken_frac'), rsb = retStart() && retStart().broken_frac, rst = null;
+  if (isNum(rb.roll) && isNum(rsb)) {
+    var dd = (rb.roll - rsb) * 100;
+    rst = dd <= -5 ? { cls: 'ok', icon: 'ok', text: 'Below the untrained level' } : dd >= 5 ? { cls: 'warn', icon: 'warn', text: 'Above the untrained level' } : { cls: 'neutral', icon: 'idle', text: 'Near the untrained level' };
+  }
+  box.append(tile('Right answers broken (returned questions)', F.pct(rb.roll), (isNum(rb.raw) ? 'step ' + rb.x + ': ' + F.pct(rb.raw) + ' · avg of last 5 · ' : '') + 'untrained ' + (isNum(rsb) ? F.pct0(rsb) : 'arrives with the refs'), rst));
+  var kl = last.kl_start, kmax = cfgStop('kl_start_max', 0.05);
+  box.append(tile('Drift from the start', F.sig(kl), 'bound ' + F.sig(kmax) + ' · one step swings by about 0.002',
+    isNum(kl) ? (kl > kmax ? 'over' : 'ok') : null));
+  var le = lastEval(), sg = startG(), oq = oneQ();
+  if (le && gblk(le)) {
+    var g = gblk(le), dlt = sg && isNum(sg.decided) ? (g.decided - sg.decided) * 100 : null;
+    box.append(tile('Latest evaluation', F.pct(g.decided), 'greedy with turns after step ' + le.step + (sg ? ' · start ' + F.pct(sg.decided) + ' (' + F.signed(dlt, 1) + ' points)' : '') + ' · first query ' + F.pct(g.first_decided),
+      isNum(dlt) ? (dlt >= 3 ? { cls: 'ok', icon: 'ok', text: 'Above the start by 3 or more' } : dlt <= -3 ? { cls: 'warn', icon: 'warn', text: 'Below the start by 3 or more' } : { cls: 'neutral', icon: 'idle', text: 'Within 3 points of the start' }) : null));
+  } else {
+    box.append(tile('Latest evaluation', '–', 'first evaluation after step ' + firstEvalStep() + (sg ? ' · start with turns ' + F.pct(sg.decided) : '') + (oq ? ' · start on one query ' + F.pct(oq.overall.greedy_pass1) : '')));
+  }
+  var bt = s && s.best;
+  if (bt && isNum(bt.step)) {
+    box.append(tile('Best step so far', 'Step ' + bt.step, 'greedy with turns ' + F.pct(bt.greedy_with_turns) + ' · first query ' + F.pct(bt.first_query),
+      bt.first_query_ok === false ? { cls: 'warn', icon: 'warn', text: 'First query under the ' + F.pct(firstFloor()) + ' floor' } : null));
+  } else box.append(tile('Best step so far', '–', 'first evaluation after step ' + firstEvalStep()));
+}
+
+function renderEvents() {
+  var box = $('#events'); if (!box) return;
+  var keep = box.scrollTop; box.textContent = '';
+  var ev = (D.state && D.state.events) || [];
+  if (!ev.length) { box.append(h('div', { class: 'ev' }, h('span'), h('span'), h('span', { class: 'x', text: 'No events yet.' }))); return; }
+  ev.slice().reverse().forEach(function (e) {
+    var k = e.kind === 'error' ? 'error' : e.kind === 'warn' ? 'warn' : 'info';
+    box.append(h('div', { class: 'ev ' + k }, h('span', { class: 't', text: localTime(e.at) }), h('span', { class: 'kd', text: k === 'info' ? '' : k === 'warn' ? 'Warning' : 'Error' }),
+      h('span', { class: 'x' }, String(e.text == null ? '' : e.text), isNum(e.step) ? h('small', { text: 'step ' + e.step }) : null)));
+  });
+  box.scrollTop = keep;
+}
+
+/* ------------------------------------------------------------------ build the page */
+function buildPage() {
+  buildRollouts($('#p-rollouts'));
+  buildTurns($('#p-turns'));
+  buildReturned($('#p-returned'));
+  buildDrift($('#p-drift'));
+  buildCanaries($('#p-canaries'));
+  buildEvals($('#p-evals'));
+  buildGeneral($('#p-general'));
+  buildOptimizer($('#p-optimizer'));
+  buildTiming($('#p-timing'));
+  var ev = $('#p-events');
+  ev.append(h('p', { class: 'intro', text: 'The last 40 events from the run\'s driver, newest first. Warnings and errors are marked in words as well as colour.' }), h('div', { class: 'events', id: 'events', role: 'log' }));
+}
+
+function renderAll() {
+  var has = !!(D.state || D.rows.length || D.evals.length || D.refs);
+  $('#empty').hidden = has;
+  $('#content').hidden = !has;
+  $('#hgrid').hidden = !has;
+  renderStatusBar(); renderHeader(); renderTiles();
+  dyn.forEach(function (d) { d.el.textContent = ''; append(d.el, d.fn()); });
+  if (has) { renderCards(); customs.forEach(function (f) { f(); }); renderReturnedTable(); renderEvalTables(); renderSampledTables(); renderEvents(); }
+  var missing = D.state && isNum(D.state.step_now) && D.rows.length < D.state.step_now;
+  var nn2 = $('#netnote');
+  if (missing) { nn2.hidden = false; nn2.className = 'note warn'; nn2.textContent = 'Showing ' + D.rows.length + ' of ' + D.state.step_now + ' trained steps: the rest have not been pushed to this page yet.'; }
+  else if (!nn2.dataset.net) { nn2.hidden = true; nn2.textContent = ''; }
+}
+
+/* ------------------------------------------------------------------ controls */
+function wireControls() {
+  function seg(id, fn) {
+    var box = document.getElementById(id);
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      box.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      fn(b.getAttribute('data-v'));
+    });
+  }
+  seg('seg-range', function (v) { view.range = v; renderCards(); });
+  seg('seg-view', function (v) { view.tables = v === 'tables'; renderCards(); });
+  var raf = 0, lastW = 0, main = $('.wrap');
+  function resize() {
+    var w = Math.round(main.getBoundingClientRect().width);
+    if (w === lastW) return; lastW = w;
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(function () { if (D.loaded) renderCards(); });
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(main); else window.addEventListener('resize', resize);
+  setInterval(tickAgo, 20000);
+  // the "what is different" panel: open the first time, then as the viewer left it
+  var diff = document.getElementById('diff');
+  try { if (localStorage.getItem('run2-diff') === 'closed') diff.open = false; } catch (e) { /* storage may be blocked */ }
+  diff.addEventListener('toggle', function () { try { localStorage.setItem('run2-diff', diff.open ? 'open' : 'closed'); } catch (e) { /* storage may be blocked */ } });
+}
+
+/* ------------------------------------------------------------------ the live store */
+function netNote(text, warn) {
+  var nn2 = $('#netnote'); nn2.dataset.net = text ? '1' : ''; nn2.hidden = !text; nn2.className = 'note' + (warn ? ' warn' : ''); nn2.textContent = text || '';
+}
+function start() {
+  buildPage(); wireControls(); renderAll();
+  var tries = 0;
+  (function waitForApi() {
+    var api = window.claude;
+    if (api && typeof api.use === 'function') return connect(api);
+    if (++tries < 40) return setTimeout(waitForApi, 100);
+    netNote('The live store is not available in this view, so there is nothing to show.', true);
+  })();
+}
+function connect(api) {
+  var timer = setTimeout(function () { netNote('Cannot reach the live store yet. The page keeps trying and will fill in when it answers.', true); }, 10000);
+  api.use('db').then(function (db) {
+    if (!db) { clearTimeout(timer); netNote('The live store is not available here. Open the page while signed in to claude.ai to see the run.', true); return; }
+    db.collection(STORE).onSnapshot(function (snap) {
+      var docs = {};
+      snap.docs.forEach(function (d) { if (d.exists) docs[d.id] = d.data(); });
+      D = derive(docs);
+      if (!snap.metadata.fromCache) { clearTimeout(timer); netNote(''); }
+      else if (!D.state && !D.rows.length) netNote('Waiting for the store to answer.', false);
+      renderAll();
+    }, function (err) {
+      clearTimeout(timer);
+      var code = err && err.code;
+      netNote(code === 'revoked' ? 'Access to the live store was withdrawn. The last data stays on screen.' : 'The live store reported an error (' + (code || 'unknown') + '). The last data stays on screen.', true);
+    });
+  }, function () { clearTimeout(timer); netNote('The live store could not be opened.', true); });
+}
+start();
+})();
+</script>
