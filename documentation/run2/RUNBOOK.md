@@ -184,8 +184,10 @@ $r='<data>\run2\run2'; $t=(Get-Date).AddMinutes(45); while((Get-Date) -lt $t){ i
 
 After a step with an evaluation (5, 10, ...), wait the same way on
 `$r\eval-<k>\returned\summary.json` first: the evaluation's result is there a few seconds
-later. If a wait runs out with nothing new, run a tick: the feed says `dead` when the run's
-process is gone (section 7).
+later. If a wait ends with nothing new (its 45 minutes ran out, or the tool cut it short),
+run a tick and start the wait again. The feed says `dead` when the run's process is gone
+(section 7). **`running` with no new event and no growing log for 45 minutes is unhealthy
+too**: read `driver.log` and the step's `train.log`, and see "the update hangs" in section 7.
 
 Keep each step's work small: the run is about 9 to 10 hours and your context has to last.
 
@@ -278,7 +280,7 @@ and `driver.log`.
 | "the start adapter is missing" | `<models>/<init_from>/lora_state.safetensors` must exist |
 | "no start reference", or "made under another protocol" | the start adapter's evaluation with turns is missing or doesn't match this run's settings: `phase0.py heldout --samples 8` (about 40 minutes), then start again |
 | "holds episodes made under another protocol" | an evaluation folder has episodes from other settings; move the folder aside, never mix them |
-| The feed says `dead` (the run's process is gone, no `DONE`, `PAUSED` or `FAILED`) and the PC did not restart | read the tail of `driver.log` and the last event. Check the GPU is free (section 1), then the start command once. If it dies again, leave it and tell Rishi |
+| The feed says `dead` (the run's process is gone, no `DONE`, `PAUSED` or `FAILED`) and the PC did not restart | **First make sure it is gone:** `tasklist /FI "PID eq <the number in run.pid>"` must list nothing, and `train.log` or `server.err.txt` of the current step must have stopped growing. A second copy started beside a live one puts two jobs on the GPU. Then read the tail of `driver.log` and the last event, and run `pause.py --run run2` once: a driver that was killed can leave its server, its trainer or its keep-alive loop in WSL behind, and `pause.py` clears them. Check the GPU is free (section 1), then the start command once. If it dies again, leave it and tell Rishi |
 | A power cut or reboot | start Docker Desktop and wait, `docker start asktrainer-neo4j`, then the start command; at most one update is redone. Tell Rishi it happened |
 | Docker Desktop won't start ("initializing Secrets Engine ... engine.sock") | ask Rishi: the fix that worked before changes a folder outside the repo |
 | The update hangs (GPU idle, the log silent for 15 minutes; run 1b step 35) | stop only that trainer inside WSL (`kill <pid>`), check the step before's state files against their `.sha256`, then ask Rishi before resuming |
@@ -321,9 +323,10 @@ looked like. Then, with Rishi:
 
 ## Kickoff message for Rishi to paste
 
-Open the session in the `NFL-RL` folder, on Opus, and paste:
+Open the session in the `NFL-RL` folder (the `sonnet-xhigh` subagent is defined in its
+`.claude/agents`), on Opus, and paste:
 
-> Read `documentation/run2/RUNBOOK.md` and follow it. This is my go to start run 2: check
+> Read `documentation/run2/RUNBOOK.md` in `NFL-RL` and follow it. This is my go to start run 2: check
 > section 1, start the run with `--launched-by agent` (section 2), then spawn the
 > `sonnet-xhigh` subagent twice (section 3): once to build the live dashboard from
 > `documentation/run2/dashboard-brief.md`, and once to explain the key changes made for this

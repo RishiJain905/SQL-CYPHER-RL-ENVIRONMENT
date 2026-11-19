@@ -48,7 +48,8 @@ Read first, in this order:
 
 ## The feed
 
-`scripts/run2/feed.py --run run2` writes `<data>/run2/run2/feed/`. **Store layout (use exactly
+`scripts/run2/feed.py --run run2` writes `<data>/run2/run2/feed/` (`<data>` is `data` in the
+untracked `configs/paths.local.toml`; never copy its value into a tracked file). **Store layout (use exactly
 this, the runbook's push step depends on it):** collection `run2`, one document per file,
 document id = the file name without `.json`.
 
