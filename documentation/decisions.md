@@ -537,12 +537,28 @@ empty result is often the true answer.
   whose reference says something on the copy the model looks at, for those where it says
   nothing, and for the one-query questions.
 
+**Choices the agent made inside option C, each Rishi's to overrule** (he approved "about a
+quarter of gretel's training questions" and the reruns; these go further):
+
+- **3 of 10, a fixed count** (30%), not 2 (20%). The evaluation set's share is 26%.
+- **The stricter reward, on by default** (`returned_guard`). Without it the cheapest lesson on
+  these questions is "it showed nothing, stop".
+- **"Twice in a row"** for the repeated-query rule.
+- **The drift offset measured again** under this protocol: 0.0084 (was 0.0099).
+- **Each evaluation also answers the returned dev slice** (50 questions, about a minute), so
+  the number this option trains is measured during the run, not only before it.
+- **Only returned questions the stricter check can judge** are in the file (604 of 627).
+
 **Found while building, and Rishi's to weigh:**
 
 - **Three quarters of the returned questions have a database with no rows at all** (452 of
   604; 10 of the evaluation set's 13). The dataset gave tables and no data. So what the model
   mostly meets is "the tables are empty", not "the filter matches nothing". A rule that needs
-  no reference could treat these differently (nothing to look at: one query). Not built.
+  no reference could treat these differently (nothing to look at: one query). Not built. On
+  the evaluation set it would put the untrained start at about 55.6% with turns, but mostly by
+  not throwing away points the checker gives too easily on an empty database.
+- **The start's first query (52.4%) is two questions above the 51.5% floor** the keep rule
+  uses (`first_floor`). Rerun noise alone can flip that flag.
 - **A wording that says an empty result can be right did not help.** `keep`, tested on the two
   dev slices by a rule set beforehand, broke more right answers on the returned slice (19
   against 14). The run's prompt stays `turns`.

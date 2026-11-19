@@ -14,9 +14,11 @@ adapter merged into the SFT model, unless a row says otherwise.
   evaluation set's right first answers and is absent from the pool, by the pool's own filter.
   Section 8. What to do about it is Rishi's choice (section 9).
 - **Rishi chose to fix the training questions** (decisions R17). Under that setup step 30
-  scores 52.4% with turns, the same as its first query; 60.5% against 52.3% where a look can
-  inform, with nothing broken; and it still breaks 7 of 10 right answers whose right result is
-  nothing, which training now has examples for. Section 10.
+  scores 52.4% with turns, the same as its first query; it gains 3 to 8 points where a look
+  can inform (two runs, at most one answer broken); and it still breaks 7 of 10 right answers
+  whose right result is nothing, which training now has examples for. Section 10.
+- **Sections 1 to 9 describe the protocols before that choice** (every dataset with turns, then
+  SQaLe on one query). The run's protocol and its numbers are in section 10.
 
 ## 1. Checks
 
@@ -425,11 +427,20 @@ question: greedy 10 better, 14 worse (p 0.54). **With 8 samples: mean@8 47.6, pa
 7 lost. By dataset (mean@8 / pass@8): CypherBench 46.8 / 76.0, gretel 63.8 / 88.0, SQaLe
 32.3 / 52.1, text2cypher 46.9 / 70.2.
 
+- **The sampled gain is in the half with turns.** gretel and CypherBench: mean@8 55.2 against
+  50.1 in the kept single-query evaluation (45 questions better, 22 worse, p 0.007). SQaLe and
+  text2cypher, which are on the kept evaluation's own protocol: 39.5 against 36.5 (24 better,
+  19 worse, p 0.54), which is what a rerun does.
+- **"Where a look can inform" was measured twice.** The earlier reference (section 7) ran the
+  same 87 questions under the same protocol: 46 / 87 to 49 / 87, fixed 4, broken 1. This one:
+  45 / 86 to 52 / 86, fixed 7, broken 0. So net +3 and +7 questions: both meet the bar set
+  above, and the size is somewhere between 3 and 8 points.
+
 **Read by the rules set above:**
 
 | Number | Result | Reading |
 |---|---|---|
-| Evaluation questions with turns whose reference says something | net +7, 0 of 45 broken | D10's first row: a look helps where it can inform |
+| Evaluation questions with turns whose reference says something | net +7, 0 of 45 broken (the earlier run: net +3, 1 of 46) | D10's first row: a look helps where it can inform |
 | Pool's dev slice, gretel and CypherBench | fixed 7, broken 0 | As before |
 | Returned dev slice, broken | 14 of 25 (56%) | The baseline; training has to lower it |
 | Returned answers the checker passes that the filled copies reject | 17 of 42 (40%) | The stricter reward is needed |
@@ -440,7 +451,16 @@ and three quarters of the returned file, have a **database with no rows at all**
 seven gretel breaks are on those ten. A rule that needs no reference ("a database with no rows
 gives one query: there is nothing to look at") would, on these same episodes, put step 30 at
 about 104 / 187 with turns (55.6%) with no training; this is an estimate that takes the first
-query as the one-query answer. It is a protocol change, so it is Rishi's.
+query as the one-query answer. **Most of that is not skill:** on a database with no rows the
+checker passes nearly any query that runs, so the rule mainly stops the model from throwing
+away points the yardstick gives too easily. It is a protocol change, so it is Rishi's.
+
+**What the run measures of this.** Each of the run's evaluations also answers the returned dev
+slice (50 questions, greedy, the stricter check) and reports how many right first answers the
+turns kept (`returned_dev` in the evaluation's summary; the untrained start: 25 right first,
+11 after its turns, 14 broken). A step's training metrics carry the same for its 24 returned
+episodes (`returned_*`). The evaluation set's own 13 such questions are judged by the
+checker alone, which is the weak check.
 
 **The loop test under option C** (`smoke-5`, 2 steps, 8 questions x 8 episodes: 2 of each
 dataset, one gretel question a returned one):
@@ -460,3 +480,16 @@ dataset, one gretel question a returned one):
   one rewritten.
 - Step 1's raw drift reading was 0.022 on its 8 probe episodes, so the offset was measured
   again under this protocol: 0.0084 (section 5). A real step probes 32 episodes.
+
+**The run's own evaluation path, end to end** (`smoke-6`: the same loop test with the greedy
+evaluation after each step, which earlier loop tests left out). Both evaluations ran, were
+scored and compared with their references, `BEST.json` was written, and the returned slice
+was answered and reported:
+
+| | Greedy with turns | First query | Fixed / broken | Returned slice: right first, right after turns, broken |
+|---|---|---|---|---|
+| After step 1 | 53.2% | 53.2% | 8 / 8 | 25, 10, 15 |
+| After step 2 | 53.4% | 55.6% | 3 / 7 | 25, 10, 15 |
+
+These are the start reference again within rerun noise (two steps of 8 questions change
+nothing): against it, 5 questions better and 4 worse. One evaluation takes about 4 minutes.

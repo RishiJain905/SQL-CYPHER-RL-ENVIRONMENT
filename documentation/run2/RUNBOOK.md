@@ -64,8 +64,11 @@ A loop test (2 steps of 8 questions from a reserve no real run uses, no evaluati
 2. **Update** (about 5 to 8 minutes, in WSL): scores (`scored.jsonl`), trains, saves
    (`lora_state.safetensors`, `optim.pt`, `ema_state.safetensors`, each with a `.sha256`),
    merges the new adapter into the rollout model, writes `metrics.json` and `TRAINED`.
-3. After steps 5, 10, ... : **greedy with turns** on the evaluation set (about 5 minutes).
-   After steps 20 and 40 also 8 sampled episodes a question (about 40 minutes more).
+3. After steps 5, 10, ... : **greedy with turns** on the evaluation set (about 4 minutes), and
+   on the returned dev slice (50 questions, about a minute; `eval-000k/returned/`, and
+   `returned_dev` in the evaluation's summary: untrained it is 25 right on the first query, 11
+   after the turns, 14 broken). After steps 20 and 40 also 8 sampled episodes a question on
+   the evaluation set (about 15 minutes more).
 
 `events.jsonl` has a line per phase; `train_log.jsonl` a line of metrics per step;
 `BEST.json` the step to keep so far.

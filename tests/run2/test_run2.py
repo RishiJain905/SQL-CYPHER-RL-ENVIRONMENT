@@ -1159,6 +1159,17 @@ def test_what_a_result_shows_and_what_the_turns_did_after_it():
     assert s["error"]["kept_wrong"] == 1 and s["error"]["broken_frac"] is None
 
 
+def test_an_evaluation_carries_the_returned_slices_numbers():
+    from sqlrl.run2 import orchestrate
+
+    eps = [sep(True, True, 1), sep(True, False, 2), sep(True, False, 3), sep(False, False, 1)]
+    brief = orchestrate.returned_brief({"greedy": summary.summarise(eps)})
+    assert (brief["n"], brief["first_right"], brief["right"]) == (4, 3, 1)
+    assert (brief["fixed"], brief["broken"]) == (0, 2)
+    assert brief["broken_frac"] == pytest.approx(2 / 3)
+    assert orchestrate.returned_pubs(rcfg.new_config({"returned_per_step": {}})) == []
+
+
 def test_eval_comparisons():
     assert eval_score.sign_test(0, 0) == 1.0 and eval_score.sign_test(10, 0) < 0.01
     mine = {

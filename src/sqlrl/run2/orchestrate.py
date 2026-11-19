@@ -184,6 +184,10 @@ def evaluate(cfg: dict[str, Any], run_dir: Path, k: int, launched_by: str,
     event(run_dir, "info", f"evaluation after step {k}: the evalset with turns, {kind}",
           phase="evaluating", step=k)  # fmt: skip
     episodes.claim(out / "episodes.jsonl", cfg)
+    back = returned_pubs(cfg)  # the second dev slice: the number option C trains (R17)
+    back_dir = out / "returned"
+    if back:
+        episodes.claim(back_dir / "episodes.jsonl", cfg)
     server.start(model, out, slots=cfg["slots"], ctx=cfg["slot_ctx"] * cfg["slots"])
     try:
         url = f"http://127.0.0.1:{server.PORT}"
@@ -194,11 +198,18 @@ def evaluate(cfg: dict[str, Any], run_dir: Path, k: int, launched_by: str,
                                     env.GraphHost())  # fmt: skip
             if not res["errors"]:
                 break
+        bres: dict[str, Any] = {}
+        for _ in range(3 if back else 0):  # greedy only: 50 questions, about a minute
+            bres = episodes.generate(url, back, cfg, back_dir / "episodes.jsonl",
+                                     episodes.eval_spec(cfg), 1, env.GraphHost())  # fmt: skip
+            if not bres["errors"]:
+                break
     finally:
         if not server.stop(out):
             raise RuntimeError("the evaluation server did not stop")
-    if res.get("errors"):
-        raise RuntimeError(f"{res['errors']} evaluation episodes failed after 3 tries")
+    if res.get("errors") or bres.get("errors"):
+        raise RuntimeError(f"{res.get('errors', 0) + bres.get('errors', 0)} evaluation "
+                           "episodes failed after 3 tries")  # fmt: skip
     (out / "scored.jsonl").unlink(missing_ok=True)  # the episode file grew: score it again
     code = wsl(
         "sqlrl.run2.eval_score",
@@ -208,7 +219,38 @@ def evaluate(cfg: dict[str, Any], run_dir: Path, k: int, launched_by: str,
     )
     if code != 0 or not done.exists():
         raise RuntimeError(f"scoring the evaluation failed (exit {code}, see {out.name}/score.log)")
-    return json.loads(done.read_text(encoding="utf-8"))
+    s = json.loads(done.read_text(encoding="utf-8"))
+    if back:
+        (back_dir / "scored.jsonl").unlink(missing_ok=True)
+        code = wsl("sqlrl.run2.eval_score", f"--dir {to_wsl(back_dir)} --rows dev",
+                   back_dir / "score.log")  # fmt: skip
+        if code != 0 or not (back_dir / "summary.json").exists():
+            raise RuntimeError(f"scoring the returned slice failed (exit {code}, see "
+                               f"{out.name}/returned/score.log)")  # fmt: skip
+        s["returned_dev"] = returned_brief(
+            json.loads((back_dir / "summary.json").read_text(encoding="utf-8")))  # fmt: skip
+        done.write_text(json.dumps(s, indent=1), encoding="utf-8")
+    return s
+
+
+def returned_pubs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """The second dev slice as public rows: returned gretel questions no step trains on."""
+    n = int(cfg.get("dev_returned") or 0)
+    if not n or not cfg.get("returned_per_step"):
+        return []
+    rows = pool.dev_returned(pool.load_pool(cfg["pool"]), n)
+    return public_rows(rows, pool.load_scripts(cfg["pool"]))
+
+
+def returned_brief(summary: dict[str, Any]) -> dict[str, Any]:
+    """The returned slice's numbers an evaluation carries: how many right first answers the
+    turns kept. The untrained start model: 25 of 50 right first, 11 after its turns, 14
+    broken (results/run2-phase0.md, section 10). "Right" is the stricter check."""
+    b = summary["greedy"]["overall"]
+    return {"n": b["n"], "first_right": b["first"]["right"], "right": b["final"]["right"],
+            "fixed": b["changes"]["fixed"], "broken": b["changes"]["broken"],
+            "broken_frac": b["changes"]["broken_frac"],
+            "calls_mean": b["protocol"]["calls_mean"]}  # fmt: skip
 
 
 def check_start_reference(cfg: dict[str, Any]) -> None:
@@ -217,7 +259,8 @@ def check_start_reference(cfg: dict[str, Any]) -> None:
     have been made under this run's protocol: against a reference made with another prompt,
     call limit or set of single-turn datasets the gate would compare two different tasks."""
     rel = (cfg.get("refs") or {}).get("start_with_turns")
-    if not rel or cfg.get("smoke") or not (cfg["eval_steps"] or cfg.get("quick_eval_steps")):
+    skip = cfg.get("smoke") and not cfg.get("smoke_eval")
+    if not rel or skip or not (cfg["eval_steps"] or cfg.get("quick_eval_steps")):
         return
     ref = pool.data_dir() / rel
     if not (ref / "summary.json").exists():
@@ -310,7 +353,7 @@ def run(name: str, launched_by: str = "agent", new: dict[str, Any] | None = None
                 if why:
                     _pause(run_dir, k, why, "paused for a look")
                     return 0
-            if (k in quick or k in full) and not cfg.get("smoke"):
+            if (k in quick or k in full) and (not cfg.get("smoke") or cfg.get("smoke_eval")):
                 s = evaluate(cfg, run_dir, k, launched_by, full=k in full)
                 o = s["greedy"]["overall"]
                 text = (f"evaluation after step {k}: greedy with turns {o['final']['decided']:.3f}"
@@ -320,6 +363,10 @@ def run(name: str, launched_by: str = "agent", new: dict[str, Any] | None = None
                 if "sampled" in s:
                     so = s["sampled"]["overall"]
                     text += f", mean@8 {so['mean_at8']:.3f}, pass@8 {so['pass_at_k'][-1]:.3f}"
+                if s.get("returned_dev"):
+                    rd = s["returned_dev"]
+                    text += (f"; returned slice {rd['right']} of {rd['n']} right "
+                             f"({rd['first_right']} first, {rd['broken']} broken)")  # fmt: skip
                 event(run_dir, "info", text, phase="running", step=k)
                 edir = run_dir / f"eval-{k:04d}"
                 for check, seen, label in ((gate_failed, "GATE_SEEN", "stopped by the gate"),
@@ -357,6 +404,9 @@ def main(argv: list[str] | None = None) -> int:
     new.add_argument("--smoke", action="store_true",
                      help="a loop test: 2 steps of 8 questions (2 per dataset) from the pool's "
                           "tail, no evaluation")  # fmt: skip
+    new.add_argument("--smoke-eval", action="store_true",
+                     help="with --smoke: also the greedy evaluation after each step, so the "
+                          "run's own evaluation path is exercised")  # fmt: skip
     a = ap.parse_args(argv)
     over: dict[str, Any] = {"lr": a.lr, "steps": a.steps, "init_from": a.init_from,
                             "prompt_variant": a.prompt_variant}  # fmt: skip
@@ -370,6 +420,8 @@ def main(argv: list[str] | None = None) -> int:
                     pool_tail=True, mix=dict.fromkeys(rcfg.MIXES["even"], 2),
                     returned_per_step={"gretel": 1},  # one of each kind of gretel question
                     stop={"kl_step1_max": 1.0})  # fmt: skip
+        if a.smoke_eval:
+            over.update(smoke_eval=True, quick_eval_steps=list(range(1, over["steps"] + 1)))
     return run(a.run, a.launched_by, over)
 
 
