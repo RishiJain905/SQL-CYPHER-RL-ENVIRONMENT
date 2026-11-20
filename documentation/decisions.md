@@ -639,3 +639,11 @@ please continue." The agent's choice, from the three in the runbook's section 8:
   If drift passes 0.10 the run pauses again and the agent asks Rishi.
 
 Resumed 2026-11-20 01:12 UTC.
+
+**Second pause, after step 12: final queries with `SELECT *` 5.9% (15 of 256), above 5%.**
+Read episode by episode: 7 are one gretel question that asks for whole rows
+(`gretel-47134`: "transactions in explainable AI"), where `SELECT *` is a fair answer (5
+scored right); the other 8 are returned questions whose last call probes an empty table
+(`SELECT * FROM menu LIMIT 5`), which earn nothing. Without that one question the step reads
+3.1%, as steps 8 and 10 did (8 of 256; steps 1 and 11: 0). A false alarm from one question,
+not a habit: resumed with no change at 01:26 UTC, under the same delegation.
