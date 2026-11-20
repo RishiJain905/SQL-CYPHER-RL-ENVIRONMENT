@@ -611,3 +611,31 @@ average, within 0.0023, and never above 0.020 in 20,000 draws.** The bound stays
 runbook's healthy range for step 1 is now 0.004 to 0.014.
 
 **Run 2 is still not started.**
+
+## R19: the drift pause after step 11; the KL weight and bound raised to 0.10 (2026-11-20)
+
+**What happened.** The run paused itself after step 11: first-turn KL to the start adapter
+(less the offset) read 0.065, above the 0.05 bound (D7). It had risen every step: 0.009 at
+step 5, then 0.012, 0.019, 0.024, 0.032, 0.047, 0.065. The rule is checked every step and
+nothing pulls the policy back except the fixed 0.05 x KL penalty, so resuming unchanged would
+have paused again at once.
+
+**What the drift is.** The first turns got shorter (median 245 to 208 characters; SQaLe 272 to
+199) and mostly single-line (multi-line first queries 51 of 256 at step 1, 15 at step 11). No
+hardcoded answers, copied 3%. The skill the bound protects went up: the quick evaluation after
+step 10 read first query 58.4% (start 52.4%, floor 51.5%) and greedy with turns 56.8% (start
+52.4%; 16 better, 8 worse, p 0.15; against step 5, 13 better, 4 worse, p 0.049).
+
+**Rishi's call, delegated:** "I will let you make the decision as I am a bit busy right now,
+please continue." The agent's choice, from the three in the runbook's section 8:
+
+- **Change two settings and resume** from step 12: `method_cfg.kl.beta` 0.05 to **0.10** (the
+  penalty doubles, so the drift slows instead of only being allowed further) and
+  `stop.kl_start_max` 0.05 to **0.10**. The config before the change is kept beside it as
+  `config.before-step12.json`.
+- Not chosen: raising only the bound (at the steps 9-11 pace, about 0.2 by step 20); stopping
+  and keeping step 10 (no full evaluation yet, not significant against the start).
+- Step 10 stays in `BEST.json` as the fallback; the full evaluation after step 20 is the gate.
+  If drift passes 0.10 the run pauses again and the agent asks Rishi.
+
+Resumed 2026-11-20 01:12 UTC.
