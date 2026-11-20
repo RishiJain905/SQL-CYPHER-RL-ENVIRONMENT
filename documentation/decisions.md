@@ -647,3 +647,14 @@ scored right); the other 8 are returned questions whose last call probes an empt
 (`SELECT * FROM menu LIMIT 5`), which earn nothing. Without that one question the step reads
 3.1%, as steps 8 and 10 did (8 of 256; steps 1 and 11: 0). A false alarm from one question,
 not a habit: resumed with no change at 01:26 UTC, under the same delegation.
+
+**Third pause, after step 16: KL 0.115 above 0.10, and DISTINCT in 39% of queries against
+24% at the start.** Drift had held at 0.050 to 0.072 for steps 12 to 15 under the doubled
+weight, then jumped. The DISTINCT rise is CypherBench's own style (65 of 80 final queries at
+step 16 against 35 at step 1; right 38 of 65 with it, 2 of 15 without; `WITH DISTINCT n RETURN
+count(n)` is the references' shape) and swings with the step's questions (24% at step 15). The
+evaluation after step 15 matched step 10 (56.8%; 18 better, 9 worse against the start, p
+0.12). **Rishi chose** to run on to the step-20 gate: `method_cfg.kl.beta` 0.10 to **0.20**,
+`stop.kl_start_max` 0.10 to **0.15**, `stop.distinct_up` 0.10 to **0.20** (the config before
+is kept as `config.before-step17.json`). Step 10 stays the fallback; the full evaluation after
+step 20 decides.
