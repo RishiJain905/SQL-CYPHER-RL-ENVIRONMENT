@@ -1,7 +1,7 @@
 """Score an evaluation with turns and compare it with its references (inside WSL):
 
     python -m sqlrl.run2.eval_score --dir <eval dir> [--run-dir <run dir> --step <k>]
-        [--ref name=<dir> ...] [--rows evalset|dev]
+        [--ref name=<dir> ...] [--rows evalset|dev|testset]
 
 An evaluation is an episode file (`episodes.jsonl`): episode 0 of each question is greedy,
 episodes 1-8 (a full evaluation) are sampled. `summary.json` holds:
@@ -111,6 +111,8 @@ def score_dir(d: Path, rows_kind: str = "evalset", refs: dict[str, Path] | None 
     if not scoring.load(eps, d / "scored.jsonl"):
         if rows_kind == "evalset":
             rows = {r["id"]: r for r in pool.read_jsonl(p.evalset)}
+        elif rows_kind == "testset":
+            rows = {r["id"]: r for r in pool.read_jsonl(pool.testset_path())}
         else:
             rows = {r["id"]: r for rs in pool.load_pool("pool-v2").values() for r in rs}
         # the yardstick is the checker alone: no duplicate probe (as run 1b's evaluations)
@@ -193,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dir", required=True)
     ap.add_argument("--run-dir")
     ap.add_argument("--step", type=int)
-    ap.add_argument("--rows", choices=["evalset", "dev"], default="evalset")
+    ap.add_argument("--rows", choices=["evalset", "dev", "testset"], default="evalset")
     ap.add_argument("--ref", action="append", default=[], help="name=<evaluation dir>")
     ap.add_argument("--launched-by", default="agent")
     a = ap.parse_args(argv)

@@ -658,3 +658,26 @@ evaluation after step 15 matched step 10 (56.8%; 18 better, 9 worse against the 
 `stop.kl_start_max` 0.10 to **0.15**, `stop.distinct_up` 0.10 to **0.20** (the config before
 is kept as `config.before-step17.json`). Step 10 stays the fallback; the full evaluation after
 step 20 decides.
+
+## R20: run 2 closed; step 40 kept; the test set run once (2026-11-21)
+
+**The run.** All 40 steps ran (stopped after step 34 for other GPU work at Rishi's request and
+resumed after a reboot). The full evaluation after step 40: greedy with turns 60.2% (start with
+turns 52.4%; 20 better, 6 worse, p 0.009), first query 62.3%, mean@8 50.7, pass@8 74.6 (start
+47.6 / 71.8). `BEST.json` named step 40. **Rishi kept step 40**; it is copied, hash-checked,
+to `run2-step40/` in the folder of kept models.
+
+**The test set** had never been run in any stage (runs 1 and 1b left it open), and run 2 had
+no command for it. With Rishi's OK it was built: `src/sqlrl/run2/testset.py` (with
+`scripts/run2/testset.py`), `pool.testset_path()` and `build-db --testset` (the SQL questions'
+database scripts, 500 of 500 found), `eval_score --rows testset`, three tests. It answers the
+1,000 questions greedily three times, one server each: step 40 with turns, the start adapter
+with turns, and the start adapter on one query with the released prompt (the anchor's
+setting). A folder with a summary is never generated again, so the test set stays used once.
+Result: step 40 60.8%, start with turns 54.2%, start on one query 53.0%; step 40 against the
+start with turns 100 / 43 (p 0.000002). The gain is the first query (62.3%); the turns cost 1.5
+points, almost all on gretel (first query 70.9, final 62.8). `results/run2.md`.
+
+**The run's folder** is moved to the data drive as history (throttled copy, every file's hash
+checked, then the working copy removed), as run 1b's was. The phase-0 references, the dev data
+and the test-set answers stay on the internal drive.

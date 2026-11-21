@@ -47,6 +47,13 @@ def pool_path(name: str) -> Path:
     return get_paths().data / "run1" / f"{name}.jsonl"
 
 
+def testset_path() -> Path:
+    """The 1,000-question test set: beside the evaluation set in the trainer's public data
+    (`public/testset/examples_val.jsonl`). Read only by `testset.py`, once, on the adapter a
+    run keeps; no rollout, reward or filter ever sees it."""
+    return get_paths().evalset.parent.parent / "testset" / "examples_val.jsonl"
+
+
 def db_path(name: str) -> Path:
     return data_dir() / f"{name}.db.jsonl"
 
@@ -256,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("build-db")
     b.add_argument("--pool", default="pool-v2")
     b.add_argument("--evalset", action="store_true")
+    b.add_argument("--testset", action="store_true")
     r = sub.add_parser("build-returned")
     r.add_argument("--pool", default="pool-v2")
     r.add_argument("--force", action="store_true")
@@ -264,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
         build_returned(a.pool, force=a.force)
     elif a.evalset:
         build_db(read_jsonl(get_paths().evalset), db_path("evalset"))
+    elif a.testset:
+        build_db(read_jsonl(testset_path()), db_path("testset"))
     else:
         build_db(read_jsonl(pool_path(a.pool)), db_path(a.pool))
     return 0
