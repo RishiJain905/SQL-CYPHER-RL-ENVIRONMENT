@@ -1,12 +1,12 @@
 # Guide: Google Colab for run 3
 
-Run 3's RL phase runs on a Colab A100, capped at 5 to 7 hours (design 7). This guide explains
+Run 3's RL phase runs on a Colab G4 (RTX PRO 6000, 96 GB) or, if none is free, an A100, capped at 5 to 6 hours (design 7, R24). This guide explains
 the tool that lets an agent drive Colab, how run 3 uses it, and what is still unknown.
 
 ## 1. A primer
 
 **Colab** rents a virtual machine with a GPU, normally used through notebooks in a browser.
-Each hour on a GPU spends **compute units** from the account (the A100 was about 7.5 units an
+Each hour on a GPU spends **compute units** from the account (by users' measurements the G4 is about 9-10 units an hour and the A100 80 GB about 7; the A100 was about 7.5 units an
 hour in March 2026; `colab usage` shows today's rate). The machine is temporary: when the
 session ends, its disk is gone.
 
@@ -61,7 +61,7 @@ engine versions.
 
 | Unknown | How `gpu_smoke.py` answers it |
 |---|---|
-| A100 40 GB or 80 GB (the CLI can't choose) | `nvidia-smi` |
+| Which GPU came (a G4, or an A100 of 40 or 80 GB: the CLI can't choose the size) | `nvidia-smi` |
 | Does a process started from a cell outlive it? (the backend may reclaim an idle kernel) | a heartbeat file written every 30 s, read later with `colab download` |
 | Does the model load on NVIDIA with its own code and step 40's adapter unmerged? | transformers + PEFT, one greedy answer, the adapter's dtype |
 | Does vLLM load it (the fast sampler) with the adapter at run time? | vLLM's Transformers backend |
@@ -73,9 +73,10 @@ long run is watched through files (`download`, `ls`), not by running code beside
 
 - Every `colab new` is spending: only with Rishi's OK, with the hours stated first, and always
   followed by `colab stop`. `colab sessions` after any interruption, to stop orphans.
-- Run 3's total is 5 to 7 hours: smoke 0.5, setup 0.5, RL about 5, warm start at most 1 if it
+- Run 3's total is 5 to 6 hours: smoke 0.5, setup 0.5, RL about 4.5, warm start at most 0.5 if it
   can't run on the PC.
 - Nothing secret goes to the VM: no `.netrc`, no tokens. W&B runs offline on the VM
   (`WANDB_MODE=offline`) and is synced from the PC afterwards.
 - Never `colab repl`, bare `colab ssh`, `colab auth` or `colab drivemount` from an agent: they
   wait for a person.
+- **Getting a GPU:** a G4 or an A100 is often refused at busy times (Service Unavailable, no cost). The request is repeated every 15 minutes, G4 first, then A100, until one is assigned.

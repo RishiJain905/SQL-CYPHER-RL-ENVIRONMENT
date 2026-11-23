@@ -749,3 +749,14 @@ google-colab-cli`), outside this repo. What it means for run 3 (`guides/colab.md
   back to the PC with `colab download`; Drive stays optional for Rishi.
 - **No 40 / 80 GB choice and no background mode** in the CLI: the paid smoke finds out which
   A100 comes and whether a detached process survives (`scripts/run3/colab/gpu_smoke.py`).
+
+## R24: the Colab cap lowered to 5-6 hours; a G4 asked for first (2026-11-23)
+
+Rishi lowered run 3's Colab budget from 5-7 hours to **5-6 hours** and, since the G4 (RTX PRO
+6000, 96 GB) is in his Colab tier, asked for it ahead of the A100 so the run isn't held up
+waiting for one. By users' measurements the G4 costs about 9-10 units an hour against about 7 for
+an A100 80 GB (`colab usage` gives the real rate once a VM runs): 6 hours is about 54-60 units on
+a G4, 42 on an A100. The plan inside the cap: smoke 0.5, setup and restarts 0.5, RL about 4.5,
+a warm start on Colab at most 0.5 (the PC is the default). Busy hours refuse both GPUs
+("Service Unavailable", nothing spent), so the request is repeated every 15 minutes, G4 then
+A100. The G4 is a Blackwell card: the smoke checks that PyTorch and vLLM run on it.

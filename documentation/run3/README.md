@@ -71,13 +71,13 @@ pass@8 is the measurement.
 ## Colab (not used yet)
 
 1. 🧑 **Rishi signs the CLI in, once:** in WSL, `colab sessions` prints a Google link; open it,
-   allow, paste the code back. Then `colab usage` shows the balance and the A100's rate.
+   allow, paste the code back. Then `colab usage` shows the balance (202.50 units on 2026-11-23).
 2. **The data bundle** (PC): `python -m sqlrl.run3.bundle --out <file>.tar.gz --source bird
    --source birddev`.
-3. ✋ **The paid smoke (about 0.5 h, Rishi's OK first):** `colab new -s run3 --gpu A100`,
+3. ✋ **The paid smoke (about 0.5 h; Rishi's OK given 2026-11-23):** `colab new -s run3 --gpu G4` (or `A100` when no G4 is free),
    `colab upload` the bundle and step 40's PEFT adapter, run `bootstrap.sh`, then
    `gpu_smoke.py`; read the heartbeat file a while later; `colab stop -s run3`. It answers: which
-   A100 (40 or 80 GB), whether a detached process survives, whether the model loads on NVIDIA
+   GPU (a G4, or an A100 of 40 or 80 GB), whether a detached process survives, whether the model loads on NVIDIA
    with the adapter unmerged, whether vLLM loads it.
 
 ## What phase 0 still has to build

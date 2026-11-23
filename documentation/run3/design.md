@@ -251,14 +251,14 @@ survived and the model fell back to about the SFT model's score (46.7% against 6
 
 ### 5.2 Phases of the one run
 
-The Colab budget for run 3 is **5 to 7 hours at most** (section 7), so only RL runs there; every
+The Colab budget for run 3 is **5 to 6 hours at most** (section 7), so only RL runs there; every
 other phase runs on the home PC, free.
 
 | Phase | Where | What | Gate to the next |
 |---|---|---|---|
-| 0. Build and measure (no training) | PC, plus a 30-minute Colab smoke | The engines, the pools (3.2-3.4), the harness variants, the grader; the round trip for graph copies; the teacher pilot; **pass@8 of step 40** on every pool, engine and harness variant; the smoke measures steps an hour on the A100 | The pools have enough questions in the useful band (8.1); the step count that fits the budget is known; the owner reads the numbers |
+| 0. Build and measure (no training) | PC, plus a 30-minute Colab smoke | The engines, the pools (3.2-3.4), the harness variants, the grader; the round trip for graph copies; the teacher pilot; **pass@8 of step 40** on every pool, engine and harness variant; the smoke measures steps an hour on the GPU Colab gives (a G4 or an A100) | The pools have enough questions in the useful band (8.1); the step count that fits the budget is known; the owner reads the numbers |
 | 1. Warm start | PC (Colab for at most 1 hour only if its episodes don't fit the 16 GB card) | Fine-tuning on the teacher's right episodes and the model's own right episodes, mixed so its own style stays | No loss on run 2's evalset; better on the run-3 dev slices; it now uses `submit`, explores when the prompt hides the schema, declines where it should |
-| 2. RL | Colab, about 5 hours | All engines, all harness variants, the non-answers, one database an episode; **several-source episodes join at a mid-run check** (a share of each step, the graph copies offered beside their SQL source) once the one-database episodes improve on the dev slice | The run-3 dev slices and held-out databases improve; no stop rule fires |
+| 2. RL | Colab, about 4.5 hours | All engines, all harness variants, the non-answers, one database an episode; **several-source episodes join at a mid-run check** (a share of each step, the graph copies offered beside their SQL source) once the one-database episodes improve on the dev slice | The run-3 dev slices and held-out databases improve; no stop rule fires |
 | 3. Evaluation | PC (llama.cpp, as runs 1 and 2) | Everything in 3.6, once, on the kept step | — |
 
 Each phase saves a checkpoint that the next continues from; a gate that fails stops the run for a
@@ -292,20 +292,21 @@ right and a wrong episode.
 
 - **The home PC (one 16 GB AMD card):** building the environment, phase 0, the warm start (if its
   episodes fit) and the evaluation, free, at any pace.
-- **Google Colab, an A100 80 GB:** RL only, **5 to 7 hours at most** for run 3, not the whole
-  account. A price check in March 2026 put the A100 80 GB at about 7.5 compute units an hour, so
-  7 hours is about 53 of the account's 200 units. Rates change; the account's page is checked
-  before planning.
+- **Google Colab, a G4 (RTX PRO 6000, 96 GB) or an A100:** RL only, **5 to 6 hours at most** for
+  run 3 (lowered from 5 to 7 on 2026-11-23, R24), not the whole account. The G4 is asked for
+  first (more memory, in the account's tier; about 9-10 units an hour by users' measurements),
+  the A100 second (about 7 an hour, 80 GB). 6 hours is about 54-60 units on a G4, 42 on an A100,
+  of the account's 202.5. Rates change; `colab usage` shows the real one once a VM runs.
 
 | Use | Colab hours |
 |---|---|
-| Smoke in phase 0 (throughput, setup works) | 0.5 |
-| RL (phase 2) | about 5 |
+| Smoke in phase 0 (which GPU, setup works, throughput) | 0.5 |
+| RL (phase 2) | about 4.5 |
 | Setup and restarts | 0.5 |
-| Warm start, only if it can't run on the PC | up to 1 |
-| **Cap** | **7** |
+| Warm start, only if it can't run on the PC | up to 0.5 |
+| **Cap** | **6** |
 
-The smoke's steps-an-hour sets the run's length: the number of steps is chosen to fill about 5
+The smoke's steps-an-hour sets the run's length: the number of steps is chosen to fill about 4.5
 hours, and `max_hours` stops the run, saved, if it runs long. With a fixed budget the choice that
 matters is signal a step: questions come from the useful band (8.1), so few groups are wasted on
 all-right or all-wrong.
@@ -350,12 +351,12 @@ the band, the warm start has to move it first, or it is dropped.
 - The graph round trip and the teacher check (3.3).
 - The teacher pilot: the price an episode and how often it is right (3.5).
 - The call cost (4): a short comparison of two values on the pilot.
-- Throughput on the A100: episodes an hour, steps an hour, how long a step's update takes.
+- Throughput on the Colab GPU: episodes an hour, steps an hour, how long a step's update takes.
 
 ## 9. Decided, and still to decide
 
 Decided (in conversation before this file): one run with phases, not separate runs; general data
-only, the real deployment never trained on; the engines in 2.1; Colab for RL, **5 to 7 hours at
+only, the real deployment never trained on; the engines in 2.1; Colab for RL, **5 to 6 hours at
 most**, the rest of the account's units kept for other work.
 
 To decide before building:
