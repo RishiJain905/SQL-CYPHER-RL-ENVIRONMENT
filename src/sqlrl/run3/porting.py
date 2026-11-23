@@ -157,6 +157,9 @@ def port_duckdb(src_path: Path, out: Path, plan: list[tuple[str, list[tuple[str,
             db.execute(f"CREATE TABLE {t} ({cols})")
             # through the same file MySQL loads (inserts row by row are slow in DuckDB)
             csv_path = _write_csv(src, table, kinds)
+            if csv_path.stat().st_size == 0:  # an empty table: DuckDB can't read an empty file
+                csv_path.unlink(missing_ok=True)
+                continue
             try:
                 spec = ", ".join(f"'c{i}': '{'VARCHAR' if k == 'blob' else TYPES[k]['duckdb']}'"
                                  for i, (_, k) in enumerate(kinds))  # fmt: skip
