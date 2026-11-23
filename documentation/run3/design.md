@@ -1,6 +1,6 @@
 # Run 3 design: the database agent
 
-**Status: proposed, not built.** This file says what run 3 is for, what its environment looks like,
+**Status: approved 2026-11-23 (R21); the environment is built and working on the PC (R22, `README.md`); the run has not started.** This file says what run 3 is for, what its environment looks like,
 where its data comes from, how it is rewarded and trained, where it runs, and what has to be
 decided before any code. It follows `rl.md`'s stage C in spirit, but the stage is general: the
 model never trains on the NFL data.

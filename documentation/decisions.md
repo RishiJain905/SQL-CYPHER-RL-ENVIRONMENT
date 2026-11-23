@@ -681,3 +681,71 @@ points, almost all on gretel (first query 70.9, final 62.8). `results/run2.md`.
 **The run's folder** is moved to the data drive as history (throttled copy, every file's hash
 checked, then the working copy removed), as run 1b's was. The phase-0 references, the dev data
 and the test-set answers stay on the internal drive.
+## R21: run 3 approved; its environment built first, the run not started (2026-11-23)
+
+**Rishi approved the run-3 design** (`run3/design.md`) and asked for the environment to be built
+in its own folders, as runs 1 and 2 were (`src/sqlrl/run3/`, `scripts/run3/`, `tests/run3/`,
+`documentation/run3/`, the data folder's `run3/`), with nothing imported from the frozen runs
+(what run 3 reuses from run 2 is copied and says so: the guards, the result rendering, the call
+format). The run itself, phase 0's measurements and any Colab session wait for him.
+
+**The design's open decisions (section 9) take the design's own proposals** until phase 0's
+numbers say otherwise; none of them blocks the environment:
+- D1, the teacher's budget: no teacher call is made; the 200-episode pilot needs his OK and a
+  price first;
+- D2, batch against steps: set from the paid smoke's steps an hour;
+- D3, the start point: step 40, as an adapter (phase 0 measures "train it further" against
+  "stack a new one" with the anchor check);
+- D4, SynSQL: out unless BIRD and Spider leave the useful band thin;
+- D5, the engines: the five in section 2.1.
+
+## R22: the environment's rules (2026-11-23)
+
+- **Engines on the PC run in Docker, on Colab from packages.** WSL's `sudo` needs a password, so
+  the PC's PostgreSQL 16, MySQL 8.4 and Neo4j 5.26 are three new containers bound to
+  127.0.0.1 (`run3-postgres` 55432, `run3-mysql` 53306, `run3-neo4j` 7477 / 7690; no other
+  container touched). The Colab VM installs the same majors from packages
+  (`scripts/run3/colab/bootstrap.sh`). No engine has a password: each listens on the loopback
+  only, and every model query runs as `run3_reader` (SELECT only, read-only transactions), so
+  there is no secret to store.
+- **Neo4j holds one graph at a time** (Community has one database): episodes take the graph
+  through a lock that waits until no episode uses another graph (`graphs.GraphHost.acquire`).
+- **MySQL runs with `lower_case_table_names=1`** (table names ignore case, as on Windows and
+  macOS servers); the SQLite golds name tables in any case. It has to be set when the data
+  folder is created, so the container was recreated once and the VM re-initialises MySQL.
+- **Ported types follow what a column holds, not what it declares** (integers only -> BIGINT,
+  with reals -> DOUBLE, anything with text -> text, blobs -> binary); text that looks like a date
+  stays text. **PostgreSQL gets plain names in lower case**, a name with a space or a symbol
+  keeps its spelling and needs quotes. No keys or constraints in the server copies.
+- **A (question, engine) pair is kept only when the gold works there:** the SQLite gold is
+  translated with sqlglot, run, and must give the SQLite result under the checker's comparison
+  (`querycheck.align`, the tie rule), using at most half the episode's time limit. On the first
+  376 BIRD-dev questions: DuckDB 362, PostgreSQL 354, MySQL 355 kept. The misses are the dialect
+  differences run 3 is for (text compared with a number on PostgreSQL, bare columns beside
+  GROUP BY on DuckDB, PostgreSQL and MySQL).
+- **The endings are tools** (`submit_answer`, `decline`, `clarify`, spellings drawn per episode).
+  A reply with no call ends the episode malformed; a call after the last allowed one too.
+- **BIRD's evidence line is shown** with the question (`(Note: ...)`): many BIRD questions can't
+  be answered without it (a formula, a code's meaning). Whether to drop it on a share of
+  episodes is a phase-0 setting.
+- **Non-answers without a model:** write requests from templates over the database's real tables
+  and columns, and "wrong database" questions (another database's question whose gold reads
+  no table that exists here). Ambiguous questions need a writer: they wait for the teacher (D1).
+- **Graph copies** follow design 3.3's rules (`graphs.convert`), are refused unless the round
+  trip gives back every source row, and stop at 300,000 rows a database for now.
+- **Several sources:** a SQL question with the graph copy of its own database beside it. The
+  result decides, so a right answer through either source counts.
+
+## R23: Colab through Google's Colab CLI, from WSL (2026-11-23)
+
+Rishi asked whether agents can drive Colab. Google's `google-colab-cli` (0.8.0) can: `colab new
+-s <name> --gpu A100`, `colab exec -f`, `colab upload` / `download`, `colab usage`, `colab stop`.
+It runs on Linux and macOS only, so it is installed in WSL (`uv tool install
+google-colab-cli`), outside this repo. What it means for run 3 (`guides/colab.md`):
+- **Signing in is Rishi's** (a browser consent, once; the token goes to the OS keyring).
+- **Drive needs a person every session** (`colab drivemount` is interactive), which doesn't fit
+  design 7.2's "every step saves to Drive" for an agent that resumes alone. So the data goes up
+  with `colab upload` (a bundle built by `sqlrl.run3.bundle`), and each step's adapter comes
+  back to the PC with `colab download`; Drive stays optional for Rishi.
+- **No 40 / 80 GB choice and no background mode** in the CLI: the paid smoke finds out which
+  A100 comes and whether a detached process survives (`scripts/run3/colab/gpu_smoke.py`).
