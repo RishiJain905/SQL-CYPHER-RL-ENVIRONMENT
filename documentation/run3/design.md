@@ -223,21 +223,41 @@ breaks ties between equally right episodes. Its value is checked on the pilot (8
 ### 5.1 Where it starts
 
 From run 2's step 40. The lesson of its export (`results/run2.md`, `run2/export.py`): the RL changes
-are smaller than bf16's step, so step 40 is merged into the base **in float32** and the base is held
-in float32 during training (a 4B model is 16 GB in float32, which an 80 GB card holds with room).
+are smaller than bf16's step (at most 0.00017 a weight). Merged into bf16 weights, only 7.8% of them
+survived and the model fell back to about the SFT model's score (46.7% against 60.2%). So:
+
+- **Step 40 is never merged into weights during the run.** It stays an adapter on the released SFT
+  model, as run 2 continued run 1b's adapter: the base loads in its own bf16 (which loses nothing,
+  because the base is what bf16 holds), and the adapter's change is added at run time from its own
+  float32 matrices. The warm start and RL train that adapter further (or a new adapter stacked on a
+  frozen step 40; phase 0 picks one), and the KL reference is step 40 itself.
+- **Rollouts never sample from a bf16 merge.** With vLLM, the adapter is applied at run time
+  (vLLM's LoRA support), never merged into the served weights. With llama.cpp, the merged Q8_0 is
+  built from float32 every step, as in runs 1 and 2 (`gguf_merge.py`).
+- **Every change of form is checked against step 40's own score** before anything continues from it:
+  the model as loaded for training, as served for rollouts (vLLM or llama.cpp), and the warm start's
+  output. The check is run 2's anchor: greedy on the run-2 evalset must agree with step 40's
+  evaluation question by question (run 2's anchor agreed on 183 of 186) and score within noise of
+  60.2. A form that falls toward 46.7 stops the run. Phase 0 runs it first; it is the gate's first
+  line.
+- **The release** is merged in float32 (`run2/export.py`'s default) and every quant is measured the
+  same way.
 
 ### 5.2 Phases of the one run
 
-| Phase | What | Gate to the next |
-|---|---|---|
-| 0. Build and measure (no training) | The engines, the pools (3.2-3.4), the harness variants, the grader; the round trip for graph copies; the teacher pilot; **pass@8 of step 40** on every pool, engine and harness variant | The pools have enough questions in the useful band (8.1); the throughput on the training machine is measured; the owner reads the numbers |
-| 1. Warm start | Fine-tuning on the teacher's right episodes and the model's own right episodes, mixed so its own style stays | No loss on run 2's evalset; better on the run-3 dev slices; it now uses `submit`, explores when the prompt hides the schema, declines where it should |
-| 2. RL: one database an episode | All engines, all harness variants, the non-answers | The run-3 dev slices and held-out databases improve; no stop rule fires |
-| 3. RL: several sources | Episodes with two or more databases to choose from, the graph copies offered beside their SQL source | The same, plus source choice measured on its own |
-| 4. Evaluation | Everything in 3.6, once, on the kept step | — |
+The Colab budget for run 3 is **5 to 7 hours at most** (section 7), so only RL runs there; every
+other phase runs on the home PC, free.
+
+| Phase | Where | What | Gate to the next |
+|---|---|---|---|
+| 0. Build and measure (no training) | PC, plus a 30-minute Colab smoke | The engines, the pools (3.2-3.4), the harness variants, the grader; the round trip for graph copies; the teacher pilot; **pass@8 of step 40** on every pool, engine and harness variant; the smoke measures steps an hour on the A100 | The pools have enough questions in the useful band (8.1); the step count that fits the budget is known; the owner reads the numbers |
+| 1. Warm start | PC (Colab for at most 1 hour only if its episodes don't fit the 16 GB card) | Fine-tuning on the teacher's right episodes and the model's own right episodes, mixed so its own style stays | No loss on run 2's evalset; better on the run-3 dev slices; it now uses `submit`, explores when the prompt hides the schema, declines where it should |
+| 2. RL | Colab, about 5 hours | All engines, all harness variants, the non-answers, one database an episode; **several-source episodes join at a mid-run check** (a share of each step, the graph copies offered beside their SQL source) once the one-database episodes improve on the dev slice | The run-3 dev slices and held-out databases improve; no stop rule fires |
+| 3. Evaluation | PC (llama.cpp, as runs 1 and 2) | Everything in 3.6, once, on the kept step | — |
 
 Each phase saves a checkpoint that the next continues from; a gate that fails stops the run for a
-look, as in run 2.
+look, as in run 2. Phase 2 also stops itself, and saves, when its hours are used (`max_hours` in the
+run's config), whatever step it is on.
 
 ### 5.3 The method
 
@@ -264,17 +284,25 @@ right and a wrong episode.
 
 ### 7.1 The split
 
-- **The home PC (one 16 GB AMD card):** building the environment and phase 0, free, at any pace.
-- **Google Colab, an A100 80 GB:** phases 1 to 3 and the final evaluation. A price check in March
-  2026 put the A100 80 GB at about 7.5 compute units an hour, so 200 units is about 26 hours. Rates
-  change; the account's page is checked before planning.
+- **The home PC (one 16 GB AMD card):** building the environment, phase 0, the warm start (if its
+  episodes fit) and the evaluation, free, at any pace.
+- **Google Colab, an A100 80 GB:** RL only, **5 to 7 hours at most** for run 3, not the whole
+  account. A price check in March 2026 put the A100 80 GB at about 7.5 compute units an hour, so
+  7 hours is about 53 of the account's 200 units. Rates change; the account's page is checked
+  before planning.
 
-| Use | Hours (to be replaced by measured throughput) |
+| Use | Colab hours |
 |---|---|
-| Warm start | 3 |
-| RL phases 2 and 3 | 18 |
-| Evaluations | 3 |
-| Slack (setup, restarts) | 2 |
+| Smoke in phase 0 (throughput, setup works) | 0.5 |
+| RL (phase 2) | about 5 |
+| Setup and restarts | 0.5 |
+| Warm start, only if it can't run on the PC | up to 1 |
+| **Cap** | **7** |
+
+The smoke's steps-an-hour sets the run's length: the number of steps is chosen to fill about 5
+hours, and `max_hours` stops the run, saved, if it runs long. With a fixed budget the choice that
+matters is signal a step: questions come from the useful band (8.1), so few groups are wasted on
+all-right or all-wrong.
 
 ### 7.2 A Colab session
 
@@ -292,9 +320,12 @@ right and a wrong episode.
 Runs 1 and 2 sampled with llama.cpp (a fork with the model's architecture ported) from a merged
 Q8_0 file rewritten every step. The model's architecture is its own (remote code), so:
 
-1. Try vLLM's Transformers backend in phase 0 (fast batching if it loads the model).
+1. Try vLLM's Transformers backend in phase 0 (fast batching if it loads the model), with the
+   adapter applied at run time, never merged into bf16 weights.
 2. If not, build the same llama.cpp fork with CUDA: the same sampling path as runs 1 and 2, with
    the merge made from float32 every step.
+
+Either way, the served model passes the anchor check (5.1) before the first rollout.
 
 ## 8. Phase 0's measurements
 
@@ -318,13 +349,17 @@ the band, the warm start has to move it first, or it is dropped.
 ## 9. Decided, and still to decide
 
 Decided (in conversation before this file): one run with phases, not separate runs; general data
-only, the real deployment never trained on; the engines in 2.1; Colab for the training phases.
+only, the real deployment never trained on; the engines in 2.1; Colab for RL, **5 to 7 hours at
+most**, the rest of the account's units kept for other work.
 
 To decide before building:
 
 1. **The teacher's budget** for warm-start examples and graph proofs (after the pilot's price).
-2. **How the 200 units are split** across phases (7.1's table is a first guess).
-3. **The start point:** step 40 (this file's proposal) or the released SFT model.
+2. **Batch against steps:** how phase 2's 5 hours are spent (more questions a step or more steps),
+   chosen from the smoke's numbers.
+3. **The start point:** step 40 (this file's proposal) or the released SFT model; with step 40,
+   whether to train its adapter further or stack a new one on it (phase 0 measures both against the
+   anchor).
 4. **SynSQL:** in from the start, or only if BIRD and Spider leave the useful band thin.
 5. **The engines:** the five in 2.1, or more.
 
@@ -332,10 +367,11 @@ To decide before building:
 
 | Risk | What is done about it |
 |---|---|
+| 5 hours of RL is too few steps to move the model | Signal a step first (the useful band); the smoke's numbers set batch and steps; if the dev slices are still rising at the cap, a second short Colab block is a later decision, not part of this run |
 | The model's architecture doesn't load in vLLM | The llama.cpp CUDA build (7.3) |
 | BIRD's databases are large (tens of GB) | Only the training databases phase 0 keeps are prepared; stored compressed on Drive |
 | A Colab session ends mid-step | Every step saves; a resume redoes the step |
 | The graph conversion changes what a question means | The round trip and the teacher check; it starts small |
 | Few questions in the useful band | The warm start, or a different pool mix, decided in phase 0 |
 | Longer episodes make credit fuzzier | Outcome-level credit as in run 2; SRPO's distillation stays on the first turn |
-| A step 40 merged in bf16 by mistake | Float32 everywhere until the release export; the export's own check |
+| Step 40's change lost in a bf16 merge or a bf16 load (it happened once) | Step 40 stays an adapter; no bf16 merge anywhere; the anchor check (5.1) on every form the model takes, before anything continues from it |
