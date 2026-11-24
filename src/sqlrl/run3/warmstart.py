@@ -143,7 +143,9 @@ def train(d: Path, until: int | None, over: dict[str, Any], launched_by: str = "
     pos = json.loads((state / "position.json").read_text("utf-8")) if (
         state / "position.json").exists() else {"step": 0, "seen": 0}  # fmt: skip
     pcfg = _policy_cfg(cfg["seed"])
-    start = state / "lora_state.safetensors" if pos["step"] else start_state(pcfg)
+    # a pass that continues another (R28): `init` names that pass's checkpoint adapter
+    first = Path(cfg["init"]) if cfg.get("init") else start_state(pcfg)
+    start = state / "lora_state.safetensors" if pos["step"] else first
     model, tok, backbone, head = load_policy(pcfg, start)
     exs = [json.loads(x) for x in (d / "examples.jsonl").read_text("utf-8").splitlines()]
     order = list(range(len(exs))) * int(cfg["epochs"])
@@ -233,7 +235,7 @@ def _wandb(d: Path, cfg: dict[str, Any], who: str, steps: int, too_long: int, n:
     safe = {k: v for k, v in cfg.items()
             if not any(w in k.lower() for w in ("token", "secret", "password", "key"))}  # fmt: skip
     return wandb.init(project="sql-cypher-rl", group="run3", job_type="warm-start",
-                      name="run3-warmstart", id=rid, resume="allow", dir=str(d),
+                      name=f"run3-warmstart-{d.name}", id=rid, resume="allow", dir=str(d),
                       tags=["run3", "phase1", "warm-start", f"launched-by:{who}"],
                       config={**safe, "steps": steps, "too_long": too_long, "examples": n,
                               "start": "run2-step40"})  # fmt: skip
@@ -285,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     t = sub.add_parser("train")
     t.add_argument("--dir", required=True)
     t.add_argument("--until", type=int, default=None)
+    t.add_argument("--init", default=None, help="the adapter this pass starts from")
     for k in ("lr", "accum", "epochs", "max_seq", "warmup"):
         t.add_argument(f"--{k.replace('_', '-')}", type=type(DEFAULTS[k]), default=None)
     t.add_argument("--launched-by", default="agent")
@@ -301,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         (d / "collect.json").write_text(json.dumps(stats, indent=1), encoding="utf-8")
         print(json.dumps(stats, indent=1))
     elif a.cmd == "train":
-        over = {k: getattr(a, k) for k in ("lr", "accum", "epochs", "max_seq", "warmup")}
+        over = {k: getattr(a, k) for k in ("lr", "accum", "epochs", "max_seq", "warmup", "init")}
         print(json.dumps(train(Path(a.dir), a.until, over, a.launched_by)))
     else:
         print(json.dumps(memory([int(x) for x in a.tokens.split(",")])))

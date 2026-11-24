@@ -145,12 +145,24 @@ def build() -> dict[str, Any]:
         "dev_step40": behaviour(base_eps) if base_eps else None,
         "gates": {"useful_min": GATES["useful_min"]},
     }
-    train = {"steps": _lines(p1 / "metrics.jsonl")}
+    steps = _lines(p1 / "metrics.jsonl")
     evals = []
-    for ck in sorted(p1.glob("ckpt-*")):
-        eps = _lines(p1 / f"eval-{ck.name}" / "dev" / "episodes.jsonl")
-        ev: dict[str, Any] = {"ckpt": ck.name, "step": int(ck.name.split("-")[1]),
-                              "evalset": _evalset(p0 / f"anchor-ws-{ck.name}"),
+    # the passes: the first (phase1) and the second (phase1b, R28), which continues a
+    # checkpoint of the first; its steps are drawn after that checkpoint's step
+    passes: list[tuple[Path, str, int]] = [(p1, "", 0)]
+    p1b = r / "phase1b"
+    cfg_b = _json(p1b / "config.json") or {}
+    if cfg_b.get("init"):
+        off = int(Path(cfg_b["init"]).parent.name.split("-")[1])
+        passes.append((p1b, "phase1b-", off))
+        steps += [{**m, "step": m["step"] + off, "of": m["of"] + off, "pass": "phase1b"}
+                  for m in _lines(p1b / "metrics.jsonl")]  # fmt: skip
+    train = {"steps": steps}
+    cks = [(d, t, off, ck) for d, t, off in passes for ck in sorted(d.glob("ckpt-*"))]
+    for d, t, off, ck in cks:
+        eps = _lines(d / f"eval-{ck.name}" / "dev" / "episodes.jsonl")
+        ev: dict[str, Any] = {"ckpt": f"{t}{ck.name}", "step": off + int(ck.name.split("-")[1]),
+                              "evalset": _evalset(p0 / f"anchor-ws-{t}{ck.name}"),
                               "dev": behaviour(eps) if eps else None,
                               "dev_vs_step40": (_paired(base_eps, eps)
                                                 if eps and base_eps else None)}  # fmt: skip

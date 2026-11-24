@@ -31,8 +31,16 @@ from sqlrl.run3 import feed, settings  # noqa: E402
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+PASS = ["phase1"]  # this run's folder: phase1, or phase1b for the second pass (R28)
+
+
 def p1() -> Path:
-    return settings.get().data / "phase1"
+    return settings.get().data / PASS[0]
+
+
+def tag() -> str:
+    """How this pass's checkpoints are named outside its folder ("" for the first pass)."""
+    return "" if PASS[0] == "phase1" else f"{PASS[0]}-"
 
 
 def p0() -> Path:
@@ -40,7 +48,7 @@ def p0() -> Path:
 
 
 def event(level: str, text: str, **status) -> None:
-    f = p1() / "status.json"
+    f = settings.get().data / "phase1" / "status.json"  # one status for every pass
     st = json.loads(f.read_text("utf-8")) if f.exists() else {"events": []}
     st.update(status)
     st.setdefault("events", []).append(
@@ -92,14 +100,14 @@ def evaluate(ck: Path) -> dict:
         event("info", f"{ck.name}: waiting for the run-3 Neo4j ({busy.read_text().strip()})")
         while busy.exists():
             time.sleep(30)
-    gguf = models_dir() / "run3" / f"ws-{ck.name}.gguf"
+    gguf = models_dir() / "run3" / f"ws-{tag()}{ck.name}.gguf"
     gguf.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(get_paths().model_gguf, gguf)  # the merge rewrites a copy of the release
     if wsl("sqlrl.run2.tools", f"merge --lora-state {to_wsl(ck / 'lora_state.safetensors')} "
            f"--out {to_wsl(gguf)}", log) != 0:  # fmt: skip
         raise RuntimeError(f"the merge of {ck.name} failed (phase1.log)")
     event("info", f"{ck.name}: merged in float32 into a Q8_0 copy; evaluating", status="evaluating")
-    if py("anchor.py", ["--model", str(gguf), "--name", f"ws-{ck.name}",
+    if py("anchor.py", ["--model", str(gguf), "--name", f"ws-{tag()}{ck.name}",
                         "--ref", str(run2_eval40())], log) != 0:  # fmt: skip
         raise RuntimeError(f"the evaluation set on {ck.name} failed (phase1.log)")
     dev = p1() / f"eval-{ck.name}" / "dev"
@@ -109,7 +117,7 @@ def evaluate(ck: Path) -> dict:
           log) != 0:  # fmt: skip
         raise RuntimeError(f"the dev set on {ck.name} failed (phase1.log)")
     docs = feed.build()
-    ev = next(e for e in docs["evals"]["evals"] if e["ckpt"] == ck.name)
+    ev = next(e for e in docs["evals"]["evals"] if e["ckpt"] == f"{tag()}{ck.name}")
     gguf.unlink(missing_ok=True)  # 4.4 GB each; the adapter is kept and merges again in minutes
     return ev
 
@@ -122,19 +130,23 @@ def run2_eval40() -> Path:
     return REF[0]
 
 
-def cmd_run(chunks: int, until: int | None) -> int:
-    total = total_steps()
+def cmd_run(
+    chunks: int, until: int | None, max_steps: int | None = None, init: str | None = None
+) -> int:
+    total = min(total_steps(), max_steps) if max_steps else total_steps()
     marks = [round(total * (i + 1) / chunks) for i in range(chunks)]
     if until:
         marks = [m for m in marks if m <= until] or [until]
-    event("info", f"phase 1: {total} optimiser steps, checkpoints after {marks}",
+    event("info", f"{PASS[0]}: {total} optimiser steps, checkpoints after {marks}",
           status="training", phase="1")  # fmt: skip
     for i, m in enumerate(marks):
         last = i == len(marks) - 1
         if trained_to() < m:  # the last chunk trains to the trainer's own end
             event("info", f"training to step {'the end' if last else m} of about {total}",
                   status="training")  # fmt: skip
-            arg = "" if last else f" --until {m}"
+            arg = "" if last and not max_steps else f" --until {m}"
+            if init:
+                arg += f" --init {to_wsl(Path(init))}"
             if wsl("sqlrl.run3.warmstart", f"train --dir {to_wsl(p1())}{arg}",
                    p1() / "train.log") != 0:  # fmt: skip
                 event("error", f"training to step {m} failed (train.log)", status="dead",
@@ -148,37 +160,46 @@ def cmd_run(chunks: int, until: int | None) -> int:
         es = (ev.get("evalset") or {}).get("decided")
         passed = sum(1 for v in g.values() if v["ok"])
         dev_rate = (ev.get("dev") or {}).get("right_rate")
-        event("info", f"{ck.name}: evaluation set {es}%, dev right {dev_rate}, gates "
+        event("info", f"{tag()}{ck.name}: evaluation set {es}%, dev right {dev_rate}, gates "
               f"{passed} of {len(g)} pass", status="training")  # fmt: skip
         if g["evalset"]["ok"] is False:
             event("warn", f"{ck.name} is below the evaluation-set gate: stopped for a look",
                   status="paused", why="evaluation-set gate")  # fmt: skip
             return 3
-    event("info", "phase 1 finished: every checkpoint evaluated", status="done")
+    event("info", f"{PASS[0]} finished: every checkpoint evaluated", status="done")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("collect")
+    c = sub.add_parser("collect")
+    c.add_argument("--episodes", action="append", default=[])
+    c.add_argument("--max-calls", type=int, default=None)
     sub.add_parser("memory")
     r = sub.add_parser("run")
     r.add_argument("--chunks", type=int, default=3)
     r.add_argument("--until", type=int, default=None)
     r.add_argument("--ref", required=True, help="run 2's eval-0040 folder")
+    r.add_argument("--max-steps", type=int, default=None)
+    r.add_argument("--init", default=None, help="the adapter this pass starts from")
+    ap.add_argument("--pass", dest="pass_", default="phase1", help="phase1 or phase1b")
     a = ap.parse_args(argv)
+    PASS[0] = a.pass_
     p1().mkdir(parents=True, exist_ok=True)
     if a.cmd == "collect":
-        return subprocess.run([sys.executable, "-m", "sqlrl.run3.warmstart", "collect",
-                               "--episodes", str(p0() / "pass8-step40" / "episodes.jsonl"),
+        eps = a.episodes or [str(p0() / "pass8-step40" / "episodes.jsonl")]
+        extra = [x for e in eps for x in ("--episodes", e)]
+        if a.max_calls is not None:
+            extra += ["--max-calls", str(a.max_calls)]
+        return subprocess.run([sys.executable, "-m", "sqlrl.run3.warmstart", "collect", *extra,
                                "--out", str(p1())], cwd=REPO,
                               env={**__import__("os").environ,
                                    "PYTHONPATH": str(REPO / "src")}).returncode  # fmt: skip
     if a.cmd == "memory":
         return wsl("sqlrl.run3.warmstart", "memory", p1() / "memory.log")
     REF.append(Path(a.ref))
-    return cmd_run(a.chunks, a.until)
+    return cmd_run(a.chunks, a.until, a.max_steps, a.init)
 
 
 if __name__ == "__main__":

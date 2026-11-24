@@ -806,3 +806,19 @@ the test split is the whole-graph held-out set and no training graph is held out
 asked for a share of training graphs; with four, a quarter of the Cypher data would go). Dev
 slices: 1 question in 20 of each training database (370 BIRD, 89 soccer). BIRD dev, CypherBench
 test, run 2's evalset and test set and the real deployment stay never-trained.
+
+## R28: a second, shorter warm-start pass from checkpoint 129 (2026-11-24)
+
+Phase 1's first pass (step 40's own right episodes, 379 steps, checkpoints 129 / 257 / 379)
+improved on step 40 at its first checkpoint (run 2's evaluation set 64.2% against 59.4%, 12
+better / 4 worse; run-3 dev set 46.4% against 42.7%) and then over-fitted (58.8% and 45.9% at
+step 379). Two gates failed at every checkpoint: malformed endings (11.3-14% against <= 5%,
+almost all the 8-call limit) and wrong-database declines (55-60% against >= 80%). Rishi chose a
+second pass before RL (option A). Its data, changed from the first: right episodes that used all
+8 tool calls are left out (343; they teach exploring to the limit, and the first pass kept 139
+of them), and the teacher pilot's right episodes within that cap are added (42 of 77, taken
+first so they fill the two-a-question slots; step 40's own stay at least half: 1,550). The
+teacher's episodes are rendered through Spark's template by `render.py`, checked byte for byte
+against 60 of step 40's recorded prompts first. It starts from checkpoint 129's adapter and runs
+112 steps (about a third of an epoch, where the first pass peaked), checkpoints at 56 and 112,
+the same gates. The RL run waits for Rishi either way.
