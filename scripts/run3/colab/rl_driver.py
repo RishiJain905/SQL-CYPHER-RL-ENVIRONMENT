@@ -12,7 +12,7 @@ released Q8_0 into which the policy's adapter is merged in float32 (never bf16).
 - **run:** each step draws its groups (`rl.draw_step`), plays 8 episodes a group, writes them as
   they finish (`step-k/episodes.jsonl`, without the long prompts), computes the advantages, runs
   the update (`Learner`), saves the adapter and the optimiser (`step-k/`, then `TRAINED`), splits
-  them into 90 MB parts for `colab download`, merges the adapter into the rollout model, restarts
+  them into 40 MB parts for `colab download`, merges the adapter into the rollout model, restarts
   the server, appends `metrics.jsonl`, rewrites `state.json` and checks the stop rules. It
   resumes from the last `TRAINED` step. It stops, saved, at `max_hours`, on a stop rule, or when
   the file `PAUSE` appears in the run folder.
@@ -44,7 +44,7 @@ LLAMA = Path("/content/llama.cpp/build/bin/llama-server")
 RELEASE = Path("/content/release/Spark-X2.6-4B-SQL-Cypher-Agent-Q8_0.gguf")
 DATA = Path("/content/run3data")
 PORT, SLOTS, SLOT_CTX = 8098, 16, 12288
-PART = 90 * 1024 * 1024
+PART = 40 * 1024 * 1024  # the files API refused 90 MB uploads (2026-11-24); 40 MB works
 
 
 class Server:
