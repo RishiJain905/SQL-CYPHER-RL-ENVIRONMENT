@@ -28,6 +28,11 @@ number would be measured on the wrong model.
   CypherBench by graph on Neo4j; the non-answers). Its size is set from a timed pilot of 50 groups
   so that the whole measurement fits about 10 hours on the PC, and is written into this file
   before the main measurement starts.
+- **Set 2026-11-24 from the pilot** (50 groups, 400 episodes in 9.8 minutes, no crashes; about 25
+  BIRD episodes a minute, non-answers faster): **200 BIRD questions per SQL engine, 80 per
+  CypherBench training graph, 40 write requests and 40 wrong-database questions per SQL engine**,
+  1,440 groups, 11,520 episodes, about 7 hours. The pilot's groups were drawn from the smaller plan
+  and are kept apart (`pass8-pilot`), not mixed in.
 - **Read as:** a group is *never* (0 of 8 right), *useful* (1 to 7) or *always* (8 of 8). Reported
   per pool, engine and harness variant (schema shown x tools), with mean@8 and pass@8.
 - **The gate to RL (design 5.2):** a pool and engine is used by RL when at least 15% of its
