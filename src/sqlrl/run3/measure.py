@@ -259,7 +259,7 @@ def summary(d: Path) -> dict[str, Any]:
     for x in (d / "episodes.jsonl").read_text("utf-8").splitlines():
         r = json.loads(x)  # a retried crash is superseded by its retry (the file only appends)
         latest[(r["gid"], r["sample"])] = r
-    recs = list(latest.values())
+    recs = [r for r in latest.values() if r.get("outcome") != "skipped"]  # no task here
     by: dict[str, dict[str, Any]] = {}
     keys = {
         "stratum": lambda r: r["stratum"],
