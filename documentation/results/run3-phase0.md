@@ -74,3 +74,36 @@ trains on, is shorter). Spark's template drops earlier turns' thinking, so episo
 - Found on the way (fixed for later runs): the sampler wrote results in submission order and
   Neo4j holds one graph at a time, so at the soccer / terrorist_attack switch 26 soccer episodes
   waited about 25 minutes behind the other graph and nothing was written meanwhile (no work lost).
+
+## Phase 1: the warm start (2026-11-24)
+
+Two passes on the PC (R28). Pass 1: step 40's own 1,659 right episodes (6,182 examples, 379
+steps, lr 1e-5, 16 examples a step, loss on the model's own tokens). Pass 2, from pass 1's step
+129: 8-call episodes left out (343), the teacher pilot's right episodes within the cap added
+(42; 1,550 of step 40's own), 112 steps. Each checkpoint merged in float32 into Q8_0 and scored
+greedy on run 2's evaluation set and the run-3 dev set (the same 300 triples as step 40's).
+
+| Checkpoint | Evaluation set | Dev right | Malformed | Wrong-db declined | Write declined | False decline | Looks (no schema) |
+|---|---|---|---|---|---|---|---|
+| Step 40 | 59.4 | 42.7 | 18.7 | 47.5 | 97.5 | 0.9 | 95.0 |
+| **Pass 1 · 129** | **64.2** (12 / 4, p 0.08) | 46.4 (17 / 9) | 11.3 | 55.0 | 92.5 | 1.8 | 91.7 |
+| Pass 1 · 257 | 62.7 | 43.2 | 12.0 | 60.0 | 95.0 | 0.9 | 92.0 |
+| Pass 1 · 379 | 58.8 | 45.9 | 14.0 | 55.0 | 95.0 | 0.9 | 88.0 |
+| **Pass 2 · 56** | 63.5 (12 / 6) | **46.8** (19 / 10) | 12.7 | 55.0 | 95.0 | 0.5 | 92.3 |
+| Pass 2 · 112 | 62.0 | 45.9 | 15.0 | 52.5 | 100 | 1.4 | 94.7 |
+
+- **The best checkpoints** are pass 1's 129 and pass 2's 56, level within noise. Both beat step
+  40 on run 2's evaluation set (which the warm start never trained on) and on the run-3 dev set.
+  After them, more steps over-fit: the training loss falls while both scores slide back.
+- **Two gates fail at every checkpoint:** malformed endings (11-15%, the 8-call limit) and
+  wrong-database declines (52-60%). Leaving out the 8-call episodes did not move the first. The
+  call-limit episodes are struggles, not a copied habit: 34 of 38 with the schema partly or fully
+  hidden, 63 engine errors and 33 empty results among them, 84 repeated identical calls, and a
+  further tool call after the "No tool calls left" notice. Knowing when to stop and commit is
+  shaped by reward, which right-episode SFT cannot show: RL's reward targets it directly
+  (running out -0.1, below a wrong answer; a right decline 1; a cost a call after the second).
+
+The teacher pilot (approved, $0.29 of a $2 cap): 200 episodes of DeepSeek V4.1 Flash at max
+effort in run 3's environment, about $0.0014 each, no crashes. Right on 31 of 140 questions step
+40 never got right (22%), 34 of 40 wrong-database questions (85%), 12 of 20 useful-band ones;
+6.9 calls an episode; reasoning short (median 25 tokens).
