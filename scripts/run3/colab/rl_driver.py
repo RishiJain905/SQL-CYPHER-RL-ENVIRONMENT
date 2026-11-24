@@ -221,13 +221,17 @@ def cmd_run(run: Path, questions: int, max_hours: float) -> int:
     srv.start()
     rows = [json.loads(x) for x in (run / "metrics.jsonl").read_text().splitlines()] if (
         run / "metrics.jsonl").exists() else []  # fmt: skip
-    event(run, "info", f"run: resuming after step {k0}" if k0 else "run: step 1 starts")
+    # hours used so far: the steps already recorded (a resumed run), plus this process's time.
+    # (Before 2026-11-24 22:58 each row added the previous row's cumulative hours: counted twice.)
+    base_h = sum(float(r.get("step_s") or 0.0) for r in rows) / 3600
+    event(run, "info", f"run: resuming after step {k0} ({base_h:.2f} h used)" if k0
+          else "run: step 1 starts")  # fmt: skip
     status, why = "running", ""
     k = k0
     try:
         while True:
             k += 1
-            hours = (time.time() - t_start) / 3600 + (rows[-1]["hours"] if rows else 0.0)
+            hours = base_h + (time.time() - t_start) / 3600
             if (run / "PAUSE").exists():
                 status, why = "paused", "PAUSE file"
                 break
@@ -272,8 +276,7 @@ def cmd_run(run: Path, questions: int, max_hours: float) -> int:
                    "kl": upd.get("kl"), "examples_over": over,
                    "rollout_s": round(t1 - t0, 1), "step_s": round(time.time() - t0, 1),
                    "merge_s": merge["seconds"], "serve_s": serve_s,
-                   "hours": round((time.time() - t_start) / 3600
-                                  + (rows[-1]["hours"] if rows else 0.0), 3),
+                   "hours": round(base_h + (time.time() - t_start) / 3600, 3),
                    "groups": [g["stratum"] for g in groups], "parts": parts}  # fmt: skip
             rows.append(row)
             with (run / "metrics.jsonl").open("a") as f:
