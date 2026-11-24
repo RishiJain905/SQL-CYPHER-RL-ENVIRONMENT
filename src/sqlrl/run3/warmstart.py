@@ -52,13 +52,21 @@ def _trainable(r: dict[str, Any]) -> bool:
     return r["db"] not in splits.HELDOUT_DBS.get(r["source"], frozenset())
 
 
-def collect(episode_files: list[Path], per_question: int = 2) -> tuple[list[dict], dict]:
+def collect(episode_files: list[Path], per_question: int = 2,
+            max_calls: int | None = None) -> tuple[list[dict], dict]:  # fmt: skip
+    """`max_calls`: leave out right episodes that used more tool calls (the first warm start
+    kept 8-call episodes and the call-limit habit stayed: R28). Episodes marked `teacher` are
+    capped so step 40's own make up at least half (phase0.md)."""
     kept: dict[tuple[str, str], list[dict[str, Any]]] = {}
     seen: dict[tuple[str, str], set[str]] = {}
+    dropped_calls = 0
     for f in episode_files:
         for line in f.read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
             if r.get("outcome") != "right" or not r.get("rendered") or not _trainable(r):
+                continue
+            if max_calls is not None and r.get("n_calls", 0) > max_calls:
+                dropped_calls += 1
                 continue
             key = (r["qid"], r["engine"])
             sig = f"{r.get('ending')}|{(r.get('final_query') or '').strip()}"
@@ -66,10 +74,18 @@ def collect(episode_files: list[Path], per_question: int = 2) -> tuple[list[dict
                 continue
             seen[key].add(sig)
             kept.setdefault(key, []).append(r)
+    own = sum(1 for rs in kept.values() for r in rs if not r.get("teacher"))
+    teach = [(k, r) for k, rs in kept.items() for r in rs if r.get("teacher")]
+    if len(teach) > own:  # step 40's own stay at least half
+        random.Random(0).shuffle(teach)
+        drop = {id(r) for _, r in teach[own:]}
+        kept = {k: [r for r in rs if id(r) not in drop] for k, rs in kept.items()}
     examples: list[dict[str, Any]] = []
     stats: Counter = Counter()
+    stats["dropped_over_max_calls"] = dropped_calls
     for (qid, engine), recs in kept.items():
         for r in recs:
+            stats["episodes/teacher" if r.get("teacher") else "episodes/own"] += 1
             turns = r["turns"]
             if len(r["rendered"]) != len(turns):
                 stats["skipped_render_mismatch"] += 1
@@ -265,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--episodes", action="append", required=True)
     c.add_argument("--out", required=True)
     c.add_argument("--per-question", type=int, default=DEFAULTS["per_question"])
+    c.add_argument("--max-calls", type=int, default=None)
     t = sub.add_parser("train")
     t.add_argument("--dir", required=True)
     t.add_argument("--until", type=int, default=None)
@@ -277,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "collect":
         d = Path(a.out)
         d.mkdir(parents=True, exist_ok=True)
-        exs, stats = collect([Path(x) for x in a.episodes], a.per_question)
+        exs, stats = collect([Path(x) for x in a.episodes], a.per_question, a.max_calls)
         with (d / "examples.jsonl").open("w", encoding="utf-8") as f:
             for e in exs:
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")

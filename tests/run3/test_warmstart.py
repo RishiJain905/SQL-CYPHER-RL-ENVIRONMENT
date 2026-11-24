@@ -46,3 +46,18 @@ def test_tokenize_closes_the_target_with_eos():
 
     ids, n_p = warmstart.tokenize(Tok(), {"prompt": "ab", "target": "c"})
     assert n_p == 2 and ids[:3] == [97, 98, 99] and len(ids) == 3 + len(warmstart.EOS)
+
+
+def test_collect_max_calls_and_teacher_share(tmp_path):
+    q = _train_qid()
+    own = _rec(q, final="A")
+    own["n_calls"] = 2
+    long = _rec(q, final="B")
+    long["n_calls"] = 8
+    t1, t2 = _rec(q, final="C"), _rec(q, final="D")
+    for t in (t1, t2):
+        t["teacher"], t["n_calls"] = True, 3
+    exs, stats = warmstart.collect([_write(tmp_path, [own, long, t1, t2])], per_question=4,
+                                   max_calls=6)  # fmt: skip
+    assert stats["dropped_over_max_calls"] == 1
+    assert stats["episodes/own"] == 1 and stats["episodes/teacher"] == 1  # capped at own
