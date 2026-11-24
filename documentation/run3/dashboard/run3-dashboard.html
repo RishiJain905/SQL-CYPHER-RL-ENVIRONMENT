@@ -1,0 +1,334 @@
+<title>Run 3 Warm Start</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Run 2's instrument panel, cut down to run 3's phases 0 and 1: a status bar, the numbers that
+   matter, the gates, phase 0's band, the training curves, the evaluations, the events. */
+:root {
+  --bg: #F5F7F9; --surface: #FFFFFF; --surface-2: #EBEFF3; --ink: #141D26; --ink-2: #4A5866;
+  --muted: #647180; --rule: #D5DCE3; --grid: #E8ECF0; --axis: #C3CCD5;
+  --accent: #0B7285; --accent-bg: #E1F1F4;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s-other: #9AA6B2;
+  --ord1: #86b6ef; --ord2: #2a78d6; --ord3: #0d366b;
+  --bound: #d03b3b; --ok: #006300; --ok-bg: #E3F4E3; --warn: #7A5200; --warn-bg: #FFF1CF;
+  --bad: #A02323; --bad-bg: #FBE2E2; --neutral-bg: #E3E8ED;
+  --shadow: 0 4px 14px rgba(20, 29, 38, .16);
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141A; --surface: #151D25; --surface-2: #1C2630; --ink: #E4EBF1; --ink-2: #9AA9B7;
+    --muted: #8696A6; --rule: #2B3844; --grid: #212C37; --axis: #34424F;
+    --accent: #4DB8CC; --accent-bg: #12303A;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #5A6978;
+    --ord1: #184f95; --ord2: #3987e5; --ord3: #9ec5f4;
+    --bound: #e66767; --ok: #5FD35F; --ok-bg: #123A12; --warn: #F0C04A; --warn-bg: #3A2E0C;
+    --bad: #F08A8A; --bad-bg: #3F1717; --neutral-bg: #232F3B;
+    --shadow: 0 4px 14px rgba(0, 0, 0, .55); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141A; --surface: #151D25; --surface-2: #1C2630; --ink: #E4EBF1; --ink-2: #9AA9B7;
+  --muted: #8696A6; --rule: #2B3844; --grid: #212C37; --axis: #34424F;
+  --accent: #4DB8CC; --accent-bg: #12303A;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #5A6978;
+  --ord1: #184f95; --ord2: #3987e5; --ord3: #9ec5f4;
+  --bound: #e66767; --ok: #5FD35F; --ok-bg: #123A12; --warn: #F0C04A; --warn-bg: #3A2E0C;
+  --bad: #F08A8A; --bad-bg: #3F1717; --neutral-bg: #232F3B;
+  --shadow: 0 4px 14px rgba(0, 0, 0, .55); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px; -webkit-text-size-adjust: 100%; }
+.wrap { max-width: 1280px; margin: 0 auto; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; }
+code, .mono { font-family: var(--mono); }
+code { font-size: .88em; background: var(--surface-2); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+button { font: inherit; color: inherit; }
+button:focus-visible, .chart:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); border-bottom: 1px solid var(--rule);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 0; }
+.bar .name { font-weight: 600; }
+.bar .step { font: 500 13px var(--mono); white-space: nowrap; }
+.bar .prog { flex: 1 1 140px; min-width: 100px; }
+.bar .upd { font: 12px var(--sans); color: var(--ink-2); margin-left: auto; white-space: nowrap; }
+.bar .upd.stale { color: var(--warn); font-weight: 600; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 var(--sans); letter-spacing: .05em;
+  text-transform: uppercase; padding: 5px 8px 5px 6px; border-radius: 3px; white-space: nowrap; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.neutral { background: var(--neutral-bg); color: var(--ink-2); }
+.meter { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; width: 0; transition: width .4s ease; }
+.hero { padding: 18px 0 6px; display: grid; gap: 14px; }
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+h1 { font: 600 clamp(26px, 5vw, 34px)/1.15 var(--sans); letter-spacing: -.015em; }
+.lede { color: var(--ink-2); max-width: 72ch; }
+.hgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 10px; }
+.hcell { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; min-width: 0; display: grid; gap: 4px; align-content: start; }
+.hcell .k { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.hcell .v { font: 600 17px/1.25 var(--sans); overflow-wrap: anywhere; }
+.hcell .s { font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+section { margin-top: 26px; display: grid; gap: 12px; }
+section > h2 { font: 600 18px var(--sans); }
+section > p.note { color: var(--ink-2); font-size: 13px; max-width: 80ch; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; min-width: 0; display: grid; gap: 8px; align-content: start; }
+.card h3 { font: 600 14px var(--sans); }
+.card .sub { font-size: 12.5px; color: var(--ink-2); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font: 11px var(--sans); fill: var(--muted); }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); box-shadow: var(--shadow);
+  border-radius: 5px; padding: 6px 8px; font: 12px/1.35 var(--sans); color: var(--ink); white-space: nowrap; z-index: 5; }
+.empty { color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; border: 1px dashed var(--rule); border-radius: 5px; }
+details.tw summary { cursor: pointer; font-size: 12px; color: var(--ink-2); }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 600; color: var(--ink-2); }
+td.num, th.num { font-family: var(--mono); }
+.gates { display: grid; gap: 6px; }
+.gate { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; }
+.gate .n { font-weight: 600; }
+.gate .b { font-size: 12px; color: var(--ink-2); grid-column: 2; }
+.gate .val { font: 500 13px var(--mono); grid-row: 1 / span 2; grid-column: 3; text-align: right; }
+.events { display: grid; gap: 4px; font-size: 13px; }
+.events div { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; }
+.events time { font: 12px var(--mono); color: var(--muted); }
+footer { margin-top: 30px; color: var(--muted); font-size: 12px; }
+</style>
+
+<div class="wrap">
+  <div class="bar">
+    <span class="name">Run 3 &middot; warm start</span>
+    <span id="status" class="chip neutral">waiting</span>
+    <span class="step" id="barstep">–</span>
+    <div class="prog"><div class="meter"><i id="meter"></i></div></div>
+    <span class="upd" id="upd">no feed yet</span>
+  </div>
+
+  <header class="hero">
+    <div class="eyebrow">Spark RL &middot; run 3 &middot; phases 0 and 1</div>
+    <h1>The database agent's warm start</h1>
+    <p class="lede">Phase 0 measures how often step 40 gets each training question right in 8 tries (the
+      <em>useful band</em> is 1 to 7 of 8: what RL can learn from). Phase 1 fine-tunes step 40's adapter on its own
+      right episodes, then checks it lost nothing on run 2's evaluation set and behaves better on run 3's dev set.</p>
+    <div class="hgrid" id="tiles"></div>
+  </header>
+
+  <section>
+    <h2>Phase 1's gates</h2>
+    <p class="note">All must pass before the real RL run. Values are the latest checkpoint's; bounds were fixed before any
+      measurement (<code>documentation/run3/phase0.md</code>).</p>
+    <div class="gates" id="gates"><div class="empty">No checkpoint evaluated yet.</div></div>
+  </section>
+
+  <section>
+    <h2>Phase 0: the useful band</h2>
+    <p class="note" id="p0note">Each group is one (question, engine) pair answered 8 times by step 40. A pool and
+      engine goes to RL when at least 15% of its groups are useful.</p>
+    <div class="grid">
+      <div class="card"><h3>Never / useful / always, by pool and engine</h3>
+        <div class="legend"><span><i style="background:var(--ord1)"></i>never right</span><span><i style="background:var(--ord2)"></i>useful (1-7 of 8)</span><span><i style="background:var(--ord3)"></i>always right</span><span><i style="background:var(--bound)"></i>15% gate</span></div>
+        <div class="chart" id="c-band"></div>
+        <details class="tw"><summary>Table</summary><div class="tbl" id="t-band"></div></details></div>
+      <div class="card"><h3>By harness variant (schema shown / tools)</h3>
+        <div class="sub">Every variant is drawn per episode: the model must cope with all of them.</div>
+        <div class="tbl" id="t-variant"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Phase 1: training</h2>
+    <div class="grid">
+      <div class="card"><h3>Loss on the model's own tokens</h3><div class="sub">Token-mean cross-entropy; thin line each step, thick a 10-step mean.</div><div class="chart" id="c-loss"></div></div>
+      <div class="card"><h3>Gradient norm</h3><div class="sub">Clipped at 1.0 (red line).</div><div class="chart" id="c-gn"></div></div>
+      <div class="card"><h3>Learning rate</h3><div class="chart" id="c-lr"></div></div>
+      <div class="card"><h3>Peak GPU memory</h3><div class="sub">The card has 16 GB (red line).</div><div class="chart" id="c-mem"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Evaluations</h2>
+    <div class="grid">
+      <div class="card"><h3>Run 2's evaluation set, greedy</h3>
+        <div class="sub">Step 40 on the PC scored the anchor's value (dashed); the gate is 57.0 (red).</div>
+        <div class="chart" id="c-evalset"></div></div>
+      <div class="card"><h3>Run 3 dev set: right answers, greedy</h3>
+        <div class="sub">Answerable questions only; step 40 dashed. Same (question, engine, setting) every time.</div>
+        <div class="chart" id="c-dev"></div></div>
+    </div>
+    <div class="card"><h3>Behaviour on the dev set</h3><div class="tbl" id="t-beh"></div></div>
+    <div class="card"><h3>Dev set by pool and engine (right of n)</h3><div class="tbl" id="t-devst"></div></div>
+  </section>
+
+  <section>
+    <h2>Events</h2>
+    <div class="events" id="events"><div class="empty">Nothing yet.</div></div>
+  </section>
+  <footer>Fed from the run's files by <code>sqlrl.run3.feed</code>; nothing on this page writes anything.</footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct = (v, d = 1) => (v == null ? "–" : (100 * v).toFixed(d) + "%");
+const num = (v, d = 2) => (v == null ? "–" : (+v).toFixed(d));
+const DOCS = {};
+
+function chip(kind, text) { return `<span class="chip ${kind}">${esc(text)}</span>`; }
+
+function render() {
+  const st = DOCS.state || {}, p0 = DOCS.phase0 || {}, tr = (DOCS.train || {}).steps || [];
+  const evs = (DOCS.evals || {}).evals || [];
+  // bar
+  const s = st.status || "waiting";
+  const kind = {training: "ok", measuring: "ok", evaluating: "ok", done: "ok", paused: "warn", dead: "bad"}[s] || "neutral";
+  $("status").className = "chip " + kind; $("status").textContent = s + (st.phase != null ? ` \u00b7 phase ${st.phase}` : "");
+  const last = st.last_step || tr[tr.length - 1];
+  $("barstep").textContent = last ? `step ${last.step} of ${last.of}` : (st.progress || "–");
+  $("meter").style.width = last ? Math.min(100, 100 * last.step / Math.max(1, last.of)) + "%" : (st.progress_frac ? 100 * st.progress_frac + "%" : "0");
+  if (st.updated_at) {
+    const age = (Date.now() - Date.parse(st.updated_at)) / 60000;
+    $("upd").textContent = "fed " + (age < 1 ? "just now" : Math.round(age) + " min ago");
+    $("upd").className = "upd" + (age > 20 && !["done", "dead"].includes(s) ? " stale" : "");
+  }
+  // tiles
+  const ev = evs[evs.length - 1];
+  const gev = [...evs].reverse().find((e) => e.gates && Object.keys(e.gates).length);
+  const a = p0.anchor, pass8 = p0.pass8 || {}, ov = pass8.overall || {};
+  const gates = gev ? Object.values(gev.gates) : [];
+  const tiles = [
+    ["Anchor (step 40, PC)", a ? a.decided + "%" : "–", a ? `run 2 had 60.2%; ${a.vs_step40 ? a.vs_step40.better + " better / " + a.vs_step40.worse + " worse" : ""}` : "evaluation set, greedy"],
+    ["Phase 0 groups", ov.groups ?? "–", ov.groups ? `${pct(ov.useful_share)} useful \u00b7 pass@8 ${pct(ov.pass_at8)}` : "pass@8 of step 40"],
+    ["Training", last ? `step ${last.step} / ${last.of}` : "not started", st.collect ? `${st.collect.examples} examples from ${st.collect.questions} questions` : ""],
+    ["Loss (10-step mean)", tr.length ? num(mean(tr.slice(-10).map((r) => r.loss)), 4) : "–", tr.length ? `first 10: ${num(mean(tr.slice(0, 10).map((r) => r.loss)), 4)}` : ""],
+    ["Evaluation set", ev && ev.evalset ? ev.evalset.decided + "%" : "–", ev ? ev.ckpt : "after each checkpoint"],
+    ["Dev set right", ev && ev.dev ? pct(ev.dev.right_rate) : "–", p0.dev_step40 ? `step 40: ${pct(p0.dev_step40.right_rate)}` : ""],
+    ["Gates", gev ? `${gates.filter((g) => g.ok).length} of ${gates.length}` : "–", gev ? `${gates.filter((g) => g.ok === false).length} failing \u00b7 ${gev.ckpt}` : "none evaluated"],
+  ];
+  $("tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="hcell"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(sub)}</div></div>`).join("");
+  // gates
+  if (gev) {
+    const names = {evalset: "No loss on run 2's evaluation set", dev_better: "Better than step 40 on the dev set",
+      malformed: "Malformed endings", write_decline: "Write requests declined", wrongdb_decline: "Wrong-database questions declined",
+      false_decline: "Answerable questions falsely declined", look_when_none: "Looks before submitting when no schema is shown"};
+    $("gates").innerHTML = Object.entries(gev.gates).map(([k, g]) => {
+      const v = g.value == null ? "–" : (typeof g.value === "object" ? `${g.value.better} better / ${g.value.worse} worse (p ${g.value.p})` : (k === "evalset" ? g.value + "%" : pct(g.value)));
+      const c = g.ok == null ? chip("neutral", "pending") : g.ok ? chip("ok", "pass") : chip("bad", "fail");
+      return `<div class="gate">${c}<span class="n">${esc(names[k] || k)}</span><span class="val">${esc(v)}</span><span class="b">${esc(g.bound)}</span></div>`;
+    }).join("");
+  }
+  // phase 0
+  const strata = pass8.stratum || {};
+  const rows = Object.entries(strata);
+  if (rows.length) {
+    bandChart($("c-band"), rows, (p0.gates || {}).useful_min ?? 0.15);
+    $("t-band").innerHTML = table(["Pool / engine", "Groups", "Never", "Useful", "Always", "Useful %", "mean@8", "pass@8", "Calls", "Context p90"],
+      rows.map(([k, r]) => [k, r.groups, r.never, r.useful, r.always, pct(r.useful_share), pct(r.mean_at8), pct(r.pass_at8), num(r.calls_mean), r.context_p90]));
+    const vr = Object.entries(pass8.variant || {});
+    $("t-variant").innerHTML = table(["Variant", "Episodes", "mean@8", "Useful %", "Explore", "Calls"],
+      vr.map(([k, r]) => [k, r.episodes, pct(r.mean_at8), pct(r.useful_share), pct(r.explore_share), num(r.calls_mean)]));
+  } else { $("c-band").innerHTML = '<div class="empty">Phase 0 is still measuring.</div>'; }
+  // training
+  const xs = tr.map((r) => r.step);
+  line($("c-loss"), [{name: "loss", color: "var(--s1)", pts: tr.map((r) => [r.step, r.loss]), thin: true},
+                     {name: "10-step mean", color: "var(--s1)", pts: roll(tr.map((r) => [r.step, r.loss]), 10)}], {fmt: (v) => num(v, 4)});
+  line($("c-gn"), [{name: "grad norm", color: "var(--s2)", pts: tr.map((r) => [r.step, r.grad_norm])}], {hl: [{y: 1, label: "clip"}], fmt: (v) => num(v, 3)});
+  line($("c-lr"), [{name: "lr", color: "var(--s3)", pts: tr.map((r) => [r.step, r.lr])}], {fmt: (v) => (+v).toExponential(1), y0: true});
+  line($("c-mem"), [{name: "peak GB", color: "var(--s4)", pts: tr.map((r) => [r.step, r.peak_gb])}], {hl: [{y: 16, label: "16 GB"}], fmt: (v) => num(v, 1), y0: true});
+  // evaluations
+  const anchorV = a ? a.decided : null;
+  line($("c-evalset"), [{name: "evaluation set %", color: "var(--s1)", pts: evs.filter((e) => e.evalset).map((e) => [e.step, e.evalset.decided]), dots: true}],
+       {hl: [{y: 57, label: "gate 57"}].concat(anchorV != null ? [{y: anchorV, label: "step 40 " + anchorV, dash: true, color: "var(--muted)"}] : []), fmt: (v) => num(v, 1), xlabel: "optimiser step"});
+  const d40 = p0.dev_step40 ? 100 * p0.dev_step40.right_rate : null;
+  line($("c-dev"), [{name: "dev right %", color: "var(--s3)", pts: evs.filter((e) => e.dev).map((e) => [e.step, 100 * e.dev.right_rate]), dots: true}],
+       {hl: d40 != null ? [{y: d40, label: "step 40", dash: true, color: "var(--muted)"}] : [], fmt: (v) => num(v, 1), xlabel: "optimiser step"});
+  const beh = [["step 40"].concat(behRow(p0.dev_step40))].concat(evs.filter((e) => e.dev).map((e) => [e.ckpt].concat(behRow(e.dev))));
+  $("t-beh").innerHTML = table(["Model", "Right", "Malformed", "Write declined", "Wrong-db declined", "False decline", "Looks (no schema)", "Calls"], beh);
+  const stNames = Object.keys((p0.dev_step40 || {}).by_stratum || {});
+  const cols = ["Pool / engine", "step 40"].concat(evs.filter((e) => e.dev).map((e) => e.ckpt));
+  $("t-devst").innerHTML = stNames.length ? table(cols, stNames.map((k) => [k, frac(p0.dev_step40.by_stratum[k])].concat(evs.filter((e) => e.dev).map((e) => frac((e.dev.by_stratum || {})[k]))))) : '<div class="empty">Waiting for the dev set.</div>';
+  // events
+  const E = (st.events || []).slice(-30).reverse();
+  if (E.length) $("events").innerHTML = E.map((e) => `<div><time>${esc((e.t || "").replace("T", " ").replace("Z", ""))}</time>${chip(e.level === "error" ? "bad" : e.level === "warn" ? "warn" : "neutral", e.level || "info")}<span>${esc(e.text)}</span></div>`).join("");
+}
+function frac(b) { return b ? `${b.right} / ${b.n}` : "–"; }
+function behRow(b) { return b ? [pct(b.right_rate), pct(b.malformed), pct(b.write_decline), pct(b.wrongdb_decline), pct(b.false_decline), pct(b.look_when_none), num(b.calls_mean)] : ["–","–","–","–","–","–","–"]; }
+function mean(a) { const v = a.filter((x) => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; }
+function roll(pts, w) { return pts.map((p, i) => [p[0], mean(pts.slice(Math.max(0, i - w + 1), i + 1).map((q) => q[1]))]); }
+function table(head, rows) {
+  return `<table><thead><tr>${head.map((h, i) => `<th class="${i ? "num" : ""}">${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${i ? "num" : ""}">${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+// ---- charts: inline SVG, a hover readout, theme colours through CSS variables ----
+function line(el, series, o = {}) {
+  const pts = series.flatMap((s) => s.pts.filter((p) => p[1] != null));
+  if (!pts.length) { el.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  const W = 560, H = 210, L = 46, R = 12, T = 10, B = 28;
+  const xs = pts.map((p) => p[0]); let x0 = Math.min(...xs), x1 = Math.max(...xs); if (x0 === x1) { x0 -= 1; x1 += 1; }
+  const ys = pts.map((p) => p[1]).concat((o.hl || []).map((h) => h.y));
+  let y0 = o.y0 ? 0 : Math.min(...ys), y1 = Math.max(...ys); const pad = (y1 - y0) * 0.08 || Math.abs(y1) * 0.1 || 1; y0 = o.y0 ? 0 : y0 - pad; y1 += pad;
+  const X = (x) => L + (W - L - R) * (x - x0) / (x1 - x0), Y = (y) => T + (H - T - B) * (1 - (y - y0) / (y1 - y0));
+  const fmt = o.fmt || ((v) => num(v));
+  let g = "";
+  for (let i = 0; i <= 4; i++) { const v = y0 + (y1 - y0) * i / 4, y = Y(v); g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${L - 6}" y="${y + 3.5}" text-anchor="end">${esc(fmt(v))}</text>`; }
+  const xt = [...new Set([x0, Math.round((x0 + x1) / 2), x1].map((v) => Math.round(v)))];
+  xt.forEach((v) => { g += `<text x="${X(v)}" y="${H - 8}" text-anchor="middle">${v}</text>`; });
+  (o.hl || []).forEach((h) => { const y = Y(h.y); g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="${h.color || "var(--bound)"}" stroke-width="1.5" ${h.dash ? 'stroke-dasharray="5 4"' : ""}/><text x="${W - R}" y="${y - 4}" text-anchor="end">${esc(h.label)}</text>`; });
+  series.forEach((s) => {
+    const ps = s.pts.filter((p) => p[1] != null); if (!ps.length) return;
+    g += `<polyline fill="none" stroke="${s.color}" stroke-width="${s.thin ? 1 : 2}" stroke-opacity="${s.thin ? .45 : 1}" stroke-linejoin="round" points="${ps.map((p) => X(p[0]) + "," + Y(p[1])).join(" ")}"/>`;
+    if (s.dots || ps.length === 1) ps.forEach((p) => { g += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="4" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`; });
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map((s) => s.name).join(", "))}">${g}<line class="xh" y1="${T}" y2="${H - B}" stroke="var(--axis)" visibility="hidden"/><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = el.querySelector(".xh");
+  const allx = [...new Set(series.flatMap((s) => s.pts.map((p) => p[0])))].sort((a, b) => a - b);
+  svg.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), mx = (e.clientX - r.left) * W / r.width;
+    const x = allx.reduce((b, v) => Math.abs(X(v) - mx) < Math.abs(X(b) - mx) ? v : b, allx[0]);
+    xh.setAttribute("x1", X(x)); xh.setAttribute("x2", X(x)); xh.setAttribute("visibility", "visible");
+    tip.innerHTML = `<b>${o.xlabel || "step"} ${x}</b><br>` + series.map((s) => { const p = s.pts.find((q) => q[0] === x); return p && p[1] != null ? `${esc(s.name)}: ${esc(fmt(p[1]))}` : ""; }).filter(Boolean).join("<br>");
+    tip.hidden = false; const left = X(x) * r.width / W; tip.style.left = Math.min(left + 10, r.width - tip.offsetWidth) + "px"; tip.style.top = "4px";
+  });
+  svg.addEventListener("pointerleave", () => { tip.hidden = true; xh.setAttribute("visibility", "hidden"); });
+}
+function bandChart(el, rows, gate) {
+  const W = 560, rowH = 22, L = 130, R = 40, T = 6, H = T + rows.length * rowH + 22;
+  let g = "";
+  rows.forEach(([k, r], i) => {
+    const y = T + i * rowH, n = Math.max(1, r.groups), w = W - L - R;
+    let x = L;
+    [["never", "var(--ord1)"], ["useful", "var(--ord2)"], ["always", "var(--ord3)"]].forEach(([key, c]) => {
+      const ww = w * (r[key] || 0) / n; if (ww > 0) g += `<rect x="${x}" y="${y + 3}" width="${Math.max(0, ww - 2)}" height="${rowH - 8}" rx="2" fill="${c}"><title>${esc(k)}: ${key} ${r[key]} of ${r.groups}</title></rect>`; x += ww;
+    });
+    g += `<text x="${L - 8}" y="${y + rowH / 2 + 3}" text-anchor="end">${esc(k)}</text><text x="${W - R + 6}" y="${y + rowH / 2 + 3}">${pct(r.useful_share, 0)}</text>`;
+  });
+  const gx = L + (W - L - R) * gate;
+  g += `<line x1="${gx}" x2="${gx}" y1="${T}" y2="${H - 18}" stroke="var(--bound)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${gx}" y="${H - 4}" text-anchor="middle">${pct(gate, 0)} useful</text>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="share of groups never, useful and always right, by pool and engine">${g}</svg>`;
+}
+
+(async () => {
+  render();
+  const db = await window.claude?.use?.("db");
+  if (!db) { $("upd").textContent = "store unavailable"; return; }
+  db.collection("run3").onSnapshot((snap) => {
+    for (const d of snap.docs) if (d.exists !== false) DOCS[d.id] = d.data();
+    render();
+  });
+  setInterval(render, 60000);
+})();
+</script>
