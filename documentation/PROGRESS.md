@@ -180,3 +180,8 @@
   continue"); the agent raised the KL weight and the drift bound to 0.10 and resumed at step 12
   (R19). The other limits above still stand.
 - **2026-11-23:** Rishi approved run 3 and asked for its environment in its own folders, the Colab CLI checked, the run not started. Built `src/sqlrl/run3/` (engines, porting, gold check, protocol, episodes, graphs, pools, smoke, check_env, bundle), `tests/run3` (25), `scripts/run3/colab/` (bootstrap, GPU smoke: not run), guides `run3-environment.md` and `colab.md`, `run3/README.md`, R21-R23. Three run-3 containers on the loopback. BIRD dev and train downloaded; BIRD train's 58 databases up to 500 MB were being ported and gold-checked when the session paused (`<data>/run3/port-bird.log`, `check-bird.log`, `bird.done` when finished).
+- **2026-11-23 (later):** Rishi approved two paid Colab smokes, then **phases 0 and 1 of run 3
+  ("you have my approvals do not wait"), with phase 1 tracked on a dashboard like runs 1 and 2,
+  and a ping when phase 1 is done so he can OK the real run.** The waiver covers phase 0 and
+  phase 1's free work; it does not cover spending (the teacher's pilot is asked for separately,
+  with its estimate) or anything in the Security section.

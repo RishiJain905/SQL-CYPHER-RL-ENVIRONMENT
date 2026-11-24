@@ -234,8 +234,8 @@ survived and the model fell back to about the SFT model's score (46.7% against 6
 - **The trainer never merges.** Step 40 stays an adapter on the released SFT model, as run 2
   continued run 1b's adapter: the base loads in its own bf16 (which loses nothing, because the base
   is what bf16 holds), and the adapter's change is added at run time from its own float32 matrices.
-  The warm start and RL train that adapter further (or a new adapter stacked on a frozen step 40;
-  phase 0 picks one), and the KL reference is step 40 itself.
+  The warm start and RL train that adapter further (R25: no stacked adapter). The KL reference is
+  step 40 itself (but 5.3 says the warm-start model: which one is open, Rishi's, before phase 2).
 - **The sampler gets the new policy every step** in one of two safe ways. With vLLM, no merge: the
   adapter is applied at run time and each step loads the new adapter file (about 120 MB). With
   llama.cpp, a merge every step, done in float32 and quantised straight to Q8_0, as in runs 1 and 2

@@ -760,3 +760,49 @@ a G4, 42 on an A100. The plan inside the cap: smoke 0.5, setup and restarts 0.5,
 a warm start on Colab at most 0.5 (the PC is the default). Busy hours refuse both GPUs
 ("Service Unavailable", nothing spent), so the request is repeated every 15 minutes, G4 then
 A100. The G4 is a Blackwell card: the smoke checks that PyTorch and vLLM run on it.
+
+## R25: the warm start and RL keep training step 40's rank-16 adapter; no stacked adapter (2026-11-23)
+
+Rishi asked whether a bigger LoRA, or a full fine-tune, would let the model pick up run 3's
+behaviours. Weighed: Thinking Machines' "LoRA Without Regret" (2025) finds LoRA matches full
+fine-tuning in RL even at very low ranks (an episode carries about one reward's worth of
+information), and rank matters only for supervised data larger than the adapter can hold; the
+warm start is a few thousand episodes, which rank 16 holds. A rank-64 adapter stacked on a frozen
+step 40 would add nothing RL can use. A full fine-tune needs step 40 merged, and a bf16 merge loses
+it (R20, design 5.1), with about 50 GB of optimiser state to save each step on Colab. Decided: one
+adapter, step 40's own (rank 16, every linear layer), trained further by the warm start and by RL;
+design 5.1's "or a new adapter stacked" option is dropped. A full fine-tune stays a later fallback,
+on a 96 GB card only, if rank 16 plateaus.
+
+## R26: run 3 samples with llama.cpp built with CUDA on Colab; vLLM refuses the model (2026-11-23)
+
+Colab smoke 1 (A100 40 GB): vLLM's Transformers backend (the pip release of the day) refuses `Spark2_5ForCausalLM` ("not
+compatible with vLLM"), design 7.3's case 2. Upstream llama.cpp has carried Spark since
+`3ad1ba733`; build `b11779` measured the same as the PC's fork (perplexity 2.1691 against 2.1692,
+the same batched speed), so Colab builds the public upstream, nothing private is uploaded. Smoke 2
+(A100 40 GB, `scripts/run3/colab/gpu_smoke.py`): built with CUDA and without the web UI in 9.8
+minutes; the released model as Q8_0 (4.38 GB) and step 40 as an f32 LoRA GGUF (124 MB); generated
+tokens a second at 1 / 8 / 16 / 32 / 64 parallel sequences 154 / 800 / 1,304 / 1,823 / 2,424 (the
+PC's fork: 87 / 492 / 786 / 771 at 1-32); the server's runtime LoRA changes the greedy answer.
+transformers 4.57.1 (the model card's pin) with the trainer's `load_base` loads the base in 13 s;
+PEFT needs Colab's `torchao` removed. The sampler gets each step's adapter by the float32 merge to
+Q8_0 (as runs 1 and 2) or as a runtime LoRA; which one is phase 2's choice once its speed cost on
+the A100 is measured (the batched bench showed none, which may mean it was not applied there). A
+40 GB A100 is what this tier gets (all of an afternoon's A100s were 40 GB); Spark's KV cache is
+about 36 KB a token, so 40 GB holds long episodes. **The CLI's lessons:** pass `--timeout` on
+every `exec` (it drops a cell after 30 s of silence); Colab's secrets vault hangs a kernel that
+asks it for a token (Hugging Face, W&B), so those run in child processes with `token=False`;
+queued `exec` calls do not run in the order sent, and a connection can drop: the RL run is one
+detached process on the VM, watched through files, never a long `exec`.
+
+## R27: the held-out databases and dev slices, fixed before phase 0 measures anything (2026-11-23)
+
+`src/sqlrl/run3/splits.py`. Held out: six of BIRD train's 58 gold-checked databases by a fixed
+rule (SHA-256 of `run3-holdout:<name>`, lowest first, among databases with 50 questions or more,
+`retail_world` excluded as only 43 of its 373 questions pass the gold check): superstore,
+address, video_games, university, airline, ice_hockey_draft (793 questions). CypherBench's training
+split has four graphs (art, biology, soccer, terrorist_attack) and its test split seven others, so
+the test split is the whole-graph held-out set and no training graph is held out (design 3.6
+asked for a share of training graphs; with four, a quarter of the Cypher data would go). Dev
+slices: 1 question in 20 of each training database (370 BIRD, 89 soccer). BIRD dev, CypherBench
+test, run 2's evalset and test set and the real deployment stay never-trained.
