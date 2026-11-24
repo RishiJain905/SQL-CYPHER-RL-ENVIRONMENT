@@ -7,7 +7,10 @@ What goes in (paths relative to the run's data folder, so it unpacks into `RUN3_
   MySQL itself (`porting.py`, deterministic, minutes): smaller to carry than dumps of three
   engines, and the same code builds both machines;
 - `pools/`: the gold checks (the VM checks again on its own engine versions);
-- `raw/cypherbench/`: `train.json`, `test.json` and the sampled graphs.
+- `raw/cypherbench/`: `train.json`, `test.json` and the sampled graphs;
+- `raw/bird-train/.../train.json`, `raw/bird-dev/.../dev.json`: the BIRD question files, for the
+  sources packed (the environment check's task check reads them; the first Colab smoke failed
+  without them).
 
 Nothing else: no models, no runs, no secrets. The VM's model comes from Hugging Face, the
 adapter separately (`scripts/run3/colab/README.md`).
@@ -23,6 +26,9 @@ from pathlib import Path
 
 from sqlrl.run3 import graphs, settings
 
+# {source: (folder under raw/, question file)}: as `sources.py` finds them
+QUESTIONS = {"bird": ("bird-train", "train.json"), "birddev": ("bird-dev", "dev.json")}
+
 
 def files(sources: list[str], dbs: list[str] | None = None,
           graphs_: list[str] | None = None) -> list[tuple[Path, str]]:  # fmt: skip
@@ -31,6 +37,11 @@ def files(sources: list[str], dbs: list[str] | None = None,
     out: list[tuple[Path, str]] = []
     keep_db = (lambda name: name in dbs) if dbs else (lambda name: True)
     for src in sources:
+        if src in QUESTIONS:  # the source's question file: the task checks read it
+            folder, name = QUESTIONS[src]
+            q = sorted((s.raw / folder).rglob(name))
+            if q:
+                out.append((q[0], f"raw/{q[0].relative_to(s.raw).as_posix()}"))
         for p in sorted((s.dbs / src).glob("*.sqlite")):
             if keep_db(p.stem):
                 out.append((p, f"dbs/{src}/{p.name}"))
