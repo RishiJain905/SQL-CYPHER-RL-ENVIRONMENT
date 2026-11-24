@@ -185,3 +185,4 @@
   and a ping when phase 1 is done so he can OK the real run.** The waiver covers phase 0 and
   phase 1's free work; it does not cover spending (the teacher's pilot is asked for separately,
   with its estimate) or anything in the Security section.
+- **2026-11-23 / 24:** the Colab CLI signed in; two paid smokes (about 6 units of 202.5); R25-R27; phase 0's tooling (anchor, sampler, dev set, splits) and phase 1's (warm start, orchestrator, feed, dashboard, the teacher client with a spend cap, secrets as SecretStr, `doctor`). Phase 0 measured overnight on the PC; Rishi asked to pause before phase 1. To resume: `python scripts/run3/phase1.py collect`, `... memory`, then `... run --chunks 3 --ref <run 2's eval-0040>` (Windows, the GPU free).

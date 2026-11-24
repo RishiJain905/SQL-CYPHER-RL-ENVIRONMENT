@@ -249,7 +249,11 @@ def _stats(recs: list[dict[str, Any]], groups: dict[int, list[dict[str, Any]]]) 
 
 
 def summary(d: Path) -> dict[str, Any]:
-    recs = [json.loads(x) for x in (d / "episodes.jsonl").read_text("utf-8").splitlines()]
+    latest: dict[tuple[int, int], dict[str, Any]] = {}
+    for x in (d / "episodes.jsonl").read_text("utf-8").splitlines():
+        r = json.loads(x)  # a retried crash is superseded by its retry (the file only appends)
+        latest[(r["gid"], r["sample"])] = r
+    recs = list(latest.values())
     by: dict[str, dict[str, Any]] = {}
     keys = {
         "stratum": lambda r: r["stratum"],
