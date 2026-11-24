@@ -1,7 +1,7 @@
 """Serve step 40 on the PC and run `sqlrl.run3.render check` (or `add`), then stop the server.
 
-    python scripts/run3/render_check.py check --episodes <file> [--n 60]
-    python scripts/run3/render_check.py add --episodes <teacher episodes> --out <file>
+python scripts/run3/render_check.py check --episodes <file> [--n 60]
+python scripts/run3/render_check.py add --episodes <teacher episodes> --out <file>
 """
 
 from __future__ import annotations
