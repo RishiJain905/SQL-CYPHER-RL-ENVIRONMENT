@@ -158,7 +158,13 @@ def setting_for(g: dict[str, Any], task: dict[str, Any], vers: dict[str, str]):
 
 def play(g: dict[str, Any], sample: int, tasks: Tasks, url: str, vers: dict[str, str],
          temperature: float = SAMPLING["temperature"]) -> dict[str, Any]:  # fmt: skip
-    task = tasks.task(g)
+    try:
+        task = tasks.task(g)
+    except KeyError:  # its gold failed this machine's gold check: no task here (skipped, R30)
+        return {"qid": g.get("qid"), "kind": g["kind"], "outcome": "skipped", "ending": None,
+                "reward": None, "gid": g["gid"], "sample": sample, "stratum": g["stratum"],
+                "engine": g["engine"], "source": g["source"], "db": g["db"], "setting": {},
+                "tokens": {"calls": 0, "max_context": 0, "generated": 0}}  # fmt: skip
     setting = setting_for(g, task, vers)
     seed = stable_int(f"run3-p0:{task['q']['id']}:{g['engine']}:{sample}") % 2**31
     pol = CountingPolicy(url, temperature=temperature,

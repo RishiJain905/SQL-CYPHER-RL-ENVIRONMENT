@@ -98,7 +98,13 @@ def compact(rec: dict[str, Any]) -> dict[str, Any]:
 
 def play(g: dict[str, Any], sample: int, step: int, tasks: measure.Tasks, vers: dict[str, str],
          temperature: float, cfg: dict[str, Any]) -> dict[str, Any]:  # fmt: skip
-    task = tasks.task(g)
+    try:
+        task = tasks.task(g)
+    except KeyError:  # its gold failed this VM's gold check: no task here (skipped, R30)
+        return {"qid": g.get("qid"), "kind": g["kind"], "outcome": "skipped", "reward": None,
+                "gid": g["gid"], "sample": sample, "stratum": g["stratum"],
+                "engine": g["engine"], "db": g["db"], "source": g["source"],
+                "calls": []}  # fmt: skip
     qid = task["q"]["id"]
     srcs = [(s["engine"], vers[s["engine"]]) for s in task["sources"]]
     setting = protocol.draw_setting(srcs, rl.stable(f"run3-rl:{qid}:{g['engine']}:{step}"))
@@ -181,7 +187,7 @@ def cmd_devcheck(run: Path) -> int:
         res = measure.run(d, f"http://127.0.0.1:{PORT}", 1, SLOTS, None, 0.0)
         summ = measure.summary(d)
         eps = [json.loads(x) for x in (d / "episodes.jsonl").read_text().splitlines()]
-        ans = [e for e in eps if e.get("kind") == "answer"]
+        ans = [e for e in eps if e.get("kind") == "answer" and e.get("outcome") != "skipped"]
         rate = sum(e.get("outcome") == "right" for e in ans) / max(len(ans), 1)
         out = {"right_rate": round(rate, 4), "answerable": len(ans), "minutes": res["minutes"],
                "overall": summ["overall"], "template": tmpl,
@@ -246,7 +252,7 @@ def cmd_run(run: Path, questions: int, max_hours: float) -> int:
             for rs in by.values():
                 rews = [(r.get("reward") if r.get("reward") is not None else -0.1) for r in rs]
                 for r, a in zip(rs, rl.advantages(rews, cfg["adv_floor"]), strict=True):
-                    if r.get("outcome") == "crash":  # a server error, not the model's doing
+                    if r.get("outcome") in ("crash", "skipped"):  # not the model's doing
                         continue
                     e, o = rl.examples(r, learner.tok, a, cfg["max_seq"])
                     exs += e

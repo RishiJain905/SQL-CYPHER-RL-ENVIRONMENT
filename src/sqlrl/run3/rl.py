@@ -191,6 +191,8 @@ def examples(ep: dict[str, Any], tok: Any, adv: float, max_seq: int) -> tuple[li
 
 
 def step_metrics(eps: list[dict[str, Any]]) -> dict[str, Any]:
+    skipped = sum(1 for e in eps if e.get("outcome") == "skipped")
+    eps = [e for e in eps if e.get("outcome") != "skipped"]  # no task on this VM (R30)
     ans = [e for e in eps if e.get("kind") == "answer"]
     wdb = [e for e in eps if e.get("kind") == "unanswerable"]
     right = [e for e in eps if e.get("outcome") == "right"]
@@ -219,7 +221,7 @@ def step_metrics(eps: list[dict[str, Any]]) -> dict[str, Any]:
         "gen_tokens_mean": round(sum(sum(c["tokens"] for c in e.get("calls") or [])
                                      for e in eps) / max(len(eps), 1), 1),  # fmt: skip
         "informative_groups": informative, "groups": len(groups),
-        "crashes": sum(1 for e in eps if e.get("outcome") == "crash"),
+        "crashes": sum(1 for e in eps if e.get("outcome") == "crash"), "skipped": skipped,
         "solve_by_pool": by,
     }  # fmt: skip
 
