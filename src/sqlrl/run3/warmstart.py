@@ -30,6 +30,7 @@ import json
 import random
 import sys
 import time
+import uuid
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -211,7 +212,7 @@ def _wandb(d: Path, cfg: dict[str, Any], who: str, steps: int, too_long: int, n:
     except ImportError:
         return None
     rid_f = d / "wandb_id.txt"
-    rid = rid_f.read_text().strip() if rid_f.exists() else wandb.util.generate_id()
+    rid = rid_f.read_text().strip() if rid_f.exists() else uuid.uuid4().hex[:8]
     rid_f.write_text(rid)
     safe = {k: v for k, v in cfg.items()
             if not any(w in k.lower() for w in ("token", "secret", "password", "key"))}  # fmt: skip

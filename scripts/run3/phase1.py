@@ -70,9 +70,19 @@ def py(script: str, args: list[str], log: Path) -> int:
 
 
 def total_steps() -> int:
-    cfg = json.loads((p1() / "config.json").read_text("utf-8"))
+    """The plan's step count before examples over the length limit are left out (the trainer
+    knows the exact one; the last chunk trains to the end whatever it is)."""
+    from sqlrl.run3.warmstart import DEFAULTS
+
+    f = p1() / "config.json"
+    cfg = {**DEFAULTS, **(json.loads(f.read_text("utf-8")) if f.exists() else {})}
     n = sum(1 for _ in (p1() / "examples.jsonl").open(encoding="utf-8"))
     return n * int(cfg["epochs"]) // int(cfg["accum"])
+
+
+def trained_to() -> int:
+    f = p1() / "state" / "position.json"
+    return json.loads(f.read_text("utf-8"))["step"] if f.exists() else 0
 
 
 def evaluate(ck: Path) -> dict:
@@ -119,15 +129,20 @@ def cmd_run(chunks: int, until: int | None) -> int:
         marks = [m for m in marks if m <= until] or [until]
     event("info", f"phase 1: {total} optimiser steps, checkpoints after {marks}",
           status="training", phase="1")  # fmt: skip
-    for m in marks:
-        ck = p1() / f"ckpt-{m:04d}"
-        if not (ck / "lora_state.safetensors").exists():
-            event("info", f"training to step {m} of {total}", status="training")
-            if wsl("sqlrl.run3.warmstart", f"train --dir {to_wsl(p1())} --until {m}",
+    for i, m in enumerate(marks):
+        last = i == len(marks) - 1
+        if trained_to() < m:  # the last chunk trains to the trainer's own end
+            event("info", f"training to step {'the end' if last else m} of about {total}",
+                  status="training")  # fmt: skip
+            arg = "" if last else f" --until {m}"
+            if wsl("sqlrl.run3.warmstart", f"train --dir {to_wsl(p1())}{arg}",
                    p1() / "train.log") != 0:  # fmt: skip
                 event("error", f"training to step {m} failed (train.log)", status="dead",
                       why="training failed")  # fmt: skip
                 return 1
+        ck = p1() / f"ckpt-{trained_to():04d}"
+        if (p1() / f"eval-{ck.name}" / "dev" / "summary.json").exists():
+            continue  # evaluated already (a resumed run)
         ev = evaluate(ck)
         g = ev["gates"]
         es = (ev.get("evalset") or {}).get("decided")
