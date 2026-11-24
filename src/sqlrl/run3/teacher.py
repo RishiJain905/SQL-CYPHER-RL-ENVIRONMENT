@@ -172,10 +172,21 @@ def pilot_groups(p0: Path, n: int, seed: int = 0) -> list[dict[str, Any]]:
 
 
 def run_pilot(out: Path, n: int, cap: float, workers: int = 8) -> dict[str, Any]:
-    from sqlrl.run3 import episode, measure, settings
+    from sqlrl.run3 import settings
 
     p0 = settings.get().data / "phase0" / "pass8-step40"
     out.mkdir(parents=True, exist_ok=True)
+    lock_file = settings.get().data / "neo4j.busy"  # the run-3 Neo4j holds one graph at a time:
+    lock_file.write_text("teacher pilot", encoding="utf-8")  # phase 1's evaluations wait on it
+    try:
+        return _run_pilot(p0, out, n, cap, workers)
+    finally:
+        lock_file.unlink(missing_ok=True)
+
+
+def _run_pilot(p0: Path, out: Path, n: int, cap: float, workers: int) -> dict[str, Any]:
+    from sqlrl.run3 import episode, measure
+
     gs = pilot_groups(p0, n)
     (out / "groups.jsonl").write_text("\n".join(json.dumps(g) for g in gs), encoding="utf-8")
     tasks, vers, budget = measure.Tasks(), measure.versions(), Budget(cap)

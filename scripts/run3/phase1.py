@@ -77,6 +77,11 @@ def total_steps() -> int:
 
 def evaluate(ck: Path) -> dict:
     log = p1() / "phase1.log"
+    busy = settings.get().data / "neo4j.busy"  # another job (the teacher pilot) holds Neo4j
+    if busy.exists():
+        event("info", f"{ck.name}: waiting for the run-3 Neo4j ({busy.read_text().strip()})")
+        while busy.exists():
+            time.sleep(30)
     gguf = models_dir() / "run3" / f"ws-{ck.name}.gguf"
     gguf.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(get_paths().model_gguf, gguf)  # the merge rewrites a copy of the release
