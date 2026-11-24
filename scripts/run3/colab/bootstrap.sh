@@ -83,14 +83,15 @@ fi
 /opt/neo4j/bin/neo4j start || true
 
 log "python packages and the two public repos"
-pip install -q duckdb "psycopg[binary]" pymysql sqlglot
+pip install -q "duckdb==2.0.1" "psycopg[binary]" pymysql sqlglot  # duckdb as on the PC
 [ -d "$REPO" ] || git clone -q https://github.com/RishiJain905/SQL-CYPHER-RL-ENVIRONMENT "$REPO"
 [ -d "$TRAINER" ] || git clone -q https://github.com/RishiJain905/nfl-ask-trainer "$TRAINER"
 
 log "data"
 mkdir -p "$DATA"
-if [ -f /content/run3-bundle.tar.gz ] && [ ! -f "$DATA/.unpacked" ]; then
-  tar xzf /content/run3-bundle.tar.gz -C "$DATA" && touch "$DATA/.unpacked"
+BUNDLE=${BUNDLE:-/content/run3-bundle.tar.gz}
+if [ -f "$BUNDLE" ] && [ ! -f "$DATA/.unpacked" ]; then
+  tar xzf "$BUNDLE" -C "$DATA" && touch "$DATA/.unpacked"
 fi
 export RUN3_DATA="$DATA" RUN3_TRAINER_REPO="$TRAINER" PYTHONPATH="$REPO/src"
 for i in $(seq 1 60); do curl -fs http://127.0.0.1:7474 >/dev/null && break; sleep 2; done
@@ -105,5 +106,5 @@ for src in $(ls "$DATA/dbs"); do
 done
 
 log "check"
-python -m sqlrl.run3.check_env
+python -m sqlrl.run3.check_env --source "${CHECK_SOURCE:-birddev}" --db "${CHECK_DB:-superhero}"
 log "done"
