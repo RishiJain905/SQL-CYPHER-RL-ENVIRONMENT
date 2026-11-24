@@ -832,3 +832,16 @@ endings, wrong-database declines) waived for RL with stop rules watching them. N
 run 2's SRPO: the distillation branch and its EMA teacher (run 2's pilots had GRPO and SRPO within
 noise; the branch's "show the sibling's query" assumes a single-query episode). No ambiguous
 questions (they need the teacher). Tracking from the PC so no key goes to the VM.
+
+## R30: the first RL VM was reclaimed mid-setup; a keep-alive, and 3.5 RL hours (2026-11-24)
+
+The first A100 (attached 20:45:54 UTC) ended about 21:09:50, 24 minutes in, while the detached
+setup ran its gold check; Colab then listed no session. Its logs went with it, so the cause is a
+reading, not a measurement: the kernel had been idle about 22 minutes (the setup ran as a
+background process; the PC read files through the files API, which is not kernel activity), and
+smoke 2's VM, kept busy by `exec` calls, lasted 50 minutes. Changed: a keep-alive `exec` every 3
+minutes for the whole session (it also logs the VM's free memory, GPU memory and latest log line,
+so a second loss can be read); uploads in 40 MB parts (90 MB ones fail on the files API) and the
+driver's download parts too. Budget: RL `max_hours` 4.0 -> 3.5 and the watchdog 4 h 45 m -> 4 h
+15 m after attach, so smokes + this lost attempt + setup + RL stay inside the 6-hour cap (R24). A
+second loss stops the run for Rishi.
