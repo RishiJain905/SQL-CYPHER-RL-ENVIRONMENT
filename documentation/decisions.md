@@ -822,3 +822,13 @@ teacher's episodes are rendered through Spark's template by `render.py`, checked
 against 60 of step 40's recorded prompts first. It starts from checkpoint 129's adapter and runs
 112 steps (about a third of an epoch, where the first pass peaked), checkpoints at 56 and 112,
 the same gates. The RL run waits for Rishi either way.
+
+## R29: phase 2's RL as built: start, reference, waived gates, what is not ported (2026-11-24)
+
+Rishi approved the RL run's setup (`run3/phase2.md`, written before any phase 2 code): start from
+the warm start's pass 1 checkpoint 129 (the best on run 2's evaluation set, 64.2%), the KL
+reference that same checkpoint, the two gates that no warm-start checkpoint passed (malformed
+endings, wrong-database declines) waived for RL with stop rules watching them. Not ported from
+run 2's SRPO: the distillation branch and its EMA teacher (run 2's pilots had GRPO and SRPO within
+noise; the branch's "show the sibling's query" assumes a single-query episode). No ambiguous
+questions (they need the teacher). Tracking from the PC so no key goes to the VM.
