@@ -1,6 +1,6 @@
 """Run 3, phase 2: evaluate a downloaded RL checkpoint on the PC while Colab trains.
 
-    python scripts/run3/rl_eval.py --local <synced dir> --step <k> --ref <phase0/anchor-ws-ckpt-0129>
+    python scripts/run3/rl_eval.py --local <dir> --step <k> --ref <phase0/anchor-ws-ckpt-0129>
 
 The step's adapter (synced to `<local>/step-<k>/lora_state.safetensors`) is merged in float32 into
 a copy of the released Q8_0 (`run2.tools merge`, WSL), then run 2's evaluation set (`anchor.py`)
