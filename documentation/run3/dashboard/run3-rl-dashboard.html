@@ -1,0 +1,306 @@
+<title>Run 3 RL</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Run 2's instrument panel for run 3's RL run: a status bar, the numbers that matter, the stop
+   rules, the rollouts, the update, the PC's evaluations, the events. */
+:root {
+  --bg: #F5F7F9; --surface: #FFFFFF; --surface-2: #EBEFF3; --ink: #141D26; --ink-2: #4A5866;
+  --muted: #647180; --rule: #D5DCE3; --grid: #E8ECF0; --axis: #C3CCD5;
+  --accent: #0B7285; --accent-bg: #E1F1F4;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s-other: #9AA6B2;
+  --ord1: #86b6ef; --ord2: #2a78d6; --ord3: #0d366b;
+  --bound: #d03b3b; --ok: #006300; --ok-bg: #E3F4E3; --warn: #7A5200; --warn-bg: #FFF1CF;
+  --bad: #A02323; --bad-bg: #FBE2E2; --neutral-bg: #E3E8ED;
+  --shadow: 0 4px 14px rgba(20, 29, 38, .16);
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141A; --surface: #151D25; --surface-2: #1C2630; --ink: #E4EBF1; --ink-2: #9AA9B7;
+    --muted: #8696A6; --rule: #2B3844; --grid: #212C37; --axis: #34424F;
+    --accent: #4DB8CC; --accent-bg: #12303A;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #5A6978;
+    --ord1: #184f95; --ord2: #3987e5; --ord3: #9ec5f4;
+    --bound: #e66767; --ok: #5FD35F; --ok-bg: #123A12; --warn: #F0C04A; --warn-bg: #3A2E0C;
+    --bad: #F08A8A; --bad-bg: #3F1717; --neutral-bg: #232F3B;
+    --shadow: 0 4px 14px rgba(0, 0, 0, .55); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141A; --surface: #151D25; --surface-2: #1C2630; --ink: #E4EBF1; --ink-2: #9AA9B7;
+  --muted: #8696A6; --rule: #2B3844; --grid: #212C37; --axis: #34424F;
+  --accent: #4DB8CC; --accent-bg: #12303A;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s-other: #5A6978;
+  --ord1: #184f95; --ord2: #3987e5; --ord3: #9ec5f4;
+  --bound: #e66767; --ok: #5FD35F; --ok-bg: #123A12; --warn: #F0C04A; --warn-bg: #3A2E0C;
+  --bad: #F08A8A; --bad-bg: #3F1717; --neutral-bg: #232F3B;
+  --shadow: 0 4px 14px rgba(0, 0, 0, .55); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px; -webkit-text-size-adjust: 100%; }
+.wrap { max-width: 1280px; margin: 0 auto; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; }
+code, .mono { font-family: var(--mono); }
+code { font-size: .88em; background: var(--surface-2); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+button { font: inherit; color: inherit; }
+button:focus-visible, .chart:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); border-bottom: 1px solid var(--rule);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 0; }
+.bar .name { font-weight: 600; }
+.bar .step { font: 500 13px var(--mono); white-space: nowrap; }
+.bar .prog { flex: 1 1 140px; min-width: 100px; }
+.bar .upd { font: 12px var(--sans); color: var(--ink-2); margin-left: auto; white-space: nowrap; }
+.bar .upd.stale { color: var(--warn); font-weight: 600; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 var(--sans); letter-spacing: .05em;
+  text-transform: uppercase; padding: 5px 8px 5px 6px; border-radius: 3px; white-space: nowrap; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.neutral { background: var(--neutral-bg); color: var(--ink-2); }
+.meter { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; width: 0; transition: width .4s ease; }
+.hero { padding: 18px 0 6px; display: grid; gap: 14px; }
+.eyebrow { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+h1 { font: 600 clamp(26px, 5vw, 34px)/1.15 var(--sans); letter-spacing: -.015em; }
+.lede { color: var(--ink-2); max-width: 72ch; }
+.hgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 10px; }
+.hcell { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; min-width: 0; display: grid; gap: 4px; align-content: start; }
+.hcell .k { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.hcell .v { font: 600 17px/1.25 var(--sans); overflow-wrap: anywhere; }
+.hcell .s { font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+section { margin-top: 26px; display: grid; gap: 12px; }
+section > h2 { font: 600 18px var(--sans); }
+section > p.note { color: var(--ink-2); font-size: 13px; max-width: 80ch; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; min-width: 0; display: grid; gap: 8px; align-content: start; }
+.card h3 { font: 600 14px var(--sans); }
+.card .sub { font-size: 12.5px; color: var(--ink-2); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font: 11px var(--sans); fill: var(--muted); }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); box-shadow: var(--shadow);
+  border-radius: 5px; padding: 6px 8px; font: 12px/1.35 var(--sans); color: var(--ink); white-space: nowrap; z-index: 5; }
+.empty { color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; border: 1px dashed var(--rule); border-radius: 5px; }
+details.tw summary { cursor: pointer; font-size: 12px; color: var(--ink-2); }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 600; color: var(--ink-2); }
+td.num, th.num { font-family: var(--mono); }
+.gates { display: grid; gap: 6px; }
+.gate { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; }
+.gate .n { font-weight: 600; }
+.gate .b { font-size: 12px; color: var(--ink-2); grid-column: 2; }
+.gate .val { font: 500 13px var(--mono); grid-row: 1 / span 2; grid-column: 3; text-align: right; }
+.events { display: grid; gap: 4px; font-size: 13px; }
+.events div { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; }
+.events time { font: 12px var(--mono); color: var(--muted); }
+footer { margin-top: 30px; color: var(--muted); font-size: 12px; }
+</style>
+
+<div class="wrap">
+  <div class="bar">
+    <span class="name">Run 3 &middot; RL</span>
+    <span id="status" class="chip neutral">waiting</span>
+    <span class="step" id="barstep">&ndash;</span>
+    <div class="prog"><div class="meter"><i id="meter"></i></div></div>
+    <span class="upd" id="upd">no feed yet</span>
+  </div>
+
+  <header class="hero">
+    <div class="eyebrow">Spark RL &middot; run 3 &middot; phase 2 &middot; Colab</div>
+    <h1>The database agent's RL run</h1>
+    <p class="lede">SRPO on the warm start's best checkpoint: each question is answered 8 times in a real database,
+      the right episodes are pushed up and the wrong ones down, with a KL penalty keeping it near its start.
+      Running out of tool calls scores &minus;0.1, a correct decline 1. The bar's meter is hours used of the budget.</p>
+    <div class="hgrid" id="tiles"></div>
+  </header>
+
+  <section>
+    <h2>Stop rules</h2>
+    <p class="note">Five-step means against step 1's reading, from step 6 (<code>documentation/run3/phase2.md</code>). A rule that fires saves the step and pauses the run.</p>
+    <div class="gates" id="rules"><div class="empty">Read from step 6.</div></div>
+  </section>
+
+  <section>
+    <h2>Rollouts</h2>
+    <div class="grid">
+      <div class="card"><h3>Mean reward</h3><div class="sub">Every episode of the step; thick line a 5-step mean.</div><div class="chart" id="c-reward"></div></div>
+      <div class="card"><h3>Right answers (answerable questions)</h3>
+        <div class="legend"><span><i style="background:var(--s1)"></i>all</span><span><i style="background:var(--s2)"></i>BIRD useful band</span><span><i style="background:var(--s3)"></i>BIRD never measured</span><span><i style="background:var(--s4)"></i>Cypher</span></div>
+        <div class="chart" id="c-solve"></div></div>
+      <div class="card"><h3>Malformed endings</h3><div class="sub">Mostly the 8-call limit; the start had 11.3% on the dev set (waived gate, watched).</div><div class="chart" id="c-malformed"></div></div>
+      <div class="card"><h3>Declines</h3>
+        <div class="legend"><span><i style="background:var(--s3)"></i>wrong-database declined (higher is better)</span><span><i style="background:var(--s2)"></i>answerable falsely declined</span></div>
+        <div class="chart" id="c-declines"></div></div>
+      <div class="card"><h3>Tool calls an episode</h3><div class="chart" id="c-calls"></div></div>
+      <div class="card"><h3>Generated tokens an episode</h3><div class="sub">The stop rule fires at twice step 1.</div><div class="chart" id="c-len"></div></div>
+      <div class="card"><h3>Informative groups</h3><div class="sub">Groups with a right and a wrong episode: only they move the model.</div><div class="chart" id="c-info"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Update</h2>
+    <div class="grid">
+      <div class="card"><h3>KL to the start checkpoint (per token)</h3><div class="sub">Stops above 0.10 (red).</div><div class="chart" id="c-kl"></div></div>
+      <div class="card"><h3>Gradient norm</h3><div class="sub">Clipped at 1.0.</div><div class="chart" id="c-gn"></div></div>
+      <div class="card"><h3>Policy-gradient loss</h3><div class="chart" id="c-loss"></div></div>
+      <div class="card"><h3>Time a step</h3>
+        <div class="legend"><span><i style="background:var(--s1)"></i>rollouts</span><span><i style="background:var(--s2)"></i>update</span><span><i style="background:var(--s4)"></i>whole step</span></div>
+        <div class="chart" id="c-time"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Evaluations (on the PC, while Colab trains)</h2>
+    <p class="note">Downloaded checkpoints merged in float32 and scored greedy. The kept step is the best dev-set score not worse than the start on run 2's evaluation set.</p>
+    <div class="grid">
+      <div class="card"><h3>Run-3 dev set, right answers</h3><div class="sub">The start (checkpoint 129) dashed.</div><div class="chart" id="c-edev"></div></div>
+      <div class="card"><h3>Run 2's evaluation set</h3><div class="sub">The start dashed; the 57.0 floor red.</div><div class="chart" id="c-eset"></div></div>
+    </div>
+    <div class="card"><h3>Evaluations</h3><div class="tbl" id="t-evals"><div class="empty">None yet.</div></div></div>
+  </section>
+
+  <section>
+    <h2>Events</h2>
+    <div class="events" id="events"><div class="empty">Nothing yet.</div></div>
+  </section>
+  <footer>Fed from the run's files by <code>sqlrl.run3.rl_feed</code>; nothing on this page writes anything.</footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct = (v, d = 1) => (v == null ? "–" : (100 * v).toFixed(d) + "%");
+const num = (v, d = 2) => (v == null ? "–" : (+v).toFixed(d));
+const DOCS = {};
+function chip(kind, text) { return `<span class="chip ${kind}">${esc(text)}</span>`; }
+function mean(a) { const v = a.filter((x) => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; }
+function roll(pts, w) { return pts.map((p, i) => [p[0], mean(pts.slice(Math.max(0, i - w + 1), i + 1).map((q) => q[1]))]); }
+function table(head, rows) {
+  return `<table><thead><tr>${head.map((h, i) => `<th class="${i ? "num" : ""}">${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${i ? "num" : ""}">${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+function ser(S, key, f) { return S.map((r) => [r.step, f ? f(r) : r[key]]); }
+
+function render() {
+  const st = DOCS.state || {}, S = (DOCS.steps || {}).steps || [], E = (DOCS.evals || {}).evals || [];
+  const vm = st.vm || {}, last = S[S.length - 1], s1 = st.step1;
+  const s = vm.status || "waiting";
+  const kind = {running: "ok", rollouts: "ok", update: "ok", done: "ok", paused: "warn", dead: "bad"}[s] || "neutral";
+  $("status").className = "chip " + kind; $("status").textContent = s;
+  const hours = st.hours || 0, maxh = st.max_hours || 4;
+  $("barstep").textContent = `step ${st.step || 0} · ${num(hours, 2)} of ${maxh} h`;
+  $("meter").style.width = Math.min(100, 100 * hours / maxh) + "%";
+  if (st.updated_at) {
+    const age = (Date.now() - Date.parse(st.updated_at)) / 60000;
+    $("upd").textContent = "fed " + (age < 1 ? "just now" : Math.round(age) + " min ago");
+    $("upd").className = "upd" + (age > 20 && !["done", "dead", "paused"].includes(s) ? " stale" : "");
+  }
+  const r5 = (k) => mean(S.slice(-5).map((r) => r[k]));
+  const ev = E[E.length - 1], st0 = st.start || {}, dc = st.devcheck;
+  const tiles = [
+    ["Step", st.step || 0, last ? `${num(last.step_s / 60, 1)} min a step` : (st.questions ? `${st.questions} questions x 8` : "")],
+    ["Hours", `${num(hours, 2)} / ${maxh}`, "RL budget (phase2.md)"],
+    ["Mean reward (5 steps)", num(r5("reward_mean"), 3), s1 ? `step 1: ${num(s1.reward_mean, 3)}` : ""],
+    ["Right answers (5 steps)", pct(r5("solve_rate")), s1 ? `step 1: ${pct(s1.solve_rate)}` : ""],
+    ["Malformed (5 steps)", pct(r5("malformed")), s1 ? `step 1: ${pct(s1.malformed)}` : "start (dev): 11.3%"],
+    ["Wrong-db declined (5 steps)", pct(r5("wrongdb_decline")), s1 ? `step 1: ${pct(s1.wrongdb_decline)}` : "start (dev): 55%"],
+    ["KL to start (5 steps)", num(r5("kl"), 4), "stops above 0.10"],
+    ["Latest evaluation", ev ? pct(ev.dev_right) : "–", ev ? `${ev.ckpt}: evalset ${num(ev.evalset, 1)} (start ${st0.evalset})` : `start: dev ${pct(st0.dev_right)}, evalset ${st0.evalset ?? "–"}`],
+    ["Served-model check", dc ? pct(dc.right_rate) : "–", "the PC read 46.4% (within 3 points)"],
+  ];
+  $("tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="hcell"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(sub)}</div></div>`).join("");
+  // stop rules
+  const B = st.stop_bounds || {};
+  if (S.length && s1) {
+    const ready = S.length >= (B.from_step || 6);
+    const rules = [
+      ["Malformed endings", r5("malformed"), `≤ step 1 + ${B.malformed_up} and ≤ ${B.malformed_max}`, (v) => v <= s1.malformed + B.malformed_up && v <= B.malformed_max, pct],
+      ["False declines", r5("false_decline"), `≤ max(${B.false_decline_x} x step 1, ${B.false_decline_min})`, (v) => v <= Math.max(B.false_decline_x * (s1.false_decline || 0), B.false_decline_min), pct],
+      ["Wrong-database declines", r5("wrongdb_decline"), `≥ step 1 − ${B.wrongdb_down}`, (v) => v >= (s1.wrongdb_decline ?? 0) - B.wrongdb_down, pct],
+      ["KL to the start", r5("kl"), `≤ ${B.kl_max}`, (v) => v <= B.kl_max, (v) => num(v, 4)],
+      ["Generated tokens", r5("gen_tokens_mean"), `≤ ${B.length_x} x step 1 (${num(s1.gen_tokens_mean, 0)})`, (v) => v <= B.length_x * s1.gen_tokens_mean, (v) => num(v, 0)],
+      ["Hard-coded constants", r5("hardcoded"), `≤ ${B.hardcoded_max} of right answers`, (v) => v <= B.hardcoded_max, pct],
+      ["Mean reward", r5("reward_mean"), `≥ step 1 − ${B.reward_down}`, (v) => v >= s1.reward_mean - B.reward_down, (v) => num(v, 3)],
+    ];
+    $("rules").innerHTML = rules.map(([n, v, b, ok, f]) => {
+      const c = v == null ? chip("neutral", "no data") : !ready ? chip("neutral", "from step " + (B.from_step || 6)) : ok(v) ? chip("ok", "ok") : chip("bad", "fires");
+      return `<div class="gate">${c}<span class="n">${esc(n)}</span><span class="val">${esc(v == null ? "–" : f(v))}</span><span class="b">${esc(b)}</span></div>`;
+    }).join("");
+  }
+  // charts
+  const rw = ser(S, "reward_mean");
+  line($("c-reward"), [{name: "reward", color: "var(--s1)", pts: rw, thin: true}, {name: "5-step mean", color: "var(--s1)", pts: roll(rw, 5)}], {fmt: (v) => num(v, 3)});
+  const pool = (k) => ser(S, null, (r) => (r.solve_by_pool || {})[k]);
+  line($("c-solve"), [{name: "all", color: "var(--s1)", pts: ser(S, "solve_rate")}, {name: "BIRD useful", color: "var(--s2)", pts: pool("bird")}, {name: "BIRD new", color: "var(--s3)", pts: pool("new")}, {name: "Cypher", color: "var(--s4)", pts: pool("cypher")}], {fmt: (v) => pct(v), y0: true});
+  line($("c-malformed"), [{name: "malformed", color: "var(--s2)", pts: ser(S, "malformed")}, {name: "5-step mean", color: "var(--s2)", pts: roll(ser(S, "malformed"), 5), thin: true}], {fmt: (v) => pct(v), y0: true, hl: [{y: 0.113, label: "start (dev) 11.3%", dash: true, color: "var(--muted)"}]});
+  line($("c-declines"), [{name: "wrong-db declined", color: "var(--s3)", pts: ser(S, "wrongdb_decline")}, {name: "false declines", color: "var(--s2)", pts: ser(S, "false_decline")}], {fmt: (v) => pct(v), y0: true});
+  line($("c-calls"), [{name: "calls", color: "var(--s1)", pts: ser(S, "calls_mean")}], {fmt: (v) => num(v, 2), y0: true});
+  line($("c-len"), [{name: "tokens", color: "var(--s4)", pts: ser(S, "gen_tokens_mean")}], {fmt: (v) => num(v, 0), y0: true, hl: s1 ? [{y: 2 * s1.gen_tokens_mean, label: "stop: 2 x step 1"}] : []});
+  line($("c-info"), [{name: "informative share", color: "var(--s3)", pts: ser(S, null, (r) => r.groups ? r.informative_groups / r.groups : null)}], {fmt: (v) => pct(v), y0: true});
+  line($("c-kl"), [{name: "KL", color: "var(--s1)", pts: ser(S, "kl")}], {fmt: (v) => num(v, 4), y0: true, hl: [{y: 0.10, label: "stop 0.10"}]});
+  line($("c-gn"), [{name: "grad norm", color: "var(--s2)", pts: ser(S, "upd_grad_norm")}], {fmt: (v) => num(v, 3), y0: true, hl: [{y: 1, label: "clip"}]});
+  line($("c-loss"), [{name: "pg loss", color: "var(--s1)", pts: ser(S, "upd_pg_loss")}], {fmt: (v) => num(v, 4)});
+  line($("c-time"), [{name: "rollouts s", color: "var(--s1)", pts: ser(S, "rollout_s")}, {name: "update s", color: "var(--s2)", pts: ser(S, "upd_update_s")}, {name: "step s", color: "var(--s4)", pts: ser(S, "step_s")}], {fmt: (v) => num(v, 0), y0: true});
+  line($("c-edev"), [{name: "dev right", color: "var(--s3)", pts: E.map((e) => [e.step, e.dev_right]), dots: true}], {fmt: (v) => pct(v), xlabel: "RL step", hl: [{y: st0.dev_right ?? 0.464, label: "start", dash: true, color: "var(--muted)"}]});
+  line($("c-eset"), [{name: "evalset", color: "var(--s1)", pts: E.map((e) => [e.step, e.evalset]), dots: true}], {fmt: (v) => num(v, 1), xlabel: "RL step", hl: [{y: st0.evalset ?? 64.2, label: "start", dash: true, color: "var(--muted)"}, {y: 57, label: "57.0"}]});
+  if (E.length) $("t-evals").innerHTML = table(["Checkpoint", "Step", "Dev right", "vs start", "Evalset", "vs start", "Malformed", "Wrong-db declined"],
+    E.map((e) => [e.ckpt, e.step, pct(e.dev_right), e.dev_vs ? `${e.dev_vs.better}/${e.dev_vs.worse}` : "–", num(e.evalset, 1), e.evalset_vs ? `${e.evalset_vs.better}/${e.evalset_vs.worse} p ${num(e.evalset_vs.p, 2)}` : "–", pct(e.malformed), pct(e.wrongdb_decline)]));
+  const EV = (st.events || []).slice(-30).reverse();
+  if (EV.length) $("events").innerHTML = EV.map((e) => `<div><time>${esc((e.t || "").replace("T", " ").replace("Z", ""))}</time>${chip(e.level === "error" ? "bad" : e.level === "warn" ? "warn" : "neutral", e.level || "info")}<span>${esc(e.text)}</span></div>`).join("");
+}
+
+function line(el, series, o = {}) {
+  const pts = series.flatMap((s) => s.pts.filter((p) => p[1] != null));
+  if (!pts.length) { el.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  const W = 560, H = 210, L = 46, R = 12, T = 10, B = 28;
+  const xs = pts.map((p) => p[0]); let x0 = Math.min(...xs), x1 = Math.max(...xs); if (x0 === x1) { x0 -= 1; x1 += 1; }
+  const ys = pts.map((p) => p[1]).concat((o.hl || []).map((h) => h.y));
+  let y0 = o.y0 ? 0 : Math.min(...ys), y1 = Math.max(...ys); const pad = (y1 - y0) * 0.08 || Math.abs(y1) * 0.1 || 1; y0 = o.y0 ? 0 : y0 - pad; y1 += pad;
+  const X = (x) => L + (W - L - R) * (x - x0) / (x1 - x0), Y = (y) => T + (H - T - B) * (1 - (y - y0) / (y1 - y0));
+  const fmt = o.fmt || ((v) => num(v));
+  let g = "";
+  for (let i = 0; i <= 4; i++) { const v = y0 + (y1 - y0) * i / 4, y = Y(v); g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${L - 6}" y="${y + 3.5}" text-anchor="end">${esc(fmt(v))}</text>`; }
+  [...new Set([x0, Math.round((x0 + x1) / 2), x1].map((v) => Math.round(v)))].forEach((v) => { g += `<text x="${X(v)}" y="${H - 8}" text-anchor="middle">${v}</text>`; });
+  (o.hl || []).forEach((h) => { const y = Y(h.y); g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="${h.color || "var(--bound)"}" stroke-width="1.5" ${h.dash ? 'stroke-dasharray="5 4"' : ""}/><text x="${W - R}" y="${y - 4}" text-anchor="end">${esc(h.label)}</text>`; });
+  series.forEach((s) => {
+    const ps = s.pts.filter((p) => p[1] != null); if (!ps.length) return;
+    g += `<polyline fill="none" stroke="${s.color}" stroke-width="${s.thin ? 1 : 2}" stroke-opacity="${s.thin ? .45 : 1}" stroke-linejoin="round" points="${ps.map((p) => X(p[0]) + "," + Y(p[1])).join(" ")}"/>`;
+    if (s.dots || ps.length === 1) ps.forEach((p) => { g += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="4" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`; });
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map((s) => s.name).join(", "))}">${g}<line class="xh" y1="${T}" y2="${H - B}" stroke="var(--axis)" visibility="hidden"/><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = el.querySelector(".xh");
+  const allx = [...new Set(series.flatMap((s) => s.pts.map((p) => p[0])))].sort((a, b) => a - b);
+  svg.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), mx = (e.clientX - r.left) * W / r.width;
+    const x = allx.reduce((b, v) => Math.abs(X(v) - mx) < Math.abs(X(b) - mx) ? v : b, allx[0]);
+    xh.setAttribute("x1", X(x)); xh.setAttribute("x2", X(x)); xh.setAttribute("visibility", "visible");
+    tip.innerHTML = `<b>${o.xlabel || "step"} ${x}</b><br>` + series.map((s) => { const p = s.pts.find((q) => q[0] === x); return p && p[1] != null ? `${esc(s.name)}: ${esc(fmt(p[1]))}` : ""; }).filter(Boolean).join("<br>");
+    tip.hidden = false; const left = X(x) * r.width / W; tip.style.left = Math.min(left + 10, r.width - tip.offsetWidth) + "px"; tip.style.top = "4px";
+  });
+  svg.addEventListener("pointerleave", () => { tip.hidden = true; xh.setAttribute("visibility", "hidden"); });
+}
+
+(async () => {
+  render();
+  const db = await window.claude?.use?.("db");
+  if (!db) { $("upd").textContent = "store unavailable"; return; }
+  db.collection("rl").onSnapshot((snap) => {
+    for (const d of snap.docs) if (d.exists !== false) DOCS[d.id] = d.data();
+    render();
+  });
+  setInterval(render, 60000);
+})();
+</script>
