@@ -229,7 +229,7 @@ function render() {
     const rules = [
       ["Malformed endings", r5("malformed"), `≤ step 1 + ${B.malformed_up} and ≤ ${B.malformed_max}`, (v) => v <= s1.malformed + B.malformed_up && v <= B.malformed_max, pct],
       ["False declines", r5("false_decline"), `≤ max(${B.false_decline_x} x step 1, ${B.false_decline_min})`, (v) => v <= Math.max(B.false_decline_x * (s1.false_decline || 0), B.false_decline_min), pct],
-      ["Wrong-database declines", r5("wrongdb_decline"), `≥ step 1 − ${B.wrongdb_down}`, (v) => v >= (s1.wrongdb_decline ?? 0) - B.wrongdb_down, pct],
+      ["Wrong-database declines", r5("wrongdb_decline"), `≥ ${pct(B.wrongdb_ref ?? s1.wrongdb_decline ?? 0)} − ${B.wrongdb_down}`, (v) => v >= (B.wrongdb_ref ?? s1.wrongdb_decline ?? 0) - B.wrongdb_down, pct],
       ["KL to the start", r5("kl"), `≤ ${B.kl_max}`, (v) => v <= B.kl_max, (v) => num(v, 4)],
       ["Generated tokens", r5("gen_tokens_mean"), `≤ ${B.length_x} x step 1 (${num(s1.gen_tokens_mean, 0)})`, (v) => v <= B.length_x * s1.gen_tokens_mean, (v) => num(v, 0)],
       ["Hard-coded constants", r5("hardcoded"), `≤ ${B.hardcoded_max} of right answers`, (v) => v <= B.hardcoded_max, pct],

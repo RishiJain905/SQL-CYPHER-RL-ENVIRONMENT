@@ -845,3 +845,14 @@ so a second loss can be read); uploads in 40 MB parts (90 MB ones fail on the fi
 driver's download parts too. Budget: RL `max_hours` 4.0 -> 3.5 and the watchdog 4 h 45 m -> 4 h
 15 m after attach, so smokes + this lost attempt + setup + RL stay inside the 6-hour cap (R24). A
 second loss stops the run for Rishi.
+
+## R31: the wrong-database stop rule reads against the start, not step 1 (2026-11-25)
+
+The rule fired after step 6 (5-step mean 0.688 against step 1's 1.0 - 0.15). Step 1's reading was
+one easy question (chicago_crime, 8/8 declined); pooled over steps 1-6 the rate was 39/56 = 70%,
+the same as step 40's sampled rate in phase 0 (69-73%), and the start's dev greedy reading was 55%.
+So the bound came from a noisy single-question baseline, not a real drop. Rishi chose to resume:
+the rule now reads against a fixed reference, `STOP["wrongdb_ref"]` = 0.55 (the start's dev
+reading), so the bound is 0.40. Every other stop rule stays as written. Held-out checks at the
+pause: step 5 dev 43.2% / evalset 62.2, step 6 dev 43.2% / evalset 62.7, against the start's 46.4% /
+64.2 (none significant; KL 0.0004).

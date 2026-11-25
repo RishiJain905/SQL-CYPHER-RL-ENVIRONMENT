@@ -69,7 +69,7 @@ the baseline every relative stop rule reads.
 |---|---|
 | Malformed endings (waived gate) | above step 1 + 0.10, or above 0.30 |
 | False declines on answerable questions | above max(3 x step 1, 0.10) |
-| Wrong-database declines (waived gate) | below step 1 - 0.15 |
+| Wrong-database declines (waived gate) | below the start's dev reading (0.55) - 0.15 (R31; was step 1 - 0.15) |
 | KL to the reference (per token) | above 0.10 |
 | Episode length (generated tokens) | above 2 x step 1 |
 | Constants caught by the hard-coding guard | above 0.05 of right answers |

@@ -30,6 +30,7 @@ CFG = {"group": 8, "questions": 16, "temperature": 1.0, "think_budget": 1024,
        "seed": 0}  # fmt: skip
 STOP = {"from_step": 6, "window": 5, "malformed_up": 0.10, "malformed_max": 0.30,
         "false_decline_x": 3.0, "false_decline_min": 0.10, "wrongdb_down": 0.15,
+        "wrongdb_ref": 0.55,  # R31: the start's dev greedy reading, not step 1's
         "kl_max": 0.10, "length_x": 2.0, "hardcoded_max": 0.05, "reward_down": 0.15}  # fmt: skip
 
 
@@ -249,8 +250,10 @@ def stop_check(rows: list[dict[str, Any]], stop: dict[str, Any] = STOP) -> list[
                    stop["false_decline_min"])  # fmt: skip
     if m("false_decline") is not None and m("false_decline") > fd_bound:
         out.append(f"false declines {m('false_decline'):.3f}")
-    if (m("wrongdb_decline") is not None and s1.get("wrongdb_decline") is not None
-            and m("wrongdb_decline") < s1["wrongdb_decline"] - stop["wrongdb_down"]):  # fmt: skip
+    # R31: read against a fixed reference when one is set (step 1's reading is 1-2 questions)
+    wref = stop.get("wrongdb_ref", s1.get("wrongdb_decline"))
+    if (m("wrongdb_decline") is not None and wref is not None
+            and m("wrongdb_decline") < wref - stop["wrongdb_down"]):  # fmt: skip
         out.append(f"wrong-database declines {m('wrongdb_decline'):.3f}")
     if m("kl") is not None and m("kl") > stop["kl_max"]:
         out.append(f"KL to the reference {m('kl'):.4f}")
