@@ -856,3 +856,14 @@ the rule now reads against a fixed reference, `STOP["wrongdb_ref"]` = 0.55 (the 
 reading), so the bound is 0.40. Every other stop rule stays as written. Held-out checks at the
 pause: step 5 dev 43.2% / evalset 62.2, step 6 dev 43.2% / evalset 62.7, against the start's 46.4% /
 64.2 (none significant; KL 0.0004).
+
+## R32: the RL run is extended to 30-40 steps, past the 6-hour cap (2026-11-25)
+
+After step 6 the model had barely moved (KL 0.0004) and runs 1b and 2 kept steps 30 and 40, so
+about 13 steps in tonight's window would likely show no measurable gain. Rishi extended the run to
+at least 30 and at most 40 steps. Steps take about 12 minutes (9-14), so 34 more steps are about 7
+hours of A100 40 GB (about 8.2 units an hour, about 60 units), past R24's 6-hour cap with his OK.
+The driver gets `--max-steps` (it stops after step 40); `--max-hours 10` is a backstop. The
+watchdog now stops the VM once the driver ends and the PC has pulled the last step (a stop-rule
+pause is given 30 minutes for a decision first), and at 09:15 UTC regardless. The checkpoint
+evaluations on the PC run every 5 steps.

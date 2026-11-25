@@ -200,8 +200,8 @@ def cmd_devcheck(run: Path) -> int:
     return 0
 
 
-def cmd_run(run: Path, questions: int, max_hours: float) -> int:
-    cfg = {**rl.CFG, "questions": questions, "max_hours": max_hours}
+def cmd_run(run: Path, questions: int, max_hours: float, max_steps: int | None = None) -> int:
+    cfg = {**rl.CFG, "questions": questions, "max_hours": max_hours, "max_steps": max_steps}
     run.mkdir(parents=True, exist_ok=True)
     write_json(run / "config.json", cfg)
     t_start = time.time()
@@ -237,6 +237,9 @@ def cmd_run(run: Path, questions: int, max_hours: float) -> int:
                 break
             if hours >= max_hours:
                 status, why = "done", f"max_hours {max_hours} reached"
+                break
+            if max_steps and k > max_steps:
+                status, why = "done", f"max_steps {max_steps} reached"
                 break
             sd = run / f"step-{k:04d}"
             sd.mkdir(exist_ok=True)
@@ -307,10 +310,11 @@ def main() -> int:
     r.add_argument("--run", required=True)
     r.add_argument("--questions", type=int, default=rl.CFG["questions"])
     r.add_argument("--max-hours", type=float, default=rl.CFG["max_hours"])
+    r.add_argument("--max-steps", type=int, default=None)  # R32: the last step to train
     a = ap.parse_args()
     if a.cmd == "devcheck":
         return cmd_devcheck(Path(a.run))
-    return cmd_run(Path(a.run), a.questions, a.max_hours)
+    return cmd_run(Path(a.run), a.questions, a.max_hours, a.max_steps)
 
 
 if __name__ == "__main__":

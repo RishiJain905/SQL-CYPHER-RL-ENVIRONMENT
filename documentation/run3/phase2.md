@@ -57,6 +57,11 @@ Colab's run-3 cap is 6 hours (R24); the smokes used about 1. **`max_hours` = 4.0
 setup (about 30 minutes); the driver saves and stops there whatever step it is on, and the VM is
 stopped by a watchdog on the PC at 4 h 45 m after it attaches.
 
+**R32 (2026-11-25, Rishi):** the run is extended to at least 30 and at most 40 steps. The driver
+stops after step 40 (`--max-steps 40`); `--max-hours 10` is only a backstop. A new watchdog keeps
+the VM alive, stops it once the driver has finished and the PC has pulled the last step, and
+stops it regardless at 09:15 UTC.
+
 ## Before the first rollout (the smoke is the first steps)
 
 The served start checkpoint on the VM answers the run-3 dev set's 300 triples greedy and must
