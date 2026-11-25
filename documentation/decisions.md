@@ -867,3 +867,13 @@ The driver gets `--max-steps` (it stops after step 40); `--max-hours 10` is a ba
 watchdog now stops the VM once the driver ends and the PC has pulled the last step (a stop-rule
 pause is given 30 minutes for a decision first), and at 09:15 UTC regardless. The checkpoint
 evaluations on the PC run every 5 steps.
+
+## R33: the RL run is stopped after step 21 with no gain; nothing new is kept (2026-11-25)
+
+The held-out checks at steps 5, 6, 10, 15 and 20 never beat the start (pass-1 checkpoint 129):
+dev 43.2-44.1% against 46.4%, the eval set 60.1-62.7 against 64.2 (step 15: 1 better / 9 worse,
+p 0.02; step 20: 2 / 8, p 0.11). The training reward followed each step's question draw with no
+trend, and the KL stayed under 0.001. At the step-20 decision point Rishi stopped the run ("no
+point in wasting compute"); the driver was halted during step 22's rollouts, step 21 pulled and
+the VM stopped at 03:46 UTC. The start checkpoint stays run 3's best model. A retry would change
+the update (learning rate or KL weight), not the length. Results: `results/run3-rl.md`.
